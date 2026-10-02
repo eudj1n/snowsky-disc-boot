@@ -106,7 +106,10 @@ def review(artifacts, diskos, profile, writer):
     if variant == 'product':
         require('usbDiagnostic' not in report and report.get('webroot', {}).get('rawMode') is False,
                 'The product image carries no USB diagnostics or raw mode')
-    if variant == 'usb-engineering':
+    if variant == 'boot':
+        require(report.get('packages') == [] and 'webroot' not in report,
+                'The boot image carries no package')
+    if variant in ('boot', 'usb-engineering'):
         usb = load_usb_profile(profile)
         require(report['usbDiagnostic']['profileSha256'] == fingerprint(usb)
                 and report['usbDiagnostic']['optInRequired'] is True

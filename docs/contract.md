@@ -259,9 +259,10 @@ last request's outcome. The server shows it in its diagnostics.
 
 ## USB console
 
-Unchanged in behavior ([USB diagnostics](usb-diagnostics.md)): the card
-marker `DISC_WEB_USB_DEBUG` with its exact content enables it at boot,
-independently of the mode. The installer writes the marker (owner,
+Unchanged in behavior ([USB diagnostics](usb-diagnostics.md), whose marker
+moved to `.disc/` with combined-008): the card file `.disc/dev/usb-console`
+with the exact content `DISC_WEB_LOCAL_ROOT_CONSOLE` and a newline enables it
+at boot, independently of the mode. The installer writes the marker (owner,
 2026-10-02). USB needs the cable at the user's computer, so the marker alone
 is the console's gate, as today.
 

@@ -52,45 +52,40 @@ bash scripts/test.sh
 DISC_TOOLCHAIN_IMAGE="$DISC_TOOLCHAIN_IMAGE" bash scripts/build.sh mips
 ```
 
-The last command builds the static service, USB diagnostic helper and MIPS
-tests, and fails unless the executables are soft-float without FPU
-instructions. The builder is `docker build --platform linux/amd64 -t
-disc-native-toolchain -f device/Dockerfile.toolchain .` (soft-float musl.cc
-toolchain pinned by SHA-256); the hard-float `diskos-ui-builder` image is no
-longer acceptable for the companion. Review the resulting image identity and
-reprepare the package rather than silently replacing the pinned image. The
-host conformance suite is also the firmware-free GitHub Actions boundary.
+The last command builds the static USB console and fails unless it is
+soft-float without FPU instructions (`bash scripts/build.sh reader` builds the
+NAND reader's MIPS tests). The builder is `docker build --platform
+linux/amd64 -t disc-native-toolchain -f device/Dockerfile.toolchain .`
+(soft-float musl.cc toolchain pinned by SHA-256). Review the resulting image
+identity and reprepare the package rather than silently replacing the pinned
+image. The host conformance suite is also the firmware-free GitHub Actions
+boundary.
 
 ## 2. Build and check a disposable firmware image
 
-Start a project-owned disposable stack if one is not already recorded in
-`work/emulator.json`. An existing stack is pinned to its own firmware/profile;
-inspect it rather than repointing it. `up` extracts only into disposable
-volumes. The following commands build the engineering variant used by the
-current installation history. The product variant (combined-008,
-`build_candidate.py --product` instead of `--usb-diagnostics-binary`) serves
-the card like it but carries no USB console, no boot report and no raw mode;
-its first image needs its own review. `--page <zip or folder of Disc Player>`
-puts the default app into the image (combined-009: `/opt/disc-web/app`,
-served while the card has none); every image with the card service carries
-the reviewed catalogs in `/opt/disc-web/catalog` and `/opt/disc-web/image.json`
-for the diagnostics.
+The boot layer's image is stock plus the boot layer's own objects; it
+carries no package ([contract](contract.md)). Until the boot program exists
+(plan, stage 1) those objects are the USB console with its hook and the boot
+report, under the names the installed images use (`/opt/disc-web/`,
+`S99disc-usb`). The disposable stack is snowsky-disc-web's emulator wrapper
+(its `scripts/emulator.py up`), whose container mounts that repository at
+`/platform`; this repository's sources are copied into the container's
+`/work` for the build. An existing stack is pinned to its own
+firmware/profile; inspect it rather than repointing it.
 
 ```sh
-python3 scripts/emulator.py up --version "$DISC_VERSION" \
-  --reference "$DISC_REFERENCE" --firmware "$DISC_OTA"
-export DISC_CONTAINER="$(python3 -c 'import json; print(json.load(open("work/emulator.json"))["id"] + "-emu")')"
+export DISC_CONTAINER="$(python3 -c 'import json; print(json.load(open("../snowsky-disc-web/work/emulator.json"))["id"] + "-emu")')"
+docker exec "$DISC_CONTAINER" sh -c 'rm -rf /work/boot-src && mkdir -p /work/boot-src/build/mips'
+tar cf - scripts device/deployment firmware tests/integration | docker exec -i "$DISC_CONTAINER" tar xf - -C /work/boot-src
+docker cp build/mips/disc-usb-console "$DISC_CONTAINER:/work/boot-src/build/mips/disc-usb-console"
 docker exec -e PYTHONPATH=/repo "$DISC_CONTAINER" \
-  python3 -B /platform/scripts/deployment/build_candidate.py \
+  python3 -B /work/boot-src/scripts/deployment/build_candidate.py \
   --version "$DISC_VERSION" --ota /ota \
-  --binary /platform/build/mips/disc-service \
-  --hook /platform/device/deployment/S99disc-web \
-  --usb-diagnostics-binary /platform/build/mips/disc-usb-console \
+  --console /work/boot-src/build/mips/disc-usb-console \
   --output "/work/$DISC_RUN"
-docker exec "$DISC_CONTAINER" timeout 60 unshare --mount --net --pid --fork \
-  python3 -B /platform/tests/integration/deployment_boot.py --output "/work/$DISC_RUN"
-docker exec "$DISC_CONTAINER" timeout 145 unshare --mount --net --pid --fork \
-  python3 -B /platform/tests/integration/boot_report.py --output "/work/$DISC_RUN"
+docker exec -e CI_DISPOSABLE=1 -e FW_VERSION="$DISC_VERSION" "$DISC_CONTAINER" \
+  timeout 145 unshare --mount --net --pid --fork \
+  python3 -B /work/boot-src/tests/integration/boot_report.py --output "/work/$DISC_RUN"
 mkdir "$DISC_ARTIFACTS"
 docker cp "$DISC_CONTAINER:/work/$DISC_RUN/report.json" "$DISC_ARTIFACTS/report.json"
 ```
@@ -122,16 +117,14 @@ PY
 python3 scripts/deployment/review.py --version "$DISC_VERSION" \
   --artifacts "$DISC_ARTIFACTS" --diskos "$DISC_DISKOS" \
   > "$DISC_ARTIFACTS/offline-review.json"
-python3 scripts/test-mips.py
 ```
 
 `review.py` verifies image/source constraints offline and reports
-`flashReady: false`. Run the focused browser and guest checks relevant to the
-change; for a webroot change these include real browser reload, missing-card
-and storage-ownership behavior. An emulator can restart just the companion
-with `python3 scripts/emulator.py start-service` after a rebuild, avoiding an
-image install. `python3 scripts/emulator.py down` later removes only the
-recorded disposable stack.
+`flashReady: false`; for the `boot` variant it also requires the console's
+opt-in and no package. Run the guest checks relevant to the change (the
+boot program's, once it exists). snowsky-disc-web's
+`python3 scripts/emulator.py down` later removes only the recorded
+disposable stack.
 
 ## 3. Prepare a new installation package offline
 

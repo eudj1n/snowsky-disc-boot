@@ -93,6 +93,15 @@ class FirmwareProfileTests(unittest.TestCase):
         struct.pack_into('<I', data, writer['capacity_instruction_offset'], writer['capacity_instruction_value']|512)
         self.assertEqual(review.writer_capacity(data, writer), 512)
 
+    def test_guest_selection_does_not_shadow_reference_imports(self):
+        spec = importlib.util.spec_from_file_location('selected_test', ROOT/'tests/integration/selected_firmware.py')
+        selected = importlib.util.module_from_spec(spec)
+        before = list(sys.path)
+        with patch.dict('os.environ', {'CI_DISPOSABLE':'1', 'FW_VERSION':self.base['version']}):
+            spec.loader.exec_module(selected)
+        self.assertEqual(sys.path, before)
+        self.assertEqual(selected.MAIN_OS, self.base['main_os_version'])
+
     def test_usb_profile_is_explicit_firmware_pinned_and_bounded(self):
         usb=profiles.load_usb_profile(self.base)
         directory=self.directory/'usb';directory.mkdir()
@@ -122,6 +131,20 @@ class FirmwareProfileTests(unittest.TestCase):
                 with self.assertRaises(ValueError):profiles.load_usb_profile(self.base,self.directory)
 
 
+
+    def test_selected_controller_name_reaches_both_generated_scripts(self):
+        spec=importlib.util.spec_from_file_location('usb_profile_builder',ROOT/'scripts/deployment/build_candidate.py')
+        builder=importlib.util.module_from_spec(spec);spec.loader.exec_module(builder)
+        directory=self.directory/'usb';directory.mkdir()
+        target=directory/f'v{self.base["version"]}.json'
+        original=profiles.load_usb_profile(self.base)
+        for name in ('13500000.otg_new','next-controller.1'):
+            with self.subTest(name=name):
+                target.write_text(json.dumps({**original,'udc':name}))
+                selected=profiles.load_usb_profile(self.base,self.directory)
+                self.assertIn('--udc '+name+' ',builder.usb_hook(selected))
+                self.assertIn("UDC='"+name+"'",builder.boot_report_script(selected))
+                self.assertIn("PROFILE='"+profiles.fingerprint(selected)+"'",builder.boot_report_script(selected))
 
 if __name__ == '__main__':
     unittest.main()

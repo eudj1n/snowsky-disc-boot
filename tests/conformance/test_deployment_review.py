@@ -152,5 +152,43 @@ class DeploymentReviewTests(unittest.TestCase):
             with self.assertRaises(ValueError):run()
 
 
+    def test_boot_review_requires_the_console_and_no_package(self):
+        stock, candidate = b'hsqsorig', b'hsqsboot'
+        sha = lambda data: hashlib.sha256(data).hexdigest()
+        profile = dict(version='9.99', product='SYNTHETIC', main_os_version=999,
+                       rootfs_size=8, rootfs_sha256=sha(stock))
+        writer = dict(self.writer_profile, block_bytes=8, logical_blocks=2,
+                      writer_file='writer', source_pins={'writer':sha(self.writer(2))})
+        (self.root/'writer').write_bytes(self.writer(2))
+        usb = dict(version='9.99', rootfs_sha256=sha(stock))
+        names = review.artifact_names(profile, 'boot')
+        self.assertEqual(names[0], 'disc-boot-v999-review-only.bin')
+        artifacts = {}
+        for name, content in zip(names, (candidate, stock)):
+            data = content + b'\0'*8
+            (self.root/name).write_bytes(data)
+            artifacts[name] = dict(bytes=16, sha256=sha(data))
+        diagnostic = dict(profileSha256=review.fingerprint(usb), optInRequired=True,
+                          physicalQualified=False)
+        report = dict(variant='boot', packages=[], usbDiagnostic=diagnostic,
+                      status='offline-verified', product='SYNTHETIC', firmware=999,
+                      fullRoundTrip=True, profileSha256=review.fingerprint(profile),
+                      writerProfileSha256=review.fingerprint(writer), hardwareQualified=False,
+                      flashAuthorized=False, writerFormatBytes=16, stockBytes=8,
+                      stockSha256=sha(stock), packedBytes=8, artifacts=artifacts)
+        def run():
+            (self.root/'report.json').write_text(json.dumps(report))
+            return review.review(self.root, self.root, profile, writer)
+        with patch.object(review, 'load_usb_profile', return_value=usb):
+            result = run()
+            self.assertEqual((result['variant'], result['flashReady']), ('boot', False))
+            for field, invalid in (('packages', [{'name':'disc-server'}]), ('webroot', {'rawMode':False})):
+                with self.subTest(field=field), self.assertRaisesRegex(ValueError, 'no package'):
+                    report[field] = invalid; run()
+                report.pop(field) if field == 'webroot' else report.update(packages=[])
+            diagnostic['optInRequired'] = False
+            with self.assertRaises(ValueError):run()
+
+
 if __name__ == '__main__':
     unittest.main()

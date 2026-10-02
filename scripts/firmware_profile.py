@@ -86,12 +86,17 @@ def require_scenario(profile, name):
 
 
 def artifact_names(profile, variant='companion'):
-    """Image names per variant: the loopback companion, the USB engineering image,
-    and (combined-008) the product image without engineering parts."""
-    require(variant in ('companion', 'usb-engineering', 'product'), 'Unknown image variant')
+    """Image names per variant: the boot layer's image, and the images
+    snowsky-disc-web built before it (the loopback companion, the USB
+    engineering image and, since combined-008, the product image), whose
+    evidence the review still reads."""
+    require(variant in ('boot', 'companion', 'usb-engineering', 'product'), 'Unknown image variant')
     suffix = profile['version'].replace('.', '')
+    restore = f'stock-v{suffix}-restore-review-only.bin'
+    if variant == 'boot':
+        return f'disc-boot-v{suffix}-review-only.bin', restore
     mode = {'usb-engineering': '-usb-engineering', 'product': '-product'}.get(variant, '')
-    return f'disc-web-v{suffix}{mode}-review-only.bin', f'stock-v{suffix}-restore-review-only.bin'
+    return f'disc-web-v{suffix}{mode}-review-only.bin', restore
 
 
 def load_usb_profile(profile, directory=PROFILES):

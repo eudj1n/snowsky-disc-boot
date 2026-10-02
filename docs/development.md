@@ -9,7 +9,9 @@
 | `device/src/usb_console.c` | The USB ACM engineering console |
 | `device/acquisition/` | The NAND reader and SFC identity payloads for USB Boot sessions |
 | `device/deployment/boot-report.sh` | The boot report written to the card |
+| `scripts/deployment/build_candidate.py` | The image builder (variant `boot`): stock plus the boot layer, verified offline |
 | `scripts/deployment/` | Reviews, transports, readback and audits of a USB Boot installation |
+| `tests/integration/` | Checks run in the disposable container ([build and flash](build-and-flash.md)) |
 | `scripts/firmware_profile.py`, `firmware/` | Reviewed firmware profiles (V2.57) |
 | `tests/conformance/` | Synthetic tests, runnable without firmware or a player |
 

@@ -18,11 +18,24 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   and its evidence. Links to documents that stayed behind name
   snowsky-disc-web. The build keeps the console and the NAND reader's tests
   (`scripts/build.sh`); `test_firmware_profiles` lost the cases of the
-  service's emulator wrapper and of the image builder, which returns with the
-  builder. Evidence: `scripts/test.sh` (216 tests, OK).
-- [ ] The image builder, reduced to the boot layer: stock plus boot's own
-  objects, the console and the boot report, no package inside (contract,
-  "What changes against today"); its tests return with it.
+  service's emulator wrapper (the image builder's and the guest selection's
+  returned with the builder). Evidence: `scripts/test.sh` (216 tests, OK).
+- [x] The image builder, reduced to the boot layer (`build_candidate.py`,
+  variant `boot`): the stock rootfs pinned by the profile plus the boot
+  layer's objects, no package inside; until the boot program exists those are
+  the USB console, its hook and the boot report under the installed images'
+  names (`/opt/disc-web/`, `S99disc-usb`). Added folders are derived from the
+  payload; `review.py` requires the console's opt-in and no package for the
+  variant. Evidence (2026-10-02): unit `test_deployment`, `test_boot_report`,
+  `test_deployment_review` (the boot variant), `test_firmware_profiles`; the
+  console built here is byte-identical to the installed images'
+  (`62b28e1e…`); an offline build from the V2.57 OTA in the disposable
+  container kept all 3,492 stock objects, added exactly four, passed the
+  full squashfs round trip (packed 80,719,872 bytes, image
+  `disc-boot-v257-review-only.bin` content `41a9fb8e…`, the restore image
+  the pinned stock `111e4dd7…`); the boot report ran on the packed tree's
+  stock BusyBox (passed, 796 bytes); `review.py` passed with
+  `flashReady: false`.
 
 ## Stage 1 — the boot program (host)
 

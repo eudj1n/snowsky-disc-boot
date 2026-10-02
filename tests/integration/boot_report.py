@@ -23,7 +23,8 @@ def run(output):
     from selected_firmware import PROFILE, profiles
     assert os.environ.get('CI_DISPOSABLE')=='1' and os.getpid()==1
     root=output/'verified-tree'; report=json.loads((output/'report.json').read_text())
-    assert report['variant']=='usb-engineering' and report['fullRoundTrip']
+    # The boot layer's image always carries the console and the report (no package inside).
+    assert report['variant']=='boot' and report['packages']==[] and report['fullRoundTrip']
     usb=profiles.load_usb_profile(PROFILE)
     assert report['usbDiagnostic']['profileSha256']==profiles.fingerprint(usb)
     subprocess.run(['mount','--make-rprivate','/'],check=True)
