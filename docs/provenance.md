@@ -12,7 +12,10 @@
 - Firmware input supplied by the owner:
   `/Users/zhek/Downloads/SNOWSKY_DISC_update_20260909_v257/main_os/ota_v257`.
   Firmware remains external; upstream fingerprint validation is mandatory.
-- CivetWeb source: https://github.com/civetweb/civetweb, revision
+- jsmn: https://github.com/zserge/jsmn at
+  `25647e692c7906b96ffd2b05ca54c097948e879c`, vendored unmodified for
+  `disc-boot` (`device/vendor/jsmn/README.md`).
+- CivetWeb source (snowsky-disc-web's gateway; not part of this repository): https://github.com/civetweb/civetweb, revision
   `d7ba35bbb649209c66e582d5a0244ba988a15159 (v1.16)`, fetched 2026-09-23.
   Source/license are vendored; the local frame-limit patch is documented beside it.
 

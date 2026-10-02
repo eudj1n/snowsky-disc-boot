@@ -25,7 +25,8 @@ class BootReportTests(unittest.TestCase):
         (self.root/'proc/net/tcp').write_text('0: 0100007F:1EBE 00000000:0000 0A\n')
         (self.root/'proc/sys/kernel/random/boot_id').write_text('synthetic-boot-id\n')
         (self.root/'run/disc-usb.log').write_text('usb hook entered\nnot found\nusb helper exit=127\n')
-        (self.root/'run/disc-web-launch.log').write_text('launcher exit=0 (not daemon health)\n')
+        (self.root/'run/disc-boot').mkdir()
+        (self.root/'run/disc-boot/boot.json').write_text('{"mode":"platform","reason":"default"}\n')
         (self.root/'sys/class/udc/controller/state').write_text('not attached\n')
         # Native host commands provide the BusyBox applet interface. Actual
         # stock BusyBox syntax/behavior is checked in disposable integration.
@@ -47,6 +48,8 @@ class BootReportTests(unittest.TestCase):
         report = self.output.read_bytes()
         self.assertIn(b'usb helper exit=127',report)
         self.assertIn(b'invalid_or_missing_pid',report)
+        self.assertIn(b'[boot_decision]\n{"mode":"platform","reason":"default"}',report)
+        self.assertIn(b'[boot_service]\nunavailable',report)
         self.assertIn(b'0100007F:1EBE 0A',report)
         self.assertIn(b'synthetic-boot-id',report)
         self.assertIn(('usb_profile_sha256='+builder.fingerprint(self.profile)).encode(),report)
@@ -109,7 +112,7 @@ class BootReportTests(unittest.TestCase):
     def test_generated_hook_observes_failure_independently(self):
         profile={**self.profile,'startup_seconds':30,'session_seconds':900}
         hook=builder.usb_hook(profile)
-        self.assertIn('/bin/sh /opt/disc-web/boot-report.sh',hook)
+        self.assertIn('/bin/sh /opt/disc-boot/boot-report.sh',hook)
         self.assertIn('usb helper exit=%s',hook)
         self.assertNotIn('usb-console',builder.boot_report_script(profile))
         self.assertNotIn('@',builder.boot_report_script(profile))

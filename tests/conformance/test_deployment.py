@@ -67,29 +67,52 @@ class DeploymentTests(unittest.TestCase):
         usb = dict(sd_mount='/selected/card', sd_source='/dev/selected1', udc='controller',
                    startup_seconds=30, session_seconds=900,
                    boot_report=dict(delay_seconds=0, wait_seconds=1, max_bytes=16384))
-        return candidate.payload(usb, self.elf())
+        return candidate.payload({'version': '2.57'}, usb, self.elf(), self.elf())
 
-    def test_the_image_adds_the_console_and_the_boot_report_and_no_package(self):
+    def test_the_image_adds_the_boot_layer_and_no_package(self):
         files = self.payload()
-        self.assertEqual(sorted(files), ['etc/init.d/S99disc-usb', 'opt/disc-web/boot-report.sh',
-                                         'opt/disc-web/disc-usb-console'])
-        self.assertTrue(all(mode == 0o755 for _, mode in files.values()))
-        for gone in ('disc-service', 'S99disc-web', 'image.json', '/app', '/catalog'):
+        self.assertEqual(sorted(files), ['etc/init.d/S22disc-boot', 'etc/init.d/S99disc-boot', 'etc/init.d/S99disc-usb',
+                                         'opt/disc-boot/boot-report.sh', 'opt/disc-boot/disc-boot',
+                                         'opt/disc-boot/disc-usb-console', 'opt/disc-boot/mq_ui', 'sbin/mq_ui'])
+        self.assertEqual(files['opt/disc-boot/mq_ui'], ('link', 'disc-boot'))
+        self.assertTrue(all(mode == 0o755 for data, mode in files.values() if data != 'link'))
+        for gone in ('disc-service', 'S99disc-web', 'disc-web/', 'image.json', '/app', '/catalog'):
             self.assertFalse(any(gone in name for name in files), gone)
         hook = files['etc/init.d/S99disc-usb'][0].decode()
-        self.assertIn('/opt/disc-web/disc-usb-console --sd-mount /selected/card --sd-source /dev/selected1 --udc controller', hook)
+        self.assertIn('/opt/disc-boot/disc-usb-console --sd-mount /selected/card --sd-source /dev/selected1 --udc controller', hook)
+        early = files['etc/init.d/S22disc-boot'][0].decode()
+        self.assertIn('/opt/disc-boot/disc-boot early --profile 2.57 --card /selected/card --card-source /dev/selected1', early)
+        start = files['etc/init.d/S99disc-boot'][0].decode()
+        self.assertIn('start) /opt/disc-boot/disc-boot start', start)
+        self.assertIn('stop) /opt/disc-boot/disc-boot stop', start)
+        import subprocess
+        for name in ('etc/init.d/S22disc-boot', 'etc/init.d/S99disc-boot', 'etc/init.d/S99disc-usb', 'sbin/mq_ui', 'opt/disc-boot/boot-report.sh'):
+            with self.subTest(name=name):
+                checked = subprocess.run(['sh', '-n'], input=files[name][0], capture_output=True)
+                self.assertEqual(checked.returncode, 0, checked.stderr)
+
+    def test_the_ui_wrapper_leaves_stock_unless_the_boot_layer_chose_a_package(self):
+        wrapper = candidate.ui_wrapper()
+        lines = [line for line in wrapper.splitlines() if line and not line.startswith('#')]
+        self.assertEqual(lines, ['[ -f /run/disc-boot/ui-launch ] && [ -x /opt/disc-boot/mq_ui ] && exec /opt/disc-boot/mq_ui "$@"',
+                                 'exec /usr/bin/mq_ui "$@"'])
+
+    def test_the_fixture_build_of_the_boot_program_cannot_be_packaged(self):
+        path=self.elf();candidate.check_boot_binary(path)
+        path.write_bytes(path.read_bytes()+b'DISC_BOOT_FIXTURE_ROOT')
+        with self.assertRaises(ValueError):candidate.check_boot_binary(path)
 
     def test_only_listed_additions_and_no_stock_changes(self):
         files = self.payload()
         before = {'usr/bin/mq_ui':{'sha256':'original'}, 'opt':{}, 'etc':{}, 'etc/init.d':{}}
         additions = candidate.additions_of(files, before)
         # Folders stock lacks are additions too; existing ones are not.
-        self.assertEqual(additions, set(files) | {'opt/disc-web'})
+        self.assertEqual(additions, set(files) | {'opt/disc-boot', 'sbin'})
         after = {**before, **{key:{} for key in additions}}
         candidate.check_delta(before, after, additions)
         for corrupted in (dict(after,extra={}), {k:v for k,v in after.items() if k!='usr/bin/mq_ui'},
                           {**after,'usr/bin/mq_ui':{'sha256':'replaced'}},
-                          {k:v for k,v in after.items() if k!='opt/disc-web/boot-report.sh'}):
+                          {k:v for k,v in after.items() if k!='opt/disc-boot/boot-report.sh'}):
             with self.assertRaises(ValueError):candidate.check_delta(before, corrupted, additions)
 
     def test_inventory_preserves_symlink_without_reading_target(self):

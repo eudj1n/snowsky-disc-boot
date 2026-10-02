@@ -22,10 +22,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from firmware_profile import load_profile, load_writer, load_usb_profile, fingerprint, artifact_names
 
 VARIANT = 'boot'
-# On-device names stay those of the installed images until a stage renames them.
-CONSOLE = 'opt/disc-web/disc-usb-console'
+# The boot layer's objects (docs/contract.md). Stage 1 renamed the console and the
+# report from /opt/disc-web to /opt/disc-boot; the console's hook and marker stay.
+BOOT = 'opt/disc-boot/disc-boot'
+LAUNCHER = 'opt/disc-boot/mq_ui'  # a link to disc-boot, which acts as the launcher by this name
+UI_WRAPPER = 'sbin/mq_ui'          # ahead of /usr/bin in the PATH stock's fiio_init.sh runs with
+EARLY_HOOK = 'etc/init.d/S22disc-boot'
+START_HOOK = 'etc/init.d/S99disc-boot'
+CONSOLE = 'opt/disc-boot/disc-usb-console'
 CONSOLE_HOOK = 'etc/init.d/S99disc-usb'
-BOOT_REPORT = 'opt/disc-web/boot-report.sh'
+BOOT_REPORT = 'opt/disc-boot/boot-report.sh'
 PT_MIPS_ABIFLAGS = 0x70000003
 FP_ABI_SOFT = 3  # Val_GNU_MIPS_ABI_FP_SOFT in .MIPS.abiflags
 
@@ -95,6 +101,13 @@ def check_usb_binary(path):
     return info
 
 
+def check_boot_binary(path):
+    info = check_elf(path)
+    if b'DISC_BOOT_FIXTURE' in path.read_bytes():
+        raise ValueError('The fixture build of disc-boot must never enter an image')
+    return info
+
+
 def additions_of(payload, before):
     """Every added path: the payload's files and each folder on the way that stock lacks."""
     added = set(payload)
@@ -158,23 +171,61 @@ def boot_report_script(profile):
     return text
 
 
-def payload(usb, console):
-    """What the boot image adds to stock: path -> (bytes, mode)."""
+def early_hook(profile, usb):
+    # Fields come from the reviewed profiles; disc-boot validates them again.
+    return f'''#!/bin/sh
+# The boot layer's decision for this boot: keys, mode and the boot-loop count (docs/contract.md).
+case "${{1:-}}" in
+  start) /{BOOT} early --profile {profile['version']} --card {usb['sd_mount']} --card-source {usb['sd_source']} >/run/disc-boot-early.log 2>&1 ;;
+esac
+exit 0
+'''
+
+
+def start_hook():
+    return f'''#!/bin/sh
+# Recovery from the card and the service package's supervisor; start returns at once.
+case "${{1:-}}" in
+  start) /{BOOT} start >/run/disc-boot-start.log 2>&1 ;;
+  stop) /{BOOT} stop ;;
+esac
+exit 0
+'''
+
+
+def ui_wrapper():
+    return f'''#!/bin/sh
+# Stock's UI unless the boot layer chose a ui package for this boot (docs/contract.md).
+# Without that choice (stock mode, Volume Up, no package, a failure of the boot program)
+# stock's own program starts and the boot program stays out of its way.
+[ -f /run/disc-boot/ui-launch ] && [ -x /{LAUNCHER} ] && exec /{LAUNCHER} "$@"
+exec /usr/bin/mq_ui "$@"
+'''
+
+
+def payload(profile, usb, console, boot):
+    """What the boot image adds to stock: path -> (bytes, mode), or ('link', target)."""
     return {
+        BOOT: (boot.read_bytes(), 0o755),
+        LAUNCHER: ('link', 'disc-boot'),
+        UI_WRAPPER: (ui_wrapper().encode(), 0o755),
+        EARLY_HOOK: (early_hook(profile, usb).encode(), 0o755),
+        START_HOOK: (start_hook().encode(), 0o755),
         CONSOLE: (console.read_bytes(), 0o755),
         CONSOLE_HOOK: (usb_hook(usb).encode(), 0o755),
         BOOT_REPORT: (boot_report_script(usb).encode(), 0o755),
     }
 
 
-def build(ota, console, out, profile, writer):
+def build(ota, console, boot, out, profile, writer):
     # External pinned tooling is an offline build input, never a production dependency.
     from firmware.tools.firmware_inventory import verified_chunks, plaintext_digest
     if out.exists() or out.is_symlink():raise ValueError('Output exists; select a fresh directory')
     capacity = writer['block_bytes'] * writer['logical_blocks']
     usb = load_usb_profile(profile)
     console_native = check_usb_binary(console)
-    files = payload(usb, console)
+    boot_native = check_boot_binary(boot)
+    files = payload(profile, usb, console, boot)
     out.mkdir(parents=True)
     stock = out/'stock.squashfs'
     chunks,_ = verified_chunks(ota)
@@ -197,6 +248,7 @@ def build(ota, console, out, profile, writer):
         destination = tree/name
         if destination.exists() or destination.is_symlink():raise ValueError(f'Payload collision: {name}')
         destination.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+        if data == 'link':destination.symlink_to(mode);continue
         destination.write_bytes(data);destination.chmod(mode)
     expected = inventory(tree);check_delta(before,expected,additions)
     packed = out/'candidate.squashfs'
@@ -219,6 +271,8 @@ def build(ota, console, out, profile, writer):
                   stockBytes=profile['rootfs_size'],packedBytes=packed.stat().st_size,
                   writerFormatBytes=capacity,added=sorted(additions),variant=VARIANT,
                   stockEntriesPreserved=len(before),fullRoundTrip=True,packages=[],
+                  boot=dict(native=boot_native,api=1,launcher=f'/{LAUNCHER}',wrapper=f'/{UI_WRAPPER}',
+                            hooksSha256={name:digest(tree/name) for name in (EARLY_HOOK,START_HOOK,UI_WRAPPER)}),
                   artifacts={p.name:dict(bytes=p.stat().st_size,sha256=digest(p)) for p in (candidate,recovery)},
                   usbDiagnostic=dict(profileSha256=fingerprint(usb),native=console_native,
                                      marker='.disc/dev/usb-console',optInRequired=True,
@@ -226,7 +280,7 @@ def build(ota, console, out, profile, writer):
                                      bootReport=dict(usb['boot_report'],marker='.disc/dev/boot-report',
                                                      output='.disc/dev/boot-report.txt',
                                                      scriptSha256=digest(tree/BOOT_REPORT))),
-                  blockers=['The boot program (modes, slots, recovery) is not in the image yet',
+                  blockers=['The boot program is unqualified on a device: keys, stock init and the ui launcher are host- and guest-checked only',
                             'Engineering USB console exists but physical enumeration/coexistence is unqualified',
                             'No physical writer/geometry/recovery validation for selected firmware',
                             'No native-kernel ISA/FPU/syscall/resource acceptance'])
@@ -239,7 +293,8 @@ if __name__ == '__main__':
     parser.add_argument('--version', help='Reviewed profile; defaults to FW_VERSION or firmware/active-version')
     parser.add_argument('--ota',type=Path,required=True)
     parser.add_argument('--console',type=Path,required=True,help='The USB console (build/mips/disc-usb-console)')
+    parser.add_argument('--boot',type=Path,required=True,help='The boot program (build/mips/disc-boot)')
     parser.add_argument('--output',type=Path,required=True)
     args = parser.parse_args()
     profile = load_profile(args.version)
-    build(args.ota,args.console,args.output,profile,load_writer(profile['writer']))
+    build(args.ota,args.console,args.boot,args.output,profile,load_writer(profile['writer']))

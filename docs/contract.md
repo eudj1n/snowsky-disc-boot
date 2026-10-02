@@ -101,21 +101,24 @@ only through USB Boot; everything above it becomes files.
 | --- | --- |
 | Nothing | The persisted default mode (after installation: `platform`) |
 | Volume Up | The other mode, for this boot only |
-| Play | Recovery: install the packages staged on the card, then `platform` |
+| Play (with or without Volume Up) | Recovery: install the packages staged on the card, then `platform` |
 
 - `stock`: boot starts no package and leaves the UI launch to stock. The USB
   console still follows its marker, so a broken platform stays repairable.
 - `platform`: boot starts the installed `service` package and, for an
   installed `ui` package, launches it instead of stock's `mq_ui`.
 - A failed or unavailable key read counts as "not held"; it never switches.
-- **Boot-loop guard:** boot counts platform boots whose packages never
-  reached confirmation; at 3 in a row it boots `stock` and says why in its
-  status. Confirmation clears the count.
-- The default is changed by the running server (a request, below) or by the
-  console; there is no card file for it.
+- **Boot-loop guard:** a platform boot with an installed package (or a
+  recovery) counts as unconfirmed until every installed role has confirmed
+  its package; with 3 counted and the default `platform`, boot chooses
+  `stock` (reason `boot-loop`). A key still chooses (Volume Up, Play). Stock
+  boots are not counted.
+- The default is changed by a package's request (below) or by the console;
+  there is no card file for it.
 
-The keys are read once, as early as `/usr/data` is mounted (an `S22` hook),
-and the result kept in `/run` for the rest of the boot.
+`disc-boot early` (the `S22disc-boot` hook, after `S21mount_ubifs`) reads
+the keys and decides once; `/run/disc-boot/boot.json` keeps the decision for
+the rest of the boot.
 
 ## Packages
 
@@ -134,7 +137,7 @@ Distributed as a zip; staged and installed as a folder with `package.json`:
   "role": "service",
   "bootApi": 1,
   "arch": "mips32el-linux-static",
-  "profiles": ["v2.57"],
+  "profiles": ["2.57"],
   "entry": "bin/disc-server",
   "args": [],
   "ready": 30,
@@ -144,118 +147,163 @@ Distributed as a zip; staged and installed as a folder with `package.json`:
 }
 ```
 
-- `name` `[a-z0-9-]{1,32}`; `version` free text up to 64 bytes;
-  `profiles` lists the firmware profiles the package supports (boot refuses
-  the package on any other); `bootApi` the lowest API it needs.
-- Every file is listed with its size and SHA-256; nothing unlisted is
-  installed; paths are relative, without `..`, links or devices.
-- Initial bounds: manifest 64 KiB, 256 files, 32 MiB per package; boot
+- `name` `[a-z0-9-]{1,32}`; `version` 1–64 characters; every string is
+  printable ASCII (`\uXXXX` escapes are refused); a key given twice is
+  refused; keys boot does not know are ignored.
+- `bootApi` is the lowest API the package needs; `arch` must be boot's own
+  (`mips32el-linux-static` on the player); `profiles` lists the firmware
+  profiles (`2.57`) the package supports, 1–8 of them; `ready` is 1–120
+  seconds (30 when absent); `args` at most 32 strings of up to 256 bytes.
+- Every file is listed with its size, lower-case SHA-256 and mode `0755` or
+  `0644`; a path is relative, at most 8 folders deep and 200 bytes, of
+  letters, digits and `._+@-`, without `.` or `..`. The entry is a listed
+  `0755` file. A slot holding anything unlisted (besides `package.json` and
+  folders), a link or a special file is refused.
+- Bounds: manifest 64 KiB, 256 files, 32 MiB per package; an installation
   checks free space first and keeps 16 MiB of `/usr/data` for stock.
-- A `ui` package's entry is installed under the name `mq_ui`, because stock's
-  watch loop finds the UI by that exact process name.
+- A `ui` package's entry is named `mq_ui`, because stock's watch loop finds
+  the UI by that exact process name.
 - A package may carry its own shared libraries in `lib/`; boot puts that
   folder ahead of stock's `LD_LIBRARY_PATH`. Helper programs (diskOS's SSH
   tooling, say) are ordinary listed files of the package, found through
   `$DISC_BOOT_SLOT`, never installed into the rootfs.
+- `disc-boot verify ROLE DIR` checks a folder as boot would (manifest, fit,
+  every file) and answers in JSON: a server checks a staged update with it
+  before asking for its activation.
 
 ## Slots and state (`/usr/data/disc-boot/`)
 
 ```text
 /usr/data/disc-boot/
-  state.json            default mode, boot-loop count
+  state.json            {"default": "platform"|"stock", "unconfirmed": n}
   service/a/ service/b/ the two slots of the service role
-  service/current       "a" or "b"; renamed into place atomically
+  service/state.json    {"current": "a"|"b"|null, "confirmed": bool, "previous": "a"|"b"|null}
   service/request       a package's request, written atomically
   ui/…                  the same for the ui role
   data/<name>/          a package's own persistent data, kept across updates
 ```
 
 Every change is a new file, synced, then renamed into place (UBIFS keeps a
-rename atomic through power loss). A slot is `tentative` until confirmed.
+rename atomic through power loss); changes of state happen under a lock. A
+slot is tentative until confirmed; `previous` is the last confirmed slot,
+the one a rollback returns to. An unreadable state runs nothing for that
+role and says so.
 
 ## Lifecycle of a `service` package
 
-1. Start (`S99`, after stock's init): verify the current slot (manifest and
-   every file's SHA-256), then run the entry with the arguments and the
-   environment below, at a lower priority than stock (`nice` +5).
+1. Start (`disc-boot start`, the `S99disc-boot` hook, which returns at once):
+   verify the current slot (manifest, fit, every file and its mode), then run
+   the entry in a session of its own with the arguments and the environment
+   below, in `$DISC_BOOT_DATA`, at a lower priority than stock (`nice` +5).
 2. **Ready:** the package creates `$DISC_BOOT_RUN/ready` within `ready`
-   seconds (at most 120), or boot stops it and counts a failure.
+   seconds, or boot stops it and counts a failure.
 3. **Confirmed:** ready and still running 180 s later; a tentative slot
-   becomes the confirmed one and the boot-loop count clears.
-4. **Crashes:** a tentative slot rolls back to the previous confirmed one at
-   its first failure. A confirmed one restarts at most 3 times in 10 minutes,
-   then stays stopped and the status says why (stock keeps working).
-5. **Stop** (`rcK`, or a request): SIGTERM, 5 s, then SIGKILL.
+   becomes the confirmed one and, once every installed role is confirmed,
+   the boot-loop count clears.
+4. **Failures:** a tentative slot gives way to the previous confirmed one at
+   its first failure (or stops, with the reason, when there is none). A
+   confirmed one restarts after 2 s, at most 3 times in 10 minutes, then
+   stays stopped and the status says why (stock keeps working).
+5. **Stop** (`disc-boot stop`, from `rcK`): SIGTERM to the package's session,
+   5 s, then SIGKILL.
 
 Timings are initial values, tuned on the guest and the device.
 
 ### Requests from a package
 
-A package writes `$DISC_BOOT_REQUEST` (JSON, atomically) and exits:
+A package writes `$DISC_BOOT_REQUEST` (JSON, atomically, at most 4 KiB) and
+exits:
 
 - `{"action": "activate"}`: the inactive slot (`$DISC_BOOT_INACTIVE`, which
-  the package filled and verified itself) becomes the tentative current one;
-  boot verifies it again and starts it.
+  the package filled and checked itself) becomes the tentative current one;
+  boot verifies it again first and refuses it whole otherwise.
 - `{"action": "rollback"}`: back to the previous confirmed slot.
 - `{"action": "default", "mode": "stock" | "platform"}`.
-- `{"action": "remove", "purge": false}`: the role's slots go; `purge` also
-  removes `data/<name>/`.
+- `{"action": "remove", "purge": false}`: the role's slots and state go;
+  `purge` also removes `data/<name>/`.
 
-Boot applies a request only after the package has exited and records the
-outcome in its status; a request it cannot apply changes nothing.
+Boot applies a request only after the package has exited, removes the file
+and records the outcome (`lastRequest`) in the role's status; a refused or
+unreadable request changes nothing, and the current package starts again
+without a failure counted. The `ui` role's requests apply at the launcher's
+next start (stock restarts the UI, and with it the player, when it exits).
 
 ## The `ui` role
 
-Boot puts a launcher named `mq_ui` in `/sbin`, ahead of `/usr/bin` in
-`PATH`, so stock's `fiio_init.sh` (its first start and every restart from its
-watch loop) runs the launcher without any stock file changing. The launcher
-execs the installed `ui` package in `platform` mode and stock's
-`/usr/bin/mq_ui` otherwise. It counts its own starts: 3 starts within 2
-minutes without confirmation fall back to stock's UI for the rest of the boot,
-since each crash also restarts `mq_player`. To verify on the guest: the
-`PATH` actually seen by `fiio_init.sh`; if it differs, the alternative is
-diskOS's change to `fiio_init.sh` itself.
+Three pieces keep stock's UI independent of the boot program:
+
+- `/sbin/mq_ui`, a shell script ahead of `/usr/bin` in the `PATH`
+  `fiio_init.sh` runs with (its first start and every restart from its watch
+  loop): it starts the launcher only when `/run/disc-boot/ui-launch` exists,
+  and stock's `/usr/bin/mq_ui` otherwise.
+- `/run/disc-boot/ui-launch`, written by `disc-boot early` only in `platform`
+  mode with a `ui` package installed (and by a recovery that installed one).
+  In `stock` mode, after Volume Up, without a package or when the boot
+  program fails before deciding, stock's UI starts without it.
+- `/opt/disc-boot/mq_ui`, a link to `disc-boot`, which acts as the launcher
+  by that name: it applies a pending request, checks the slot and execs the
+  package as `mq_ui`. A forked watcher waits for `ready`, then confirms the
+  slot after 180 s of running; a package not ready in time is killed, so
+  stock's loop starts again. After 3 starts within 2 minutes without
+  confirmation a tentative package gives way to the previous one; otherwise
+  the launcher falls back to stock's UI for the rest of the boot
+  (`/run/disc-boot/ui/fallback`), since every crash also restarts
+  `mq_player`.
 
 ## Recovery from the card (Play at power-on)
 
 - Staged folders: `.disc/boot/install/service/` and `.disc/boot/install/ui/`,
   each with `package.json` and its files. The installer or the page puts
   them there.
-- Boot waits for the card within a bound, verifies each staged package
-  completely, writes it into the role's inactive slot, makes it the tentative
-  current one, removes the staged folder and writes
-  `.disc/boot/result.json` (what was installed or why not). The packages then
-  start as in `platform` mode.
+- Boot waits up to 30 s for the card mounted from its expected device,
+  verifies each staged package completely (modes do not count on the card's
+  file system), copies it into the role's inactive slot, verifies the copy
+  with modes, makes it the tentative current one, removes the staged folder
+  and writes `.disc/boot/result.json` (per role: installed, or why not). A
+  refused package stays on the card. A newly installed `ui` package gets the
+  launcher's permission and stock's running UI a SIGTERM, so stock's loop
+  starts the package. The packages then run as in `platform` mode.
 - Without the gesture boot never installs or runs anything from the card.
 
 ## Environment of a package
 
 | Variable | Meaning |
 | --- | --- |
-| `DISC_BOOT_API` | The boot layer's API version |
+| `DISC_BOOT_API` | The boot layer's API version (1) |
 | `DISC_BOOT_ROLE` | `service` or `ui` |
-| `DISC_BOOT_PROFILE` | The firmware profile (`v2.57`) |
+| `DISC_BOOT_PROFILE` | The firmware profile (`2.57`) |
 | `DISC_BOOT_SLOT` | The running slot (read-only by contract) |
 | `DISC_BOOT_INACTIVE` | Where an update is staged |
 | `DISC_BOOT_REQUEST` | Where requests go |
-| `DISC_BOOT_DATA` | `data/<name>/`, persistent |
+| `DISC_BOOT_DATA` | `data/<name>/`, persistent; the service's working folder and `HOME` |
 | `DISC_BOOT_RUN` | `/run/disc-boot/<role>/`, volatile; `ready` goes here |
-| `DISC_BOOT_STATUS` | `/run/disc-boot/status.json` |
+| `DISC_BOOT_STATUS` | `/run/disc-boot/`, the status files below |
 | `DISC_BOOT_CARD` | The card's mount point (it may be absent) |
 
-Standard output and error go to `$DISC_BOOT_RUN/log`, capped at 64 KiB.
+A `service` package starts from a clean environment (these, `PATH`, `HOME`
+and `LD_LIBRARY_PATH`); its standard output and error go to
+`$DISC_BOOT_RUN/log`, capped at 64 KiB. A `ui` package keeps the environment
+stock's `fiio_init.sh` gives its UI, with these added and its `lib/` first in
+`LD_LIBRARY_PATH`.
 
 A package must not write MTD devices, change FiiO's files in `/usr/data`
 (`fiio/`, `sn.txt` and the rest), signal stock processes, take stock's ports
 or create a USB gadget while the console owns the controller. Boot cannot
 enforce this: packages run as root, at the installer's risk.
 
-## Status (`/run/disc-boot/status.json`)
+## Status (`/run/disc-boot/`)
 
-The boot layer's version and API, the profile, the mode and its reason
-(`default`, `key`, `boot-loop`, `recovery`), the key read, and per role: the
-package's name and version, the slot, tentative or confirmed, failures, the
-last request's outcome. The server shows it in its diagnostics.
+- `boot.json`: the boot layer's API and build, the profile, the mode and its
+  reason (`default`, `key`, `boot-loop`, `recovery`), the key read, the count
+  of unconfirmed boots before this one, whether the state was readable, the
+  card.
+- `service.json`, `ui.json`: the role's state (`starting`, `ready`,
+  `confirmed`, `restarting`, `rolled-back`, `failed`, `stopped`, `absent`,
+  `stock-mode`, `fallback`, `not-ready`), the package's name and version,
+  the slot, confirmed or not, failures, a note and the last request's
+  outcome.
+- `disc-boot status` prints the three together; the server shows them in its
+  diagnostics.
 
 ## USB console
 
@@ -292,17 +340,26 @@ back (Volume Up for stock, USB Boot for the stock image).
   stage renames the on-device paths explicitly (`/usr/data/disc-web.disabled`
   is replaced by the default mode); the console's marker stays.
 - The image builder's invariant stays: stock objects unchanged, only listed
-  additions (now the boot binary, its `S22`/`S99` hooks, `/sbin/mq_ui`, the
-  console and its hook).
+  additions. The boot image adds `/opt/disc-boot/` (`disc-boot`, the
+  `mq_ui` link to it, the console `disc-usb-console`, `boot-report.sh`),
+  `/sbin/mq_ui`, and the hooks `S22disc-boot`, `S99disc-boot` and
+  `S99disc-usb`. The console and the report moved from `/opt/disc-web/` with
+  stage 1; the console's hook name, gadget and marker stay.
 
 ## Tests
 
-- Host: the manifest parser, verification, slot state machine, requests,
-  boot-loop guard and launcher logic against a fake filesystem and clock.
-- Guest (V2.57): install, activate, crash before ready, crash after ready,
-  rollback, a request during power loss (kill and reboot between steps), a
-  staged package with a wrong file, profile or API, `stock` and `platform`
-  boots, a `ui` package under stock's watch loop.
+- Host (`test_boot`): a fixture build of `disc-boot` (`-DDISC_BOOT_FIXTURE`,
+  never packaged) runs under a temporary root with keys, the card's mount and
+  stock's UI as files and shortened timings, against shell-script packages:
+  modes, the boot-loop guard, every manifest refusal, the service's
+  lifecycle, requests, recovery and the launcher behind the real wrapper. The
+  same tests run on Linux against the MIPS build under `qemu-user`.
+- Packed tree (`tests/integration/boot_layer.py`): the image's hooks and
+  wrapper on its own stock BusyBox with the production build and its real
+  timings, stock's `PATH` lookup of `mq_ui` included.
+- Guest (V2.57), once the emulator runs stock's init: power loss between
+  steps (kill and reboot), `stock` and `platform` boots, a `ui` package under
+  stock's watch loop.
 - The key read sits behind one function; until the emulator models the GPIO
   pins it is tested on the host and confirmed on the device once.
 

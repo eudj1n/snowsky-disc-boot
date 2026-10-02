@@ -52,8 +52,8 @@ bash scripts/test.sh
 DISC_TOOLCHAIN_IMAGE="$DISC_TOOLCHAIN_IMAGE" bash scripts/build.sh mips
 ```
 
-The last command builds the static USB console and fails unless it is
-soft-float without FPU instructions (`bash scripts/build.sh reader` builds the
+The last command builds the static boot program and USB console and fails
+unless they are soft-float without FPU instructions (`bash scripts/build.sh reader` builds the
 NAND reader's MIPS tests). The builder is `docker build --platform
 linux/amd64 -t disc-native-toolchain -f device/Dockerfile.toolchain .`
 (soft-float musl.cc toolchain pinned by SHA-256). Review the resulting image
@@ -64,10 +64,9 @@ boundary.
 ## 2. Build and check a disposable firmware image
 
 The boot layer's image is stock plus the boot layer's own objects; it
-carries no package ([contract](contract.md)). Until the boot program exists
-(plan, stage 1) those objects are the USB console with its hook and the boot
-report, under the names the installed images use (`/opt/disc-web/`,
-`S99disc-usb`). The disposable stack is snowsky-disc-web's emulator wrapper
+carries no package ([contract](contract.md), "What changes against today"):
+the boot program with its hooks and the `/sbin/mq_ui` wrapper, the USB
+console with its hook, and the boot report. The disposable stack is snowsky-disc-web's emulator wrapper
 (its `scripts/emulator.py up`), whose container mounts that repository at
 `/platform`; this repository's sources are copied into the container's
 `/work` for the build. An existing stack is pinned to its own
@@ -78,14 +77,19 @@ export DISC_CONTAINER="$(python3 -c 'import json; print(json.load(open("../snows
 docker exec "$DISC_CONTAINER" sh -c 'rm -rf /work/boot-src && mkdir -p /work/boot-src/build/mips'
 tar cf - scripts device/deployment firmware tests/integration | docker exec -i "$DISC_CONTAINER" tar xf - -C /work/boot-src
 docker cp build/mips/disc-usb-console "$DISC_CONTAINER:/work/boot-src/build/mips/disc-usb-console"
+docker cp build/mips/disc-boot "$DISC_CONTAINER:/work/boot-src/build/mips/disc-boot"
 docker exec -e PYTHONPATH=/repo "$DISC_CONTAINER" \
   python3 -B /work/boot-src/scripts/deployment/build_candidate.py \
   --version "$DISC_VERSION" --ota /ota \
   --console /work/boot-src/build/mips/disc-usb-console \
+  --boot /work/boot-src/build/mips/disc-boot \
   --output "/work/$DISC_RUN"
 docker exec -e CI_DISPOSABLE=1 -e FW_VERSION="$DISC_VERSION" "$DISC_CONTAINER" \
   timeout 145 unshare --mount --net --pid --fork \
   python3 -B /work/boot-src/tests/integration/boot_report.py --output "/work/$DISC_RUN"
+# The hooks, the wrapper and the production boot program on the packed tree's BusyBox (about 4 min).
+docker exec "$DISC_CONTAINER" timeout 420 unshare --mount --net --pid --fork \
+  python3 -B /work/boot-src/tests/integration/boot_layer.py --output "/work/$DISC_RUN"
 mkdir "$DISC_ARTIFACTS"
 docker cp "$DISC_CONTAINER:/work/$DISC_RUN/report.json" "$DISC_ARTIFACTS/report.json"
 ```

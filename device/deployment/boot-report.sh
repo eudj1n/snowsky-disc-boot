@@ -51,13 +51,17 @@ snapshot() {
     printf '\n[root_and_card_mounts]\n'
     "$BB" awk -v target="$SD" '$2 == "/" || $2 == target' "$PROC/mounts" | "$BB" head -c 1024
     section partitions "$PROC/mtd" 2048
-    section companion_launch "$RUN/disc-web-launch.log" 1024
+    # The boot layer's decision and its roles (docs/contract.md, "Status").
+    section boot_decision "$RUN/disc-boot/boot.json" 1024
+    section boot_service "$RUN/disc-boot/service.json" 1024
+    section boot_ui "$RUN/disc-boot/ui.json" 1024
+    section boot_log "$RUN/disc-boot/boot.log" 2048
     section usb_launch "$RUN/disc-usb.log" 4096
-    section companion_pid "$RUN/disc-web.pid" 32
-    pid=$("$BB" head -c 16 "$RUN/disc-web.pid" 2>/dev/null)
+    section supervisor_pid "$RUN/disc-boot/supervisor.pid" 32
+    pid=$("$BB" head -c 16 "$RUN/disc-boot/supervisor.pid" 2>/dev/null)
     case "$pid" in ''|*[!0-9]*) printf 'invalid_or_missing_pid\n' ;;
-      *) printf '\n[companion_executable]\n'; "$BB" readlink "$PROC/$pid/exe"
-         section companion_status "$PROC/$pid/status" 2048 ;;
+      *) printf '\n[supervisor_executable]\n'; "$BB" readlink "$PROC/$pid/exe"
+         section supervisor_status "$PROC/$pid/status" 2048 ;;
     esac
     printf '\n[port_7870_hex_1EBE]\n'
     "$BB" awk '$2 ~ /:1EBE$/ && $4 == "0A" { print $2, $4 }' "$PROC/net/tcp" | "$BB" head -c 256

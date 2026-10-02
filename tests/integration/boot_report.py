@@ -45,7 +45,7 @@ def run(output):
     # Deliberately make the native USB executable unavailable in this namespace.
     # An empty bind-mounted file leaves the underlying packed file unchanged.
     dummy=root/'run/native-unavailable';dummy.touch(mode=0o600)
-    subprocess.run(['mount','--bind',str(dummy),str(root/'opt/disc-web/disc-usb-console')],check=True)
+    subprocess.run(['mount','--bind',str(dummy),str(root/'opt/disc-boot/disc-usb-console')],check=True)
     command=['chroot',str(root),'/bin/sh','/etc/init.d/S99disc-usb','start']
     started=time.monotonic();subprocess.run(command,check=True,timeout=5)
     target=root/'tmp/sdcard/.disc/dev/boot-report.txt'

@@ -39,14 +39,52 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
 
 ## Stage 1 — the boot program (host)
 
-- [ ] `disc-boot`: the key read behind one function, modes and the
-  boot-loop guard, `package.json` parsing and verification, slots and
-  atomic state, the supervisor (readiness, confirmation, restarts,
-  rollback), requests, status, the `/sbin/mq_ui` launcher, recovery from
-  the card. Static MIPS, soft-float, like the console.
-- [ ] Host tests against a fake root, clock and key: every row of the
-  contract's lifecycle, requests and recovery, and every refusal (manifest
-  bounds, paths, hashes, API, profile, free space).
+- [x] `disc-boot` (`device/src/boot.c`, `manifest.c`, `boot_util.c`,
+  `sha256.c`, jsmn): `early` reads the keys from the GPIO pin level behind one
+  function and decides the mode (the default, Volume Up for the other one,
+  Play for recovery, the boot-loop guard after 3 unconfirmed boots); `start`
+  recovers from the card and supervises the service package (ready,
+  confirmed after 180 s, restarts at most 3 in 10 minutes, a tentative slot
+  rolled back at its first failure); requests (activate, rollback, default,
+  remove); status files; the `mq_ui` launcher with its watcher; `verify`
+  for servers. Static MIPS, soft-float, about 360 KB with debug data, built
+  with the console. The contract follows the program: role state in
+  `<role>/state.json`, status split into `boot.json`, `service.json` and
+  `ui.json`, the wrapper and the launch permission below.
+- [x] Stock's UI never depends on the boot program (found while packaging,
+  2026-10-02): `/sbin/mq_ui` is a shell wrapper that starts the launcher
+  (`/opt/disc-boot/mq_ui`, a link to `disc-boot`) only when `early` left
+  `/run/disc-boot/ui-launch` (platform mode with a ui package installed).
+  In stock mode, after Volume Up, without a package or when the boot program
+  fails before deciding, stock's UI starts from the wrapper alone.
+- [x] The image builder adds the boot layer: `/opt/disc-boot/` (the program,
+  the launcher's link, the console and the boot report, both moved from
+  `/opt/disc-web/` in this stage), `/sbin/mq_ui`, `S22disc-boot`,
+  `S99disc-boot` and `S99disc-usb`; it refuses the fixture build. The boot
+  report shows the boot layer's decision, roles, log and supervisor instead
+  of the old companion's.
+- [x] Host tests: `test_boot` (25: modes, the guard, every manifest refusal,
+  the service's lifecycle and environment, requests, recovery and its
+  refusals, the launcher behind the real wrapper, the fallback and rollback
+  of a crashing UI, the production build free of fixture switches), the
+  SHA-256 vectors of FIPS 180-4, `test_deployment` and `test_boot_report`
+  for the new payload. The same `test_boot` passed on Linux against the
+  MIPS musl build under `qemu-user` in the emulator's container.
+- [x] The packed image (2026-10-02): an offline build from the V2.57 OTA kept
+  all 3,492 stock objects, added exactly nine (`/opt/disc-boot` and its five
+  entries, `/sbin/mq_ui` and the two new hooks besides the console's), passed
+  the full round trip (packed 80,900,096 bytes, content `0ad94540…`, the
+  production `disc-boot` 359,792 bytes `d47165aa…`) and `review.py`
+  (`flashReady: false`); the boot report on the packed tree's BusyBox passed
+  with its new sections; `tests/integration/boot_layer.py` ran the image's
+  own hooks, wrapper and production program on that BusyBox with real
+  timings: the default mode without readable keys, nothing counted with
+  nothing installed, stock's UI through stock's `PATH` lookup without the
+  boot program, then a service and a ui package both confirmed after 181 s,
+  the boot-loop count cleared, `status` gathered, and `stop` ending the
+  supervisor and its package. The first run caught a stand-in `/proc` that
+  made the UI's watcher lose the UI; the watcher now trusts `kill(pid, 0)`
+  when `/proc/<pid>/comm` is unreadable, and the run mounts its own proc.
 
 ## Stage 2 — the guest
 
