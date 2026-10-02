@@ -147,7 +147,13 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
 - [ ] The owner's player: the image, then the two packages (separately
   authorized).
 - [ ] Open facts for the device: what "Reset all" removes in `/usr/data`;
-  its free space; Play on GPB15; memory and priority limits.
+  its free space; Play on GPB15; memory and priority limits. The emulator's
+  review (snowsky-disc-qemu `d7f1b9b`, handoff "How sure each of these is")
+  confirms only bit 13 = Volume Up; bit 14 = Volume Down rests on stock's
+  `pb13`/`pb14` pair, bit 15 = Play on no source, and the released word
+  `0xF6EFE127` is a V2.40 read. Recovery with Play depends on bit 15: read
+  the port on a V2.57 player with each key held before the image is
+  written.
 
 ## Later
 
