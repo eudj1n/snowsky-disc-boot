@@ -136,7 +136,7 @@ static void make_current(const char *role, role_state *rs, char target) {
 }
 
 static void role_status(const char *role, const char *state, const manifest *m, const role_state *rs, int failures, const char *note) {
-    char p[PATH_MAX], buf[1400], name[80], version[80], noted[300], request[260], previous[260] = "null";
+    char p[PATH_MAX], buf[1600], name[80], version[80], noted[300], request[260], previous[400] = "null";
     bpath(p, RUN_DIR);
     mkdirs(p, 0755);
     bpath(p, RUN_DIR "/%s.json", role);
@@ -152,8 +152,8 @@ static void role_status(const char *role, const char *state, const manifest *m, 
         if (!manifest_load(dir, pm, err, sizeof(err))) {
             json_str(pname, sizeof(pname), pm->name);
             json_str(pversion, sizeof(pversion), pm->version);
-            snprintf(previous, sizeof(previous), "{\"slot\":\"%c\",\"name\":%s,\"version\":%s,\"manifest\":\"%.64s\"}",
-                     rs->previous, pname, pversion, rs->previous_manifest);
+            if (snprintf(previous, sizeof(previous), "{\"slot\":\"%c\",\"name\":%s,\"version\":%s,\"manifest\":\"%.64s\"}",
+                         rs->previous, pname, pversion, rs->previous_manifest) >= (int)sizeof(previous)) snprintf(previous, sizeof(previous), "null");
         }
         free(pm);
     }
