@@ -424,6 +424,26 @@ exit 0
         self.assertTrue(broken.exists(), 'a refused package stays on the card')
         self.assertEqual(oct((self.data/'service/a/bin/run').stat().st_mode & 0o777), '0o755')
 
+    def test_play_with_a_ui_package_stops_the_ui_stock_started(self):
+        # The card comes after stock's UI: the recovery stops that UI by its name, as stock's watch
+        # loop finds it, so the loop starts the launcher (and with it the package).
+        (self.root/'proc/mounts').write_text('/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
+        self.package(self.staged('ui'), GOOD, role='ui', name='other-ui')
+        stock_ui = subprocess.Popen(['sleep', '60'])
+        self.addCleanup(stock_ui.kill)
+        other = subprocess.Popen(['sleep', '60'])
+        self.addCleanup(other.kill)
+        for process, name in ((stock_ui, 'mq_ui'), (other, 'mq_player')):
+            (self.root/f'proc/{process.pid}').mkdir()
+            (self.root/f'proc/{process.pid}/comm').write_text(name + '\n')
+        self.early('play')
+        self.boot('start', check=True)
+        self.assertEqual(stock_ui.wait(timeout=15), -signal.SIGTERM)
+        self.assertIsNone(other.poll(), 'only the UI is stopped')
+        self.assertTrue((self.run_dir/'ui-launch').exists())
+        result = json.loads((self.root/'tmp/sdcard/.disc/boot/result.json').read_text())
+        self.assertEqual(result['roles']['ui'], dict(installed=True, note='installed other-ui 1'))
+
     def test_recovery_needs_the_expected_card(self):
         (self.root/'proc/mounts').write_text('/dev/other /tmp/sdcard exfat rw 0 0\n')
         self.package(self.staged('service'), GOOD)

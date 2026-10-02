@@ -120,7 +120,9 @@ only through USB Boot; everything above it becomes files.
   recovery) counts as unconfirmed until every installed role has confirmed
   its package; with 3 counted and the default `platform`, boot chooses
   `stock` (reason `boot-loop`). A key still chooses (Volume Up, Play). Stock
-  boots are not counted.
+  boots are not counted. Confirming means running 180 s in that boot: a
+  version restored by a rollback is marked confirmed at once, yet the count
+  clears only after it has run its 180 s again (seen on the guest).
 - The default is changed by a package's request (below) or by the console;
   there is no card file for it.
 

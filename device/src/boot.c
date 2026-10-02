@@ -3,6 +3,7 @@
 #define _DARWIN_C_SOURCE
 #include "boot_util.h"
 #include "manifest.h"
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -478,6 +479,29 @@ out:
     return r;
 }
 
+/* Stock's running UI, found as stock's own watch loop finds it (pgrep -x mq_ui): by the process
+   name, so the UI stock started itself (the card, and with it the package, came after it) and one
+   the launcher started are both stopped; the watch loop then starts the launcher. */
+static void stop_running_ui(void) {
+    char dir[PATH_MAX];
+    bpath(dir, "/proc");
+    DIR *d = opendir(dir);
+    if (!d) return;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        char *end, p[PATH_MAX], comm[32];
+        long pid = strtol(e->d_name, &end, 10);
+        if (*end || pid <= 1 || pid == (long)getpid()) continue;
+        bpath(p, "/proc/%ld/comm", pid);
+        FILE *f = fopen(p, "r");
+        if (!f) continue;
+        int match = fgets(comm, sizeof(comm), f) && !strcmp(comm, "mq_ui\n");
+        fclose(f);
+        if (match) kill((pid_t)pid, SIGTERM);
+    }
+    closedir(d);
+}
+
 /* Play held at power-on: the packages staged on the card (contract, "Recovery from the card"). */
 static void recovery(void) {
     double until = mono() + t_card;
@@ -505,11 +529,10 @@ static void recovery(void) {
     }
     if (ui_installed) {
         /* Stock's watch loop restarts the UI it finds missing; the launcher then runs the package. */
-        char p[PATH_MAX], buf[32];
+        char p[PATH_MAX];
         bpath(p, RUN_DIR "/ui-launch");
         write_atomic(p, "ui\n", 3, 0644);
-        bpath(p, RUN_DIR "/ui/pid");
-        if (!read_small(p, buf, sizeof(buf), NULL)) { long pid = atol(buf); if (pid > 1) kill((pid_t)pid, SIGTERM); }
+        stop_running_ui();
     }
 }
 

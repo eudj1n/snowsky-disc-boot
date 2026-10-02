@@ -176,6 +176,16 @@ def job(work, action, version=None, behavior='healthy'):
     return ident
 
 
+def stop(name):
+    """SIGTERM to the guest's processes of that name, from the container (the guest has no pkill)."""
+    for process in Path('/proc').iterdir():
+        try:
+            if process.name.isdecimal() and (process/'root').resolve() == ROOTFS and (process/'comm').read_text().strip() == name:
+                os.kill(int(process.name), 15)
+        except OSError:
+            continue
+
+
 def stock_ui_runs():
     return bool(guest('pgrep -x mq_ui').strip()) and bool(guest('pgrep -x mq_player').strip())
 
@@ -252,6 +262,8 @@ def run(output):
     power('on')
     status = back_to('2', f'rolled back to {NAME} 2', 'rolled back to 2')
     step('rollback asked for', service=status)
+    # The boot-loop count clears only once the restored version has run its 180 s again.
+    confirmed('2')
     # 9. Power lost while a new version is tentative, three times: the fourth boot is stock (boot-loop);
     #    Play then runs the platform again and the version confirms, which clears the count.
     power('off')
@@ -282,7 +294,7 @@ def run(output):
     power('on', hold='play')
     wait(lambda: guest_json('/run/disc-boot/ui.json'), lambda u: u['state'] in ('ready', 'confirmed'), 'ui ready', 300)
     assert guest('ls /run/disc-boot/ui-launch').strip()
-    guest('pkill -x mq_ui')
+    stop('mq_ui')
     starts = wait(lambda: guest(f'grep -c " ui" /usr/data/disc-boot/data/{UI_NAME}/probe.log') or None,
                   lambda count: int(count.strip() or 0) >= 2, 'ui package started again', 120)
     ui = wait(lambda: guest_json('/run/disc-boot/ui.json'), lambda u: u['state'] == 'confirmed', 'ui confirmed', 420)
