@@ -287,6 +287,7 @@ Three pieces keep stock's UI independent of the boot program:
 | `DISC_BOOT_RUN` | `/run/disc-boot/<role>/`, volatile; `ready` goes here |
 | `DISC_BOOT_STATUS` | `/run/disc-boot/`, the status files below |
 | `DISC_BOOT_CARD` | The card's mount point (it may be absent) |
+| `DISC_BOOT_PROGRAM` | The boot program (`/opt/disc-boot/disc-boot`), for `verify` of a staged update |
 
 A `service` package starts from a clean environment (these, `PATH`, `HOME`
 and `LD_LIBRARY_PATH`); its standard output and error go to

@@ -101,6 +101,10 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   `test_boot` (26; the new case stages over the previous version from a
   confirmed package, then from a tentative one that fails). The packed
   image gets this with stage 2's rebuild.
+- [x] `DISC_BOOT_PROGRAM` in a package's environment (2026-10-02): the boot
+  program's path (`/opt/disc-boot/disc-boot`; the fixture's own file in
+  tests), so a server runs `verify` on a staged update without a path of
+  its own. Evidence: `test_boot` (the service's environment).
 
 ## Stage 2 — the guest
 

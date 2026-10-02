@@ -236,6 +236,7 @@ class BootTests(unittest.TestCase):
         self.assertEqual(env['DISC_BOOT_DATA'], str(self.data/'data/disc-server'))
         self.assertEqual(env['DISC_BOOT_RUN'], str(self.run_dir/'service'))
         self.assertEqual(env['DISC_BOOT_CARD'], str(self.root/'tmp/sdcard'))
+        self.assertEqual(env['DISC_BOOT_PROGRAM'], str(BINARY.resolve()))
         self.assertTrue(env['LD_LIBRARY_PATH'].startswith(slot + '/lib:/usr/lib:'))
         self.assertNotIn('DISC_BOOT_FIXTURE_ROOT', env, 'a package starts from a clean environment')
         self.assertEqual(int((self.data/'data/disc-server/nice.txt').read_text()), 5)

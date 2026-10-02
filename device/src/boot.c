@@ -33,14 +33,18 @@ static const char *ROLES[] = {"service", "ui"};
 /* Seconds; the fixture build shortens them. */
 static double t_confirm = 180, t_grace = 5, t_window = 600, t_backoff = 2, t_card = 30, t_ui_window = 120;
 static char profile[17], card[PATH_MAX] = "/tmp/sdcard", card_source[128] = "/dev/mmcblk0p1";
+/* The boot program itself, which a package runs as `verify` (contract, "Environment"); the fixture's own file. */
+static char program[PATH_MAX] = "/opt/disc-boot/disc-boot";
 static char mode[9], reason[12];
 static char last_request[200];
 static volatile sig_atomic_t stopping;
 
 static void on_term(int sig) { (void)sig; stopping = 1; }
 
-static void fixture_init(void) {
+static void fixture_init(const char *argv0) {
 #ifdef DISC_BOOT_FIXTURE
+    char self[PATH_MAX];
+    if (realpath(argv0, self)) snprintf(program, sizeof(program), "%s", self);
     const char *root = getenv("DISC_BOOT_FIXTURE_ROOT");
     if (!root || root[0] != '/' || snprintf(boot_root, sizeof(boot_root), "%s", root) >= (int)sizeof(boot_root)) {
         fprintf(stderr, "disc-boot fixture: DISC_BOOT_FIXTURE_ROOT must be an absolute path\n"); exit(2);
@@ -58,6 +62,8 @@ static void fixture_init(void) {
             else if (!strcmp(item, "card")) t_card = v; else if (!strcmp(item, "ui")) t_ui_window = v;
         }
     }
+#else
+    (void)argv0;
 #endif
 }
 
@@ -283,7 +289,7 @@ static char **package_env(const char *role, const manifest *m, char slot, int in
     snprintf(libs, sizeof(libs), "%s/lib:%s", slotdir, stock_libs);
     size_t count = 0;
     if (inherit) for (char **e = environ; *e; e++) count++;
-    char **envp = calloc(count + 16, sizeof(char *));
+    char **envp = calloc(count + 20, sizeof(char *));
     if (!envp) exit(2);
     int n = 0;
     if (inherit)
@@ -302,6 +308,7 @@ static char **package_env(const char *role, const manifest *m, char slot, int in
     add_env(envp, &n, "DISC_BOOT_RUN", run);
     add_env(envp, &n, "DISC_BOOT_STATUS", status);
     add_env(envp, &n, "DISC_BOOT_CARD", cardp);
+    add_env(envp, &n, "DISC_BOOT_PROGRAM", program);
     envp[n] = NULL;
     return envp;
 }
@@ -688,7 +695,7 @@ static int count_start(void) {
 static int launcher(int argc, char **argv) {
     (void)argc;
     char p[PATH_MAX], buf[32], err[200], fallback[PATH_MAX];
-    fixture_init();
+    fixture_init(argv[0]);
     if (read_boot()) exec_stock(argv);
     bpath(p, RUN_DIR "/ui");
     mkdirs(p, 0755);
@@ -752,7 +759,7 @@ int main(int argc, char **argv) {
     const char *base = strrchr(argv[0], '/');
     base = base ? base + 1 : argv[0];
     if (!strcmp(base, "mq_ui")) return launcher(argc, argv);
-    fixture_init();
+    fixture_init(argv[0]);
     if (argc < 2) { fprintf(stderr, "usage: disc-boot early|start|stop|status|verify ROLE DIR [options]\n"); return 2; }
     if (!strcmp(argv[1], "early")) { options(argc, argv, 2); return cmd_early(); }
     if (!strcmp(argv[1], "start")) return cmd_start();
