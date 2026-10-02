@@ -10,11 +10,16 @@ import os
 from pathlib import Path
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT/'scripts'))
+from firmware_profile import load_profile  # noqa: E402
+# The active reviewed firmware profile; the tests hold for whichever one is selected.
+PROFILE = load_profile()['version']
 _spec = importlib.util.spec_from_file_location('boot_builder', ROOT/'scripts/deployment/build_candidate.py')
 BUILDER = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(BUILDER)
@@ -56,7 +61,7 @@ class BootTests(unittest.TestCase):
             path.unlink(missing_ok=True)
         else:
             path.write_text(keys)
-        self.boot('early', '--profile', '2.57', '--card', '/tmp/sdcard', '--card-source', '/dev/mmcblk0p1', check=True)
+        self.boot('early', '--profile', PROFILE, '--card', '/tmp/sdcard', '--card-source', '/dev/mmcblk0p1', check=True)
         return json.loads((self.run_dir/'boot.json').read_text())
 
     def package(self, directory, script, name='disc-server', version='1', role='service', entry=None, edit=None, extra=None):
@@ -72,7 +77,7 @@ class BootTests(unittest.TestCase):
             target.chmod(mode)
             listed[path] = dict(size=len(data), sha256=hashlib.sha256(data).hexdigest(), mode=f'{mode:04o}')
         manifest = dict(schema=1, name=name, version=version, role=role, bootApi=1, arch='fixture',
-                        profiles=['2.57'], entry=entry, args=[], ready=5, files=listed)
+                        profiles=[PROFILE], entry=entry, args=[], ready=5, files=listed)
         if edit:
             edit(manifest)
         (directory/'package.json').write_text(json.dumps(manifest))
@@ -156,7 +161,7 @@ class BootTests(unittest.TestCase):
     # Manifests
 
     def verify(self, directory, role='service'):
-        result = self.boot('verify', role, str(directory), '--profile', '2.57')
+        result = self.boot('verify', role, str(directory), '--profile', PROFILE)
         return result.returncode, json.loads(result.stdout)
 
     def test_a_package_is_what_its_manifest_lists(self):
@@ -229,7 +234,7 @@ class BootTests(unittest.TestCase):
         env = dict(line.split('=', 1) for line in (self.data/'data/disc-server/env.txt').read_text().splitlines() if '=' in line)
         slot = str(self.data/'service/a')
         self.assertEqual(env['DISC_BOOT_ROLE'], 'service')
-        self.assertEqual(env['DISC_BOOT_PROFILE'], '2.57')
+        self.assertEqual(env['DISC_BOOT_PROFILE'], PROFILE)
         self.assertEqual(env['DISC_BOOT_SLOT'], slot)
         self.assertEqual(env['DISC_BOOT_INACTIVE'], str(self.data/'service/b'))
         self.assertEqual(env['DISC_BOOT_REQUEST'], str(self.data/'service/request'))

@@ -11,7 +11,15 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import time
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT/'scripts'))
+from firmware_profile import load_profile  # noqa: E402
+
+# The profile the image was built for (FW_VERSION, else the active one).
+PROFILE = load_profile()['version']
 
 
 def package(root, directory, role, entry, script):
@@ -21,7 +29,7 @@ def package(root, directory, role, entry, script):
     (target/entry).write_bytes(data)
     (target/entry).chmod(0o755)
     manifest = dict(schema=1, name='probe-' + role, version='1', role=role, bootApi=1, arch='mips32el-linux-static',
-                    profiles=['2.57'], entry=entry, ready=30,
+                    profiles=[PROFILE], entry=entry, ready=30,
                     files={entry: dict(size=len(data), sha256=hashlib.sha256(data).hexdigest(), mode='0755')})
     (target/'package.json').write_text(json.dumps(manifest))
 
@@ -66,7 +74,7 @@ def run(output):
     # Nothing installed: the default mode, nothing counted, and stock's UI through stock's PATH lookup.
     chroot('/bin/sh', '/etc/init.d/S22disc-boot', 'start')
     first = boot_json()
-    assert (first['mode'], first['reason'], first['keys']['read'], first['profile']) == ('platform', 'default', False, '2.57'), first
+    assert (first['mode'], first['reason'], first['keys']['read'], first['profile']) == ('platform', 'default', False, PROFILE), first
     assert not (root/'usr/data/disc-boot/state.json').exists()
     path = '/sbin:/usr/sbin:/bin:/usr/bin'  # BusyBox init's root PATH, which fiio_init.sh inherits
     chroot('/usr/bin/env', '-i', 'PATH=' + path, '/bin/sh', '-c', 'mq_ui')
@@ -93,7 +101,7 @@ def run(output):
     assert (root/'run/ui-runs').read_text().split() == ['stock', 'package']
     assert json.loads((root/'usr/data/disc-boot/state.json').read_text())['unconfirmed'] == 0
     env = dict(line.split('=', 1) for line in (root/'usr/data/disc-boot/data/probe-service/env').read_text().splitlines() if '=' in line)
-    assert env['DISC_BOOT_SLOT'] == '/usr/data/disc-boot/service/a' and env['DISC_BOOT_PROFILE'] == '2.57', env
+    assert env['DISC_BOOT_SLOT'] == '/usr/data/disc-boot/service/a' and env['DISC_BOOT_PROFILE'] == PROFILE, env
     assert env['LD_LIBRARY_PATH'].startswith('/usr/data/disc-boot/service/a/lib:/usr/lib:'), env
     status = json.loads(chroot('/opt/disc-boot/disc-boot', 'status').stdout)
     assert status['service']['state'] == 'confirmed' and status['boot']['mode'] == 'platform'

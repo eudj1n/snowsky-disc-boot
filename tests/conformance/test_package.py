@@ -13,6 +13,10 @@ import unittest
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT/'scripts'))
+from firmware_profile import load_profile  # noqa: E402
+# The active reviewed firmware profile; the tests hold for whichever one is selected.
+PROFILE = load_profile()['version']
 TOOL = ROOT/'scripts/package.py'
 spec = importlib.util.spec_from_file_location('package_tool', TOOL)
 package = importlib.util.module_from_spec(spec)
@@ -41,7 +45,7 @@ class PackageToolTests(unittest.TestCase):
 
     def describe(self, folder, role='service', entry='bin/run', arch='fixture', **kwargs):
         return package.describe(folder, kwargs.pop('name', 'disc-server'), kwargs.pop('version', '1'), role, entry,
-                                arch=arch, profiles=['2.57'], **kwargs)
+                                arch=arch, profiles=[PROFILE], **kwargs)
 
     def cli(self, *args):
         return subprocess.run([sys.executable, str(TOOL), *args], capture_output=True, text=True, timeout=60)
@@ -52,7 +56,7 @@ class PackageToolTests(unittest.TestCase):
         self.assertEqual(sorted(manifest['files']), ['bin/run', 'lib/libx.so', 'share/info.txt'])
         self.assertEqual(manifest['files']['bin/run']['mode'], '0755')
         self.assertEqual(manifest['files']['lib/libx.so'], dict(size=1, sha256=hashlib.sha256(b'x').hexdigest(), mode='0644'))
-        self.assertEqual((manifest['args'], manifest['ready'], manifest['profiles']), (['--listen', '0.0.0.0'], 20, ['2.57']))
+        self.assertEqual((manifest['args'], manifest['ready'], manifest['profiles']), (['--listen', '0.0.0.0'], 20, [PROFILE]))
         self.assertEqual(json.loads((folder/'package.json').read_text())['name'], 'disc-server')
         self.assertEqual(package.check(folder, arch='fixture')['bytes'], len(RUN) + 1 + 4)
 
@@ -136,14 +140,14 @@ class PackageToolTests(unittest.TestCase):
     def boot_verify(self, folder, role):
         env = dict(os.environ, DISC_BOOT_FIXTURE_ROOT=str(self.root/'fixture-root'))
         (self.root/'fixture-root').mkdir(exist_ok=True)
-        result = subprocess.run([str(FIXTURE), 'verify', role, str(folder), '--profile', '2.57'], env=env,
+        result = subprocess.run([str(FIXTURE), 'verify', role, str(folder), '--profile', PROFILE], env=env,
                                 capture_output=True, text=True, timeout=30)
         answer = json.loads(result.stdout)
         return answer.get('error') if not answer['ok'] else None
 
     def tool_verify(self, folder, role):
         try:
-            package.check(folder, role, '2.57', arch='fixture')
+            package.check(folder, role, PROFILE, arch='fixture')
             return None
         except package.PackageError as error:
             return str(error)
@@ -206,12 +210,12 @@ class PackageToolTests(unittest.TestCase):
         folder = self.folder()
         self.describe(folder, version='7')
         package.zip_package(folder, self.root/'server.zip')
-        staged = package.stage(self.root/'server.zip', root/'tmp/sdcard', profile='2.57', arch='fixture')
+        staged = package.stage(self.root/'server.zip', root/'tmp/sdcard', profile=PROFILE, arch='fixture')
         self.assertEqual((staged['role'], staged['version']), ('service', '7'))
         env = dict(os.environ, DISC_BOOT_FIXTURE_ROOT=str(root), DISC_BOOT_FIXTURE_TIMING='confirm=1,grace=1,card=2')
         boot = lambda *a: subprocess.run([str(FIXTURE), *a], env=env, capture_output=True, text=True, timeout=30, check=True)
         try:
-            boot('early', '--profile', '2.57', '--card', '/tmp/sdcard', '--card-source', '/dev/mmcblk0p1')
+            boot('early', '--profile', PROFILE, '--card', '/tmp/sdcard', '--card-source', '/dev/mmcblk0p1')
             boot('start')
             until = time.monotonic() + 15
             status = None
