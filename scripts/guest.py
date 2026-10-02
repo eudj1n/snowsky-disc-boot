@@ -16,7 +16,9 @@ the emulator's checkout.
   up --reference DIR --image FILE --ota DIR [--publish PORT ...] [--mount NAME=DIR ...]
   run COMMAND...              in the container: /repo the emulator, /boot this repository
   stage --package FILE        a package (zip or folder) onto the card for Play, the guest off
-  power on|reboot|off|cut [--unsynced]|status [--hold KEYS]
+  power on|reboot|off|cut [--unsynced]|status [--hold KEYS] [--network isolated]
+                              isolated: the guest boots in its own network namespace with only
+                              loopback (a player without Wi-Fi); links come with emulator.runtime.network
   status                      the boot layer's status files and the machine
   down                        removes only the recorded stack and its volume
 
@@ -165,6 +167,8 @@ def main():
     w.add_argument('event', choices=['on', 'reboot', 'off', 'cut', 'status'])
     w.add_argument('--unsynced', action='store_true')
     w.add_argument('--hold', default='', help='Keys held at power-on, e.g. play or volume_up')
+    w.add_argument('--network', choices=['shared', 'isolated'], default='shared',
+                   help="At power-on: the container's network (default) or none at all")
     t = sub.add_parser('stage')
     t.add_argument('--package', type=Path, required=True)
     sub.add_parser('status')
@@ -181,8 +185,8 @@ def main():
         raise SystemExit(inside(state, *command, check=False).returncode)
     if args.action == 'power':
         extra = ['--unsynced'] if args.unsynced and args.event == 'cut' else []
-        compose(state, 'exec', '-T', '-e', f'BOOT_KEYS={args.hold}', 'emulator', 'bash', '/repo/emulator/scripts/25_power.sh',
-                args.event, *extra)
+        compose(state, 'exec', '-T', '-e', f'BOOT_KEYS={args.hold}', '-e', f'NETWORK={args.network}', 'emulator',
+                'bash', '/repo/emulator/scripts/25_power.sh', args.event, *extra)
         return
     if args.action == 'status':
         print(json.dumps(status(state), indent=2))

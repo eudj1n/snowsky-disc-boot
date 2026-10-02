@@ -95,6 +95,7 @@ python3 scripts/guest.py up --reference <emulator> --image work/<run>/disc-boot-
 python3 scripts/guest.py run -- python3 -B /boot/tests/integration/boot_guest.py --output /work/boot-guest.json
 python3 scripts/guest.py stage --package <zip>        # with the guest off: onto the card, for Play
 python3 scripts/guest.py power on --hold play         # also reboot, off, cut [--unsynced], status
+python3 scripts/guest.py power on --network isolated  # a player without a network (only loopback)
 python3 scripts/guest.py status | down
 ```
 
