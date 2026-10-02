@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "description": "snowsky-disc-qemu revisions reviewed for this layer's guest (scripts/guest.py), each for the firmware profiles it was reviewed with. Kept apart from the firmware profiles, whose fingerprint the bootloader, kernel and installation reviews pin.",
+  "revisions": {
+    "d7f1b9b2675a0c583d9f00e0838c1bac42f1ac37": {
+      "profiles": [
+        "2.57"
+      ],
+      "note": "2.x after #37-#47 (2026-10-02): stock-init guest, keys at power-on, power events, /usr/data as a file system, environment presets, card and network options, output stream state, FPU guard"
+    }
+  }
+}

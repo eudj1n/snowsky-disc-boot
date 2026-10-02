@@ -4,6 +4,11 @@ CFLAGS ?= -Os -g -std=c11 -Wall -Wextra -Werror
 CPPFLAGS += -Isrc -Ivendor/jsmn -D_DEFAULT_SOURCE
 # The source commit (scripts/build.sh passes it), shown in the boot status.
 DISC_BUILD ?= unknown
+# A new build ID rebuilds disc-boot even when no source changed, so the status never shows a
+# stale one (a commit of an already built change). Checked while the makefile is read.
+ifneq ($(DISC_BUILD),$(shell cat $(OUT)/build-id 2>/dev/null))
+$(shell mkdir -p $(OUT) && rm -f $(OUT)/disc-boot && printf '%s\n' '$(DISC_BUILD)' > $(OUT)/build-id)
+endif
 BOOT_SOURCES = src/boot.c src/boot_util.c src/manifest.c src/sha256.c
 BOOT_HEADERS = src/boot_util.h src/manifest.h src/sha256.h vendor/jsmn/jsmn.h
 .PHONY: all test
