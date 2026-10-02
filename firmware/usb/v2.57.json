@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "version": "2.57",
+  "rootfs_sha256": "111e4dd7ee3d7ff91ba7e61181690be7ffd22bd1bbd13ad513f5f015ffb302ae",
+  "sd_mount": "/tmp/sdcard",
+  "sd_source": "/dev/mmcblk0p1",
+  "udc": "13500000.otg_new",
+  "startup_seconds": 30,
+  "session_seconds": 900,
+  "stock_files": {
+    "usr/bin/mq_player": "a5a6740435758bb3f3d008a4306c93a463c6634318957bbf32086bd7b00fabbc",
+    "usr/project/serial_config.sh": "c6b1090949e2099f0a273b2646891242f5803128a6b426302f6c0c6012503edc"
+  },
+  "physical_qualified": false,
+  "boot_report": {
+    "delay_seconds": 45,
+    "wait_seconds": 120,
+    "max_bytes": 16384
+  }
+}

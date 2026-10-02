@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "version": "2.57",
+  "scope": "stock-before-installation",
+  "firmware_profile_sha256": "9c24f384013ebd611f5527079196d8a8923453019efe354c137552774b847151",
+  "page_policy_sha256": "f9342f7f8f685ef369c3e4f2cf1db344a6eb2bff9d62e7126335c066e08b9b6a",
+  "tail_value": 255,
+  "physical_qualified": false
+}

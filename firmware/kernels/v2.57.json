@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "version": "2.57",
+  "rootfs_sha256": "111e4dd7ee3d7ff91ba7e61181690be7ffd22bd1bbd13ad513f5f015ffb302ae",
+  "chip": "xt26g02c",
+  "writer_profile_sha256": "a87d83efe61d2da00ddebf5ef0dda45feec2b374632d83b7ad6106b25550ff65",
+  "ximage_bytes": 4423744,
+  "ximage_sha256": "1a9484efcb64c391b23910306e867cb628af07e059d0d1ccc13e85269e030ed2",
+  "gzip_offset": 16992,
+  "kernel_bytes": 10170640,
+  "kernel_sha256": "89dda840fd9cfed6d9b905ff0718f5aa35a5cb4ce9736e904cccfb4000c6380f",
+  "kernel_base": 2147549184,
+  "chip_entry_address": 2156882884,
+  "dtb_address": 2157663744,
+  "dtb_bytes": 30331,
+  "sfc_node": "/ahb2/sfc@0x13440000",
+  "metadata": {
+    "format": "ingenic-nand-partitions-v1",
+    "offset": 22528,
+    "magic": 1684955502,
+    "max_partitions": 32,
+    "target": "rootfs"
+  },
+  "page_reads_admitted": false,
+  "writes_admitted": false
+}

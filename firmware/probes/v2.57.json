@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "version": "2.57",
+  "rootfs_sha256": "111e4dd7ee3d7ff91ba7e61181690be7ffd22bd1bbd13ad513f5f015ffb302ae",
+  "protocol": "ingenic-rom-cpu-info-v1",
+  "vid": 41224,
+  "pid": 60143,
+  "timeout_ms": 1000,
+  "accepted_reply_hex": ["5832303030"],
+  "reference_source_sha256": "d7392778901d955461102d31d9e93bf012648e94f64ad279e5774a53cdb48b90"
+}

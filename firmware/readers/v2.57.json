@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "version": "2.57",
+  "rootfs_sha256": "111e4dd7ee3d7ff91ba7e61181690be7ffd22bd1bbd13ad513f5f015ffb302ae",
+  "protocol": "disc-x2000-identity-v1",
+  "physical_qualified": false,
+  "load_address": 2696937472,
+  "code_bytes": 32768,
+  "stack_bottom": 2696970240,
+  "stack_top": 2697003008,
+  "request_address": 2694856704,
+  "result_address": 2694848512,
+  "sfc_polls": 800000,
+  "nand_polls": 64,
+  "extal_mhz": 24,
+  "target_mhz": 50,
+  "id_address_bytes": 1,
+  "source_pins": {
+    "flash/my_write5.c": "08f31458fd63f6cc20d3ee7a878013da07f50e607f99a7b0f7f523bcfb074ec4",
+    "flash/disc_spl_lpddr3.bin": "907f4c924d5d5a733e532cd07efec58f24baa566f104ab058f59686808579fb9",
+    "spl-src/uboot-xburst-lpddr3-src.tar.gz": "999d3e906dcdd6a078f6eeed1d4646de23ee0d08d9cbd2c37ae77bc158f504f3"
+  }
+}

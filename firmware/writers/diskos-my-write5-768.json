@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "diskos-my-write5-768",
+  "format": "diskos-my-write5-v1",
+  "block_bytes": 131072,
+  "logical_blocks": 768,
+  "start_block": 80,
+  "bad_block_reserve": 64,
+  "max_tries": 6,
+  "capacity_instruction_offset": 1036,
+  "capacity_instruction_mask": 4294901760,
+  "capacity_instruction_value": 604110848,
+  "writer_file": "flash/my_write5_dram.bin",
+  "source_pins": {
+    "flash/my_write5.c": "08f31458fd63f6cc20d3ee7a878013da07f50e607f99a7b0f7f523bcfb074ec4",
+    "flash/my_write5_dram.bin": "4f23a3c99bdba4ac9e674efe73340d73014e4d99bcfd481082b06482b87c4442",
+    "flash/disc_spl_lpddr3.bin": "907f4c924d5d5a733e532cd07efec58f24baa566f104ab058f59686808579fb9",
+    "diskos_installer/flasher.py": "5c3b2a4cfba9549286f538838432bbb72bf36fd32595078ff7f8b9250dcee5bf",
+    "src/usbboot/usbboot.c": "d7392778901d955461102d31d9e93bf012648e94f64ad279e5774a53cdb48b90"
+  }
+}

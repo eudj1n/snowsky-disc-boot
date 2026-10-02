@@ -1,0 +1,25 @@
+# Adapted from diskOS ui/Dockerfile (MIT; see licenses/diskos-tooling.MIT).
+# Native companion cross-toolchain; asset embedding runs on the host.
+FROM --platform=linux/amd64 debian:12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl ca-certificates make \
+    && rm -rf /var/lib/apt/lists/*
+
+# Static musl mipsel *soft-float* cross-toolchain (GCC 11.2.1, i386 host binaries, statically
+# linked; same musl.cc family and date as the hard-float toolchain diskOS is built with).
+# Soft float is required: the player's Linux 4.4.94 kernel emulates FP branch delay slots
+# through a trampoline written to the user stack, which killed the hard-float companion
+# inside CivetWeb's read_websocket on the first WebSocket (docs/combined-browser-observation.md).
+# Pinned by SHA-256: if musl.cc changes the tarball the build fails loudly instead of
+# drifting - update the checksum here when you intentionally bump the toolchain.
+ARG TC_URL=https://musl.cc/mipsel-linux-muslsf-cross.tgz
+ARG TC_SHA256=a61c3bbf9fbb0be80fe2abdb4ea8b6f5afdf664b5b4104a3784a326270905216
+RUN curl -fsSL "$TC_URL" -o /tmp/tc.tgz \
+    && echo "$TC_SHA256  /tmp/tc.tgz" | sha256sum -c - \
+    && tar -xzf /tmp/tc.tgz -C /opt \
+    && rm /tmp/tc.tgz
+ENV CROSS=/opt/mipsel-linux-muslsf-cross/bin/mipsel-linux-muslsf-
+
+WORKDIR /src/device
+CMD ["sh", "-c", "make OUT=../build/mips CC=${CROSS}gcc LDFLAGS=-static all"]

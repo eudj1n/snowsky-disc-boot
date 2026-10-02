@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "version": "2.57",
+  "product": "SNOWSKY_DISC",
+  "main_os_version": 257,
+  "recovery_os_version": 18,
+  "rootfs_chunks": 77,
+  "rootfs_size": 80596992,
+  "rootfs_sha256": "111e4dd7ee3d7ff91ba7e61181690be7ffd22bd1bbd13ad513f5f015ffb302ae",
+  "stock_files": {
+    "usr/project/fiio_init.sh": "ad8455ad0a3d9577260419a06ad2e0802c24bc6bb8e9ed4b64637b7bd968ccf2"
+  },
+  "writer": "diskos-my-write5-768",
+  "protocol_identity": "0306",
+  "reference_revisions": [
+    "a0cf54dee06dfb126c6f0485f1f506e3dc02ac03",
+    "992d156c16746be5a25ab43c7cda5fcef09b8863"
+  ],
+  "acceptance": [
+    "smoke",
+    "coexistence",
+    "handover",
+    "lifecycle",
+    "transitions",
+    "offline",
+    "idle",
+    "soak"
+  ],
+  "hardware_qualified": false
+}

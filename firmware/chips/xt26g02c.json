@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "xt26g02c",
+  "family": "XTX XT26G02C",
+  "id_prefix_hex": "0b12",
+  "page_bytes": 2048,
+  "oob_bytes": 128,
+  "pages_per_block": 64,
+  "blocks": 2048,
+  "factory_marker": {"page_in_block": 0, "column": 2048, "good_value": 255},
+  "ecc": {"always_on": true, "status_mask": 240, "status_shift": 4, "max_corrected": 8, "uncorrectable": 15},
+  "source": {
+    "title": "XTX XT26G02C datasheet Rev 1.8, 2022-10-25",
+    "url": "https://pdf.elecfans.com/p/10947115.html",
+    "sections": ["7.5", "7.6 Table 6", "8 Table 8", "10 Table 10", "11 Table 11"]
+  },
+  "writer_audit": {
+    "profile_sha256": "a87d83efe61d2da00ddebf5ef0dda45feec2b374632d83b7ad6106b25550ff65",
+    "page_bytes": 2048,
+    "pages_per_block": 64,
+    "factory_marker": {"page_in_block": 0, "column": 2048, "good_value": 255},
+    "reads_ecc_status": false,
+    "checks_chip_id": false,
+    "attempts_ecc_disable": true
+  },
+  "page_reads_admitted": false,
+  "writes_admitted": false
+}

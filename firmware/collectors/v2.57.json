@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "version": "2.57",
+  "physical_qualified": false,
+  "policy_sha256": "f9342f7f8f685ef369c3e4f2cf1db344a6eb2bff9d62e7126335c066e08b9b6a",
+  "probe_blocks": 2,
+  "request_address": 2695888896,
+  "result_address": 2695954432,
+  "probe_budget_ms": 120000,
+  "full_budget_ms": 3600000
+}

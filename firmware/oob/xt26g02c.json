@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "chip_profile_sha256": "7c42f3a4eb97dfb3dbb9d716d8364a2ef46baa712ad166e7ade0629311abcfb2",
+  "source": "XTX XT26G02C datasheet Rev 1.8, section 11, Table 11 (page 40)",
+  "regions": [
+    {"name": "main", "start": 0, "end": 2048},
+    {"name": "protected_metadata", "start": 2048, "end": 2112},
+    {"name": "ecc_parity", "start": 2112, "end": 2164},
+    {"name": "unprotected_metadata", "start": 2164, "end": 2176}
+  ]
+}

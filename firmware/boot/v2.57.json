@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "version": "2.57",
+  "page_policy_sha256": "f9342f7f8f685ef369c3e4f2cf1db344a6eb2bff9d62e7126335c066e08b9b6a",
+  "partitions": [
+    {"name": "uboot", "offset": 0, "size": 2097152},
+    {"name": "ota", "offset": 179306496, "size": 1048576}
+  ],
+  "selector_bytes": 256,
+  "selectors": {"ota:kernel": "rootfs", "ota:kernel2": "rootfs2"},
+  "session_budget_ms": 180000,
+  "source_pins": {
+    "etc/ota_bin/ota_local_method.sh": "1c739cf0e197293cd678a9bd064c5db8a4f93abec68d90529ca43c7411054394",
+    "etc/ota_bin/ota_utils.sh": "7b725f425465434e0dcef665bca908463974b1c7dbac47dd17d04752ffa8d0bd",
+    "etc/ota_bin/recovery_to_main_os.sh": "434ea93fa61a70956fabbe895d4850f9bf2ee2cb4a9d1d88496e65c8a4c05474"
+  },
+  "physical_qualified": false,
+  "writes_admitted": false
+}

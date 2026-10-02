@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "version": "2.57",
+  "format": "ingenic-spl-ota-prefix-v1",
+  "firmware_sha256": "9c24f384013ebd611f5527079196d8a8923453019efe354c137552774b847151",
+  "boot_policy_sha256": "e5f6651b937a6426a1ffb7182a12d054de935a804f31b62824563b2808daf72e",
+  "boot_bytes": 2097152,
+  "boot_sha256": "389703052c38dc279187a98e7a61094fd7f5c1d3103e8b929f2b11c69a68ae5a",
+  "image_base": 2990542848,
+  "entry_offset": 2048,
+  "selector_read_bytes": 128,
+  "selector_storage_bytes": 256,
+  "secondary_prefix": "ota:kernel2",
+  "accepted_tokens": [
+    "ota:kernel",
+    "ota:kernel2",
+    "ota:backup"
+  ],
+  "primary": {
+    "kernel": "kernel",
+    "rootfs": "rootfs",
+    "root_device": "/dev/mtdblock_bbt_ro2",
+    "bootargs_offset": 14140
+  },
+  "secondary": {
+    "kernel": "kernel2",
+    "rootfs": "rootfs2",
+    "root_device": "/dev/mtdblock_bbt_ro4",
+    "bootargs_offset": 14452
+  },
+  "functions": {
+    "entry": "0xb2401800",
+    "board_init": "0xb2403120",
+    "select_boot": "0xb240392c",
+    "nand_read": "0xb24034e4",
+    "partition_table": "0xb2403790",
+    "partition_lookup": "0xb24037d0",
+    "load_kernel": "0xb2403870",
+    "parse_header": "0xb2403054",
+    "linux_handoff": "0xb2402fec",
+    "compare_prefix": "0xb2404068"
+  },
+  "writes_admitted": false
+}

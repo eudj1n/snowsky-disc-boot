@@ -1,0 +1,29 @@
+name: Firmware-free checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  conformance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # Reviewed reference CI pin
+        with:
+          persist-credentials: false
+      - name: Verify runner tools
+        run: |
+          python3 -c 'import sys; assert sys.version_info >= (3, 11)'
+          cc --version
+      - name: Build the host tools and run synthetic conformance
+        run: bash scripts/test.sh
+      - name: Shell and Python syntax
+        run: |
+          sh -n device/deployment/boot-report.sh
+          sh -n scripts/deployment/link_identity.sh
+          python3 -m compileall -q scripts tests

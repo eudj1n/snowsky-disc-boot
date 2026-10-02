@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "version": "2.57",
+  "rootfs_sha256": "111e4dd7ee3d7ff91ba7e61181690be7ffd22bd1bbd13ad513f5f015ffb302ae",
+  "protocol": "ingenic-rom-ram-v1",
+  "reader_profile_sha256": "9772e4c738353b8c8a51b8ad10e803ab276cf692b4c40a6030ccde8c3cb51839",
+  "spl_load_address": 2990542848,
+  "spl_entry": 2990544896,
+  "spl_bytes": 8056,
+  "diagnostic_address": 2990544832,
+  "control_timeout_ms": 1000,
+  "bulk_timeout_ms": 3000,
+  "execution_timeout_ms": 5000,
+  "settle_ms": 2000,
+  "session_budget_ms": 60000,
+  "physical_qualified": false
+}
