@@ -31,7 +31,8 @@
 extern char **environ;
 static const char *ROLES[] = {"service", "ui"};
 /* Seconds; the fixture build shortens them. */
-static double t_confirm = 180, t_grace = 5, t_window = 600, t_backoff = 2, t_card = 30, t_ui_window = 120;
+/* The card is mounted after S99 (stock mounts it once mq_player runs): recovery waits up to 90 s. */
+static double t_confirm = 180, t_grace = 5, t_window = 600, t_backoff = 2, t_card = 90, t_ui_window = 120;
 static char profile[17], card[PATH_MAX] = "/tmp/sdcard", card_source[128] = "/dev/mmcblk0p1";
 /* The boot program itself, which a package runs as `verify` (contract, "Environment"); the fixture's own file. */
 static char program[PATH_MAX] = "/opt/disc-boot/disc-boot";

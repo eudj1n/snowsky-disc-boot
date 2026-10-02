@@ -60,39 +60,47 @@ only through USB Boot; everything above it becomes files.
   then `mq_player`, by name through `PATH`, and **every 5 s checks both with
   `pgrep -x`**: if either is missing it kills both (and the network and
   Bluetooth daemons) and starts both again. `rcK` stops `S??*` in reverse
-  order with `stop`. Busybox init's default `PATH` puts `/sbin` before
-  `/usr/bin`.
-- diskOS facts below come from its local checkout at `646212d`, before its
-  release with V2.57 support (owner, 2026-10-02: not taken yet; reviewed in a
-  separate session of the emulator project). Its V2.57 build may change the
-  details of its image (the `fiio_init.sh` patch, the key check).
+  order with `stop`. Stock's own shutdowns (idle power-off, the empty
+  battery, a long Power press) are `poweroff -f`, which syncs and powers off
+  **without** `rcK`: nothing in boot depends on `stop` for durability (every
+  change of state is written atomically when it happens). The card is not
+  mounted while `rcS` runs. `/sbin` comes before `/usr/bin` in the `PATH`
+  stock's scripts see (below).
+- diskOS: its 1.2.0 release supports V2.57 and was reviewed in the emulator
+  project (snowsky-disc-qemu `research/docs/reports/diskos-v257.md`): its UI
+  runs and plays through stock's player there, but its image patches
+  `fiio_init.sh`, decides the boot in its own `S96` hook and starts the player
+  through its own link, which a `ui` package of this layer replaces (stage 3).
 - Keys (diskOS, validated on a device 2026-08-13): a key held from power-on
   is invisible to the input layer (`mq_player` grabs `event0`; `EVIOCGKEY`
   sees no edge before the input core). The pin level is readable through
   `/dev/mem`: X2000 GPIO port B at `0x10010100`, register `PxPIN`, active
   low; bit 13 Volume Up, 14 Volume Down, 15 Play. Volume Down with USB at
-  power-on is the chip's mask ROM (never a boot-layer gesture).
-- The emulator does not model these pins yet (owner: a separate session for
-  the emulator). It also does not run stock's `rcS` or `fiio_init.sh`: it
-  starts `mq_ui`, `mq_player` and our service itself, so boot's hooks and the
-  `mq_ui` launcher under stock's watch loop need that session too.
+  power-on is the chip's mask ROM (never a boot-layer gesture). Only bit 13
+  has a source (diskOS, stock's `pb13`); bit 14 rests on stock's
+  `pb13`/`pb14` pair, bit 15 = Play on none, and the released word
+  `0xF6EFE127` is a V2.40 read: to be read on a V2.57 player (plan, stage 4).
+- The emulator (snowsky-disc-qemu `d7f1b9b`) runs stock's `rcS`,
+  `fiio_init.sh` and its watch loop, models the port B word in `/dev/mem`
+  with keys held from power-on, and power events (reboot and off through
+  `rcK`, a cut, `poweroff -f`), with `/usr/data` as an 83 MiB file system.
 - Settled on the guest (2026-10-02):
-  - `PATH`: init is BusyBox 1.31.1, whose root `PATH` is
-    `/sbin:/usr/sbin:/bin:/usr/bin`; neither `rcS`, `S98FIIO` nor
-    `fiio_init.sh` changes it, and stock has no `mq_ui` outside `/usr/bin`.
-    A `/sbin/mq_ui` therefore takes stock's launches without changing a stock
-    file (confirmed statically; the launch itself waits for the emulator
-    session and the device).
+  - `PATH`: `rcS` sources `/etc/profile`, so the hooks and `fiio_init.sh`
+    see `/bin:/sbin:/usr/bin:/usr/sbin` (corrected in the emulator's
+    stock-init guest; BusyBox init's own `PATH` is
+    `/sbin:/usr/sbin:/bin:/usr/bin`). Either way `/sbin` comes before
+    `/usr/bin`, and stock has no `mq_ui` outside `/usr/bin`: a `/sbin/mq_ui`
+    takes stock's launches without changing a stock file (run in the
+    emulator's stock-init guest; the device remains).
   - The library's databases (`song.db`, `dic.db`, `sysconfig.db`,
     `theme.db`) are open in `mq_player`, none in `mq_ui`: replacing the UI
     leaves the library and the server's data level with the player.
-  - "Reset all" (System settings) does not complete in the emulator: the UI
-    shows "Please wait…" and returns, and nothing in `/usr/data` changes, not
-    even the FiiO folders the player's reset strings name
-    (`rm -rf /usr/data/fiio/wifi`, `/usr/data/storebluetooth`,
-    `rm -rf %s/*`); the reset most likely waits for the MCU, which the
-    emulator does not model. Contract-neutral: should a reset remove
-    `/usr/data/disc-boot/`, boot runs with no packages and the user installs
+  - "Reset all" (System settings) involves no MCU (snowsky-disc-qemu
+    `research/docs/reports/reset-all.md`, read in both programs and run in a
+    stock-init guest): it rewrites `wpa_supplicant.conf`, removes the Wi-Fi
+    and Bluetooth folders, `song.db` and `theme.db`, resets the settings row
+    and reboots through `rcK`. `/usr/data/disc-boot/` and the packages' data
+    stay; had they gone, boot would run no package and the user would install
     them again with Play.
 
 ## Modes and gestures
@@ -263,7 +271,9 @@ Three pieces keep stock's UI independent of the boot program:
 - Staged folders: `.disc/boot/install/service/` and `.disc/boot/install/ui/`,
   each with `package.json` and its files. The installer or the page puts
   them there.
-- Boot waits up to 30 s for the card mounted from its expected device,
+- Boot waits up to 90 s for the card mounted from its expected device (the
+  card is mounted after the `S99` hooks run: stock mounts it once
+  `mq_player` is up),
   verifies each staged package completely (modes do not count on the card's
   file system), copies it into the role's inactive slot, verifies the copy
   with modes, makes it the tentative current one, removes the staged folder

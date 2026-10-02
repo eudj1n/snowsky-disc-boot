@@ -108,10 +108,13 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
 
 ## Stage 2 — the guest
 
-- [ ] The emulator models the key pins and runs stock's `rcS` and
-  `fiio_init.sh` (a separate session of the emulator project; the external
-  repository changes only there), with diskOS's release that supports V2.57
-  reviewed in the same session.
+- [x] The emulator models the key pins and runs stock's `rcS` and
+  `fiio_init.sh` (snowsky-disc-qemu #37–#47, `2.x` at `d7f1b9b`, 2026-10-02),
+  diskOS 1.2.0 reviewed there. Taken into the contract: the `PATH` stock's
+  scripts see (`rcS` sources `/etc/profile`; `/sbin` still first), the card
+  mounted after `S99` (recovery now waits up to 90 s, was 30), stock's
+  shutdowns by `poweroff -f` without `rcK` (boot never relied on `stop`),
+  "Reset all" leaving `/usr/data/disc-boot` alone, the key bits' evidence.
 - [ ] Guest acceptance with fault injection: install, activate, crash before
   and after ready, rollback, power loss between steps, a wrong staged
   package, both modes, a `ui` package under stock's watch loop.
