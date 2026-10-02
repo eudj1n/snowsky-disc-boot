@@ -309,6 +309,11 @@ static char **package_env(const char *role, const manifest *m, char slot, int in
     add_env(envp, &n, "DISC_BOOT_STATUS", status);
     add_env(envp, &n, "DISC_BOOT_CARD", cardp);
     add_env(envp, &n, "DISC_BOOT_PROGRAM", program);
+#ifdef DISC_BOOT_FIXTURE
+    /* The fixture's world reaches a package only so that the boot program it runs (verify) sees it too. */
+    add_env(envp, &n, "DISC_BOOT_FIXTURE_ROOT", boot_root);
+    if (getenv("DISC_BOOT_FIXTURE_TIMING")) add_env(envp, &n, "DISC_BOOT_FIXTURE_TIMING", getenv("DISC_BOOT_FIXTURE_TIMING"));
+#endif
     envp[n] = NULL;
     return envp;
 }

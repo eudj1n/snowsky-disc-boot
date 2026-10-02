@@ -37,7 +37,7 @@ class BootTests(unittest.TestCase):
         for name in ('run', 'usr/data', 'usr/bin', 'sbin', 'tmp/sdcard', 'proc', 'fixture', 'out'):
             (self.root/name).mkdir(parents=True, exist_ok=True)
         (self.root/'proc/mounts').write_text('/dev/root / squashfs ro 0 0\n')
-        self.env = dict(os.environ, DISC_BOOT_FIXTURE_ROOT=str(self.root),
+        self.env = dict(os.environ, DISC_TEST_LEAK='1', DISC_BOOT_FIXTURE_ROOT=str(self.root),
                         DISC_BOOT_FIXTURE_TIMING='confirm=1,grace=1,window=30,backoff=0.1,card=2,ui=30')
         self.data = self.root/'usr/data/disc-boot'
         self.run_dir = self.root/'run/disc-boot'
@@ -238,7 +238,9 @@ class BootTests(unittest.TestCase):
         self.assertEqual(env['DISC_BOOT_CARD'], str(self.root/'tmp/sdcard'))
         self.assertEqual(env['DISC_BOOT_PROGRAM'], str(BINARY.resolve()))
         self.assertTrue(env['LD_LIBRARY_PATH'].startswith(slot + '/lib:/usr/lib:'))
-        self.assertNotIn('DISC_BOOT_FIXTURE_ROOT', env, 'a package starts from a clean environment')
+        self.assertNotIn('DISC_TEST_LEAK', env, 'a package starts from a clean environment')
+        # The fixture's root only, so that the boot program a package runs (verify) sees the same world.
+        self.assertEqual(env['DISC_BOOT_FIXTURE_ROOT'], str(self.root))
         self.assertEqual(int((self.data/'data/disc-server/nice.txt').read_text()), 5)
         self.boot('stop')
         self.wait_status('service', 'stopped')
