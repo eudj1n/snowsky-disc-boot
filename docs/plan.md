@@ -115,9 +115,28 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   mounted after `S99` (recovery now waits up to 90 s, was 30), stock's
   shutdowns by `poweroff -f` without `rcK` (boot never relied on `stop`),
   "Reset all" leaving `/usr/data/disc-boot` alone, the key bits' evidence.
-- [ ] Guest acceptance with fault injection: install, activate, crash before
-  and after ready, rollback, power loss between steps, a wrong staged
-  package, both modes, a `ui` package under stock's watch loop.
+- [x] Guest acceptance with fault injection (2026-10-03):
+  `tests/integration/boot_guest.py` through `scripts/guest.py` on the
+  emulator at `d7f1b9b` (reviewed in `firmware/emulator-revisions.json`),
+  image `boot-image-ff4c801` (disc-boot 370,620 bytes `aac50db6…`, all 3,492
+  stock objects kept, review image `b822c7e7…`), real timings, probe
+  packages as shell scripts: nothing installed (platform, keys read, stock's
+  UI through the wrapper), Volume Up (stock), a damaged staged package
+  refused by its hash and left on the card, Play installing and confirming
+  version 1 after 183 s, version 2 staged by the running version and
+  activated (slot b, 1 kept for a rollback), versions that exit before and
+  after ready giving way to 2, version 5 confirmed then a rollback asked for,
+  power cut (unsynced) three times while version 6 was tentative (counts 1,
+  2, then the boot-loop guard chose stock), Play bringing version 6 back and
+  its confirmation, and a `ui` package installed with Play started through
+  the launcher at once, confirmed, and started again when killed. Found on
+  the way and fixed: the recovery signalled only a UI the launcher had
+  started, so stock's own UI kept running and a new `ui` package waited for
+  the next boot (`ff4c801`, now by the process name); the MIPS compiler's
+  truncation warning in the status (`beb59b4`); stale build IDs in images
+  (the Makefile now relinks on a new ID). Recorded in the contract: a
+  version restored by a rollback clears the boot-loop count only after its
+  180 s again.
 
 ## Stage 3 — packages and the two-package acceptance
 

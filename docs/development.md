@@ -69,6 +69,39 @@ fixed order with fixed times. `stage` checks the package for the player
 no modes), then swaps it in; a refused package stages nothing and leaves what
 was staged.
 
+## The image and its guest
+
+The review image is built offline from the selected firmware's OTA, in the
+emulator's image with its checkout on `PYTHONPATH`; it never reaches a
+player from here:
+
+```sh
+bash scripts/build.sh mips
+docker run --rm --network none -e PYTHONPATH=/repo -v <emulator>:/repo:ro -v <firmware>/main_os/ota_v<version>:/ota:ro \
+  -v "$PWD:/src:ro" -v "$PWD/work/<run>:/out" --entrypoint python3 snowsky-disc-qemu-ci:<revision> \
+  -B /src/scripts/deployment/build_candidate.py --ota /ota --console /src/build/mips/disc-usb-console \
+  --boot /src/build/mips/disc-boot --output /out/build
+```
+
+`scripts/guest.py` runs such an image on a disposable stock-init guest of the
+emulator, at a revision reviewed for the firmware (`firmware/emulator-revisions.json`,
+kept apart from the profiles: their fingerprint is pinned by other reviews).
+Build the emulator's image for that revision under a tag of its own first
+(`docker build -t snowsky-disc-qemu-ci:<revision> <emulator>/emulator/docker`).
+
+```sh
+python3 scripts/guest.py up --reference <emulator> --image work/<run>/disc-boot-v<version>-review-only.bin \
+  --ota <firmware>/main_os/ota_v<version>
+python3 scripts/guest.py run -- python3 -B /boot/tests/integration/boot_guest.py --output /work/boot-guest.json
+python3 scripts/guest.py stage --package <zip>        # with the guest off: onto the card, for Play
+python3 scripts/guest.py power on --hold play         # also reboot, off, cut [--unsynced], status
+python3 scripts/guest.py status | down
+```
+
+`boot_guest.py` is the guest acceptance (plan, stage 2): about 40 minutes,
+since a version is confirmed after 180 s of running. The server repository
+drives the same wrapper with a record of its own (`--state`).
+
 ## Related repositories
 
 - snowsky-disc-server: the gateway (the `service` package), its catalogs
