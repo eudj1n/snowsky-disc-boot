@@ -303,7 +303,8 @@ Three pieces keep stock's UI independent of the boot program:
 
 A `service` package starts from a clean environment (these, `PATH`, `HOME`
 and `LD_LIBRARY_PATH`); its standard output and error go to
-`$DISC_BOOT_RUN/log`, capped at 64 KiB. A `ui` package keeps the environment
+`$DISC_BOOT_RUN/log`, capped at 64 KiB; standard input is `/dev/null`, and
+no other descriptor is open (none of the boot program's). A `ui` package keeps the environment
 stock's `fiio_init.sh` gives its UI, with these added and its `lib/` first in
 `LD_LIBRARY_PATH`.
 

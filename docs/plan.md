@@ -138,6 +138,15 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   version restored by a rollback clears the boot-loop count only after its
   180 s again.
 
+- [x] Only the standard descriptors for a package (2026-10-03, found by the
+  server's soak on the guest): the supervisor kept the boot log and
+  `/dev/null` open beside its own standard descriptors, and the service's
+  spawn kept the copies `dup2` leaves, so every package started with four
+  descriptors of the boot program's (3–6, among them the boot log open for
+  writing). The supervisor, the spawn and the UI watcher now close every
+  descriptor above 2; the contract says so. Evidence: `test_boot` (the
+  package lists none open; without the fix 3, 4, 5 and 6).
+
 ## Stage 3 — packages and the two-package acceptance
 
 - [x] The package tool (`scripts/package.py`, owner 2026-10-02): `describe`

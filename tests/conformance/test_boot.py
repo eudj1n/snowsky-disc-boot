@@ -222,7 +222,9 @@ class BootTests(unittest.TestCase):
     # The service's lifecycle
 
     def test_a_service_is_confirmed_with_its_environment(self):
-        script = 'env > "$DISC_BOOT_DATA/env.txt"\nps -o nice= -p $$ > "$DISC_BOOT_DATA/nice.txt"\n' + GOOD
+        # Which descriptors above 2 are open: a duplicate of one succeeds only when it is.
+        script = ('env > "$DISC_BOOT_DATA/env.txt"\nps -o nice= -p $$ > "$DISC_BOOT_DATA/nice.txt"\n'
+                  'for fd in 3 4 5 6 7 8 9; do { : >&$fd; } 2>/dev/null && echo $fd; done > "$DISC_BOOT_DATA/fds.txt"\n' + GOOD)
         self.install('service', 'a', script)
         self.early()
         self.assertEqual(self.global_state()['unconfirmed'], 1)
@@ -247,6 +249,7 @@ class BootTests(unittest.TestCase):
         # The fixture's root only, so that the boot program a package runs (verify) sees the same world.
         self.assertEqual(env['DISC_BOOT_FIXTURE_ROOT'], str(self.root))
         self.assertEqual(int((self.data/'data/disc-server/nice.txt').read_text()), 5)
+        self.assertEqual((self.data/'data/disc-server/fds.txt').read_text(), '', 'only stdin, stdout and stderr are open')
         self.boot('stop')
         self.wait_status('service', 'stopped')
         self.assertFalse((self.run_dir/'supervisor.pid').exists())

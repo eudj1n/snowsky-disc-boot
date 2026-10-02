@@ -328,6 +328,14 @@ static char **package_argv(const char *argv0, const manifest *m) {
     return argv;
 }
 
+/* Standard input, output and error are the only descriptors a program of ours or a package gets:
+   what else is open (the boot log, the copies dup2 leaves) is closed. */
+static void only_standard_descriptors(void) {
+    long most = sysconf(_SC_OPEN_MAX);
+    if (most < 0 || most > 4096) most = 4096;
+    for (int fd = 3; fd < most; fd++) close(fd);
+}
+
 static pid_t spawn_service(const manifest *m, char slot) {
     char entry[PATH_MAX], data[PATH_MAX], log[PATH_MAX], ready[PATH_MAX];
     bpath(entry, DATA_DIR "/service/%c/%s", slot, m->entry);
@@ -345,6 +353,7 @@ static pid_t spawn_service(const manifest *m, char slot) {
         int in = open("/dev/null", O_RDONLY), out = open(log, O_WRONLY | O_CREAT | O_APPEND | O_NOFOLLOW, 0644);
         if (in >= 0) dup2(in, 0);
         if (out >= 0) { dup2(out, 1); dup2(out, 2); }
+        only_standard_descriptors();
         if (chdir(data)) _exit(126);
         execve(entry, argv, envp);
         _exit(127);
@@ -606,6 +615,7 @@ static int cmd_start(void) {
     int log = open(p, O_WRONLY | O_CREAT | O_APPEND | O_NOFOLLOW, 0644), in = open("/dev/null", O_RDONLY);
     if (in >= 0) dup2(in, 0);
     if (log >= 0) { dup2(log, 1); dup2(log, 2); }
+    only_standard_descriptors();
     signal(SIGTERM, on_term);
     signal(SIGINT, on_term);
     bpath(p, RUN_DIR "/supervisor.pid");
@@ -772,6 +782,7 @@ static int launcher(int argc, char **argv) {
         if (fork() == 0) {
             int in = open("/dev/null", O_RDWR);
             if (in >= 0) { dup2(in, 0); dup2(in, 1); dup2(in, 2); }
+            only_standard_descriptors();
             ui_watch(ui, m, rs);
         }
         _exit(0);
