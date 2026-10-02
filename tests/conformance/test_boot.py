@@ -84,8 +84,14 @@ class BootTests(unittest.TestCase):
         return manifest
 
     def state(self, role, current, confirmed=False, previous=None):
+        """The role's state as boot writes it: a previous slot keeps its package.json's fingerprint."""
         (self.data/role).mkdir(parents=True, exist_ok=True)
-        (self.data/role/'state.json').write_text(json.dumps(dict(schema=1, current=current, confirmed=confirmed, previous=previous)))
+        (self.data/role/'state.json').write_text(json.dumps(dict(schema=1, current=current, confirmed=confirmed, previous=previous,
+                                                                 previousManifest=self.fingerprint(role, previous))))
+
+    def fingerprint(self, role, slot):
+        path = self.data/role/str(slot)/'package.json'
+        return hashlib.sha256(path.read_bytes()).hexdigest() if slot and path.exists() else None
 
     def role_state(self, role):
         return json.loads((self.data/role/'state.json').read_text())
@@ -218,7 +224,7 @@ class BootTests(unittest.TestCase):
         self.boot('start', check=True)
         status = self.wait_status('service', 'confirmed')
         self.assertEqual((status['name'], status['version'], status['slot'], status['confirmed']), ('disc-server', '1', 'a', True))
-        self.assertEqual(self.role_state('service'), dict(schema=1, current='a', confirmed=True, previous=None))
+        self.assertEqual(self.role_state('service'), dict(schema=1, current='a', confirmed=True, previous=None, previousManifest=None))
         self.assertEqual(self.global_state()['unconfirmed'], 0)
         env = dict(line.split('=', 1) for line in (self.data/'data/disc-server/env.txt').read_text().splitlines() if '=' in line)
         slot = str(self.data/'service/a')
@@ -244,7 +250,7 @@ class BootTests(unittest.TestCase):
         self.boot('start', check=True)
         status = self.wait_status('service', 'confirmed')
         self.assertEqual((status['version'], status['slot']), ('1', 'a'))
-        self.assertEqual(self.role_state('service'), dict(schema=1, current='a', confirmed=True, previous=None))
+        self.assertEqual(self.role_state('service'), dict(schema=1, current='a', confirmed=True, previous=None, previousManifest=None))
 
     def test_a_failing_first_version_stops_and_says_why(self):
         self.install('service', 'a', 'exit 3\n')
@@ -279,13 +285,55 @@ fi
         self.boot('start', check=True)
         status = self.wait_status('service', 'confirmed')
         self.assertEqual((status['version'], status['slot'], status['lastRequest']), ('2', 'b', 'activated disc-server 2'))
-        self.assertEqual(self.role_state('service'), dict(schema=1, current='b', confirmed=True, previous='a'))
+        self.assertEqual(self.role_state('service'), dict(schema=1, current='b', confirmed=True, previous='a',
+                                                          previousManifest=self.fingerprint('service', 'a')))
+        self.assertEqual(status['previous'], dict(slot='a', name='disc-server', version='1', manifest=self.fingerprint('service', 'a')))
         # Asked to go back, it returns to the confirmed previous version.
         (self.data/'service/request').write_text('{"action":"rollback"}')
         subprocess.run(['pkill', '-f', str(self.data/'service/b')])
         status = self.wait_for(lambda s: s['slot'] == 'a' and s['state'] == 'confirmed')
         self.assertEqual((status['version'], status['lastRequest']), ('1', 'rolled back to disc-server 1'))
-        self.assertEqual(self.role_state('service'), dict(schema=1, current='a', confirmed=True, previous=None))
+        self.assertEqual(self.role_state('service'), dict(schema=1, current='a', confirmed=True, previous=None, previousManifest=None))
+
+    def test_a_rollback_returns_only_to_the_version_confirmed_there(self):
+        # An update staged into the inactive slot replaces the previous version: no rollback to it,
+        # neither asked for nor after a failure of the tentative version.
+        staged = self.root/'staged'
+        self.package(staged, GOOD, version='3')
+        stage = f'cp -Rp "{staged}/." "$DISC_BOOT_INACTIVE/"\n'
+        on_demand = f'''trap 'exit 0' TERM
+: > "$DISC_BOOT_RUN/ready"
+while :; do
+  if [ -e "$DISC_BOOT_DATA/stage" ]; then rm "$DISC_BOOT_DATA/stage"; {stage}  fi
+  sleep 0.1
+done
+'''
+        self.package(self.data/'service/a', GOOD, version='1')
+        self.install('service', 'b', on_demand, version='2', confirmed=True, previous='a')
+        self.early()
+        self.boot('start', check=True)
+        status = self.wait_status('service', 'confirmed')
+        self.assertEqual(status['previous']['version'], '1')
+        (self.data/'data/disc-server').mkdir(parents=True, exist_ok=True)
+        (self.data/'data/disc-server/stage').touch()
+        until = time.monotonic() + 10
+        while json.loads((self.data/'service/a/package.json').read_text())['version'] != '3' and time.monotonic() < until:
+            time.sleep(0.05)
+        (self.data/'service/request').write_text('{"action":"rollback"}')
+        subprocess.run(['pkill', '-f', str(self.data/'service/b')])
+        status = self.wait_for(lambda s: s['lastRequest'] is not None and s['state'] == 'confirmed')
+        self.assertEqual((status['slot'], status['version'], status['lastRequest'], status['previous']),
+                         ('b', '2', 'rollback refused: the previous version was replaced', None))
+        self.boot('stop', check=True)
+        # A tentative version whose fallback was replaced stops and says why, rather than run the stage.
+        self.install('service', 'b', stage + 'exit 3\n', version='2', previous='a')
+        self.package(self.data/'service/a', GOOD, version='1')
+        self.state('service', 'b', previous='a')
+        (self.run_dir/'service.json').unlink()
+        self.boot('start', check=True)
+        status = self.wait_status('service', 'failed')
+        self.assertEqual((status['slot'], status['note']), ('b', 'exited before its confirmation'))
+        self.assertEqual(json.loads((self.data/'service/a/package.json').read_text())['version'], '3')
 
     def test_a_broken_update_is_refused_and_the_current_version_runs_on(self):
         update = '''if [ ! -e "$DISC_BOOT_DATA/updated" ]; then

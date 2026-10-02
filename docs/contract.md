@@ -179,7 +179,8 @@ Distributed as a zip; staged and installed as a folder with `package.json`:
 /usr/data/disc-boot/
   state.json            {"default": "platform"|"stock", "unconfirmed": n}
   service/a/ service/b/ the two slots of the service role
-  service/state.json    {"current": "a"|"b"|null, "confirmed": bool, "previous": "a"|"b"|null}
+  service/state.json    {"current": "a"|"b"|null, "confirmed": bool, "previous": "a"|"b"|null,
+                         "previousManifest": "<sha256 of its package.json>"|null}
   service/request       a package's request, written atomically
   ui/…                  the same for the ui role
   data/<name>/          a package's own persistent data, kept across updates
@@ -188,8 +189,13 @@ Distributed as a zip; staged and installed as a folder with `package.json`:
 Every change is a new file, synced, then renamed into place (UBIFS keeps a
 rename atomic through power loss); changes of state happen under a lock. A
 slot is tentative until confirmed; `previous` is the last confirmed slot,
-the one a rollback returns to. An unreadable state runs nothing for that
-role and says so.
+the one a rollback returns to, and `previousManifest` the SHA-256 of its
+`package.json` when it became so. The previous slot is the inactive one, so
+a package that stages an update there replaces that version: boot then
+rolls back to it neither on request (`rollback refused: the previous version
+was replaced`) nor when a tentative version fails (that one stops and says
+why). A server stages updates only while its own version is confirmed. An
+unreadable state runs nothing for that role and says so.
 
 ## Lifecycle of a `service` package
 
@@ -302,8 +308,11 @@ enforce this: packages run as root, at the installer's risk.
 - `service.json`, `ui.json`: the role's state (`starting`, `ready`,
   `confirmed`, `restarting`, `rolled-back`, `failed`, `stopped`, `absent`,
   `stock-mode`, `fallback`, `not-ready`), the package's name and version,
-  the slot, confirmed or not, failures, a note and the last request's
-  outcome.
+  the slot, confirmed or not, failures, a note, the last request's outcome
+  and `previous`: `{slot, name, version, manifest}` of the version a
+  rollback returns to while its slot still holds it, else null (written
+  with the rest of the status; a package compares `manifest` with
+  `$DISC_BOOT_INACTIVE/package.json` to see whether it staged over it since).
 - `disc-boot status` prints the three together; the server shows them in its
   diagnostics.
 

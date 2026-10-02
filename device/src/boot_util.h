@@ -50,7 +50,9 @@ int bjson_bool(const bjson *j, int i, int *out);
 int bjson_null(const bjson *j, int i);
 
 typedef struct { char mode[9]; int unconfirmed; } global_state;
-typedef struct { char current, previous; int confirmed; } role_state;
+/* previous_manifest: the SHA-256 of the previous slot's package.json when it became the
+   rollback target; a slot rewritten since (an update staged there) is no rollback target. */
+typedef struct { char current, previous; int confirmed; char previous_manifest[65]; } role_state;
 int gstate_read(global_state *g);
 int gstate_write(const global_state *g);
 /* 0 with current 0 when the role has nothing installed; -1 when its state is unreadable. */

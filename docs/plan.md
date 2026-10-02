@@ -89,6 +89,18 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   supervisor and its package. The first run caught a stand-in `/proc` that
   made the UI's watcher lose the UI; the watcher now trusts `kill(pid, 0)`
   when `/proc/<pid>/comm` is unreadable, and the run mounts its own proc.
+- [x] Rollback only to the version confirmed there (2026-10-02, found while
+  designing the server's updates): the previous slot is the inactive one, so
+  an update staged there replaced the rollback target and a rollback, asked
+  for or after a tentative failure, made the staged, never-run package the
+  confirmed one. `state.json` now keeps `previousManifest`, the SHA-256 of
+  the previous slot's `package.json` when it became the target; a rollback
+  needs it to match, else it is refused (`the previous version was
+  replaced`) or the tentative version stops with its reason. The status
+  names that version (`previous`) while its slot holds it. Evidence:
+  `test_boot` (26; the new case stages over the previous version from a
+  confirmed package, then from a tentative one that fails). The packed
+  image gets this with stage 2's rebuild.
 
 ## Stage 2 — the guest
 

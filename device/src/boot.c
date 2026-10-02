@@ -105,8 +105,31 @@ static void options(int argc, char **argv, int from) {
 
 static char other(char slot) { return slot == 'a' ? 'b' : 'a'; }
 
+/* The SHA-256 of a slot's package.json: the fingerprint a rollback target keeps. */
+static int slot_fingerprint(const char *role, char slot, char hex[65]) {
+    char p[PATH_MAX];
+    long long size;
+    bpath(p, DATA_DIR "/%s/%c/package.json", role, slot);
+    return file_sha256(p, hex, &size);
+}
+/* The previous slot still holds the version that was confirmed there: a package may stage an
+   update into its inactive slot, which is that one, and then it is no rollback target. */
+static int previous_intact(const char *role, const role_state *rs) {
+    char hex[65];
+    return rs->previous && rs->previous_manifest[0] && !slot_fingerprint(role, rs->previous, hex) && !strcmp(hex, rs->previous_manifest);
+}
+/* Target becomes the tentative current slot; a confirmed current one becomes the rollback target,
+   with its fingerprint, and a tentative one leaves the earlier target as it was. */
+static void make_current(const char *role, role_state *rs, char target) {
+    if (rs->confirmed) {
+        rs->previous = rs->current && rs->current != target && !slot_fingerprint(role, rs->current, rs->previous_manifest) ? rs->current : 0;
+    }
+    if (rs->previous == target || !rs->previous) { rs->previous = 0; rs->previous_manifest[0] = 0; }
+    rs->current = target; rs->confirmed = 0;
+}
+
 static void role_status(const char *role, const char *state, const manifest *m, const role_state *rs, int failures, const char *note) {
-    char p[PATH_MAX], buf[1024], name[80], version[80], noted[300], request[260];
+    char p[PATH_MAX], buf[1400], name[80], version[80], noted[300], request[260], previous[260] = "null";
     bpath(p, RUN_DIR);
     mkdirs(p, 0755);
     bpath(p, RUN_DIR "/%s.json", role);
@@ -114,12 +137,25 @@ static void role_status(const char *role, const char *state, const manifest *m, 
     json_str(version, sizeof(version), m ? m->version : "");
     json_str(noted, sizeof(noted), note ? note : "");
     json_str(request, sizeof(request), last_request);
+    /* The version a rollback returns to, while its slot still holds it. */
+    manifest *pm = rs && previous_intact(role, rs) ? malloc(sizeof(*pm)) : NULL;
+    char dir[PATH_MAX], err[160], pname[80], pversion[80];
+    if (pm) {
+        bpath(dir, DATA_DIR "/%s/%c", role, rs->previous);
+        if (!manifest_load(dir, pm, err, sizeof(err))) {
+            json_str(pname, sizeof(pname), pm->name);
+            json_str(pversion, sizeof(pversion), pm->version);
+            snprintf(previous, sizeof(previous), "{\"slot\":\"%c\",\"name\":%s,\"version\":%s,\"manifest\":\"%.64s\"}",
+                     rs->previous, pname, pversion, rs->previous_manifest);
+        }
+        free(pm);
+    }
     int n = snprintf(buf, sizeof(buf),
         "{\"schema\":1,\"role\":\"%s\",\"state\":\"%s\",\"name\":%s,\"version\":%s,\"slot\":%s%c%s,\"confirmed\":%s,"
-        "\"failures\":%d,\"note\":%s,\"lastRequest\":%s}\n",
+        "\"failures\":%d,\"note\":%s,\"lastRequest\":%s,\"previous\":%s}\n",
         role, state, m ? name : "null", m ? version : "null",
         rs && rs->current ? "\"" : "nul", rs && rs->current ? rs->current : 'l', rs && rs->current ? "\"" : "",
-        rs && rs->confirmed ? "true" : "false", failures, noted, last_request[0] ? request : "null");
+        rs && rs->confirmed ? "true" : "false", failures, noted, last_request[0] ? request : "null", previous);
     write_atomic(p, buf, (size_t)n, 0644);
 }
 
@@ -149,9 +185,9 @@ static int slot_check(const char *role, char slot, manifest *m, char *err, size_
 }
 
 static int rollback(const char *role, role_state *rs) {
-    if (!rs->previous) return -1;
+    if (!previous_intact(role, rs)) return -1;
     int lock = state_lock();
-    rs->current = rs->previous; rs->previous = 0; rs->confirmed = 1;
+    rs->current = rs->previous; rs->previous = 0; rs->previous_manifest[0] = 0; rs->confirmed = 1;
     int r = rstate_write(role, rs);
     state_unlock(lock);
     return r;
@@ -179,8 +215,7 @@ static int handle_request(const char *role, const char *current_name) {
         manifest *m = malloc(sizeof(*m));
         if (!m || slot_check(role, target, m, err, sizeof(err))) snprintf(last_request, sizeof(last_request), "activate refused: %s", m ? err : "out of memory");
         else {
-            char previous = rs.confirmed ? rs.current : rs.previous;
-            rs.previous = previous == target ? 0 : previous; rs.current = target; rs.confirmed = 0;
+            make_current(role, &rs, target);
             rstate_write(role, &rs);
             snprintf(last_request, sizeof(last_request), "activated %s %s", m->name, m->version);
         }
@@ -188,9 +223,10 @@ static int handle_request(const char *role, const char *current_name) {
     } else if (!strcmp(action, "rollback")) {
         manifest *m = malloc(sizeof(*m));
         if (!rs.previous) snprintf(last_request, sizeof(last_request), "rollback refused: no previous version");
+        else if (!previous_intact(role, &rs)) snprintf(last_request, sizeof(last_request), "rollback refused: the previous version was replaced");
         else if (!m || slot_check(role, rs.previous, m, err, sizeof(err))) snprintf(last_request, sizeof(last_request), "rollback refused: %s", m ? err : "out of memory");
         else {
-            rs.current = rs.previous; rs.previous = 0; rs.confirmed = 1;
+            rs.current = rs.previous; rs.previous = 0; rs.previous_manifest[0] = 0; rs.confirmed = 1;
             rstate_write(role, &rs);
             snprintf(last_request, sizeof(last_request), "rolled back to %s %s", m->name, m->version);
         }
@@ -418,8 +454,7 @@ static int install(const char *role, const char *staged, char *note, size_t cap)
         if (mkdirs(parent, 0755) || copy_file(src, dst, (mode_t)m->files[f].mode)) { snprintf(note, cap, "refused: cannot copy %s", m->files[f].path); goto out; }
     }
     if (package_verify(slot, m, 1, err, sizeof(err))) { remove_tree(slot); snprintf(note, cap, "refused: the copy differs: %s", err); goto out; }
-    char previous = rs.confirmed ? rs.current : rs.previous;
-    rs.previous = previous == target ? 0 : previous; rs.current = target; rs.confirmed = 0;
+    make_current(role, &rs, target);
     if (rstate_write(role, &rs)) { snprintf(note, cap, "refused: cannot record the slot"); goto out; }
     remove_tree(staged);
     snprintf(note, cap, "installed %s %s", m->name, m->version);

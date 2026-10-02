@@ -336,31 +336,39 @@ static int slot_value(const bjson *j, int i, char *out) {
 
 int rstate_read(const char *role, role_state *r) {
     char p[PATH_MAX], buf[SMALL_FILE];
-    r->current = r->previous = 0; r->confirmed = 0;
+    r->current = r->previous = 0; r->confirmed = 0; r->previous_manifest[0] = 0;
     bpath(p, DATA_DIR "/%s/state.json", role);
     size_t len;
     if (read_small(p, buf, sizeof(buf), &len)) return exists(p) ? -1 : 0;
     bjson j;
-    int c, pv, cf;
+    int c, pv, cf, pm;
     if (bjson_parse(&j, buf, len, 32)) return -1;
     int bad = (c = bjson_find(&j, 0, "current")) < 0 || slot_value(&j, c, &r->current)
         || (pv = bjson_find(&j, 0, "previous")) < 0 || slot_value(&j, pv, &r->previous)
         || (cf = bjson_find(&j, 0, "confirmed")) < 0 || bjson_bool(&j, cf, &r->confirmed)
         || (r->previous && r->previous == r->current) || (!r->current && (r->previous || r->confirmed));
+    /* Optional: absent or null leaves the previous slot without a fingerprint, so no rollback to it. */
+    if (!bad && (pm = bjson_find(&j, 0, "previousManifest")) != -1 && (pm < 0 || !bjson_null(&j, pm))) {
+        bad = bjson_string(&j, pm, r->previous_manifest, sizeof(r->previous_manifest)) || strlen(r->previous_manifest) != 64;
+        for (int i = 0; !bad && i < 64; i++) bad = !strchr("0123456789abcdef", r->previous_manifest[i]);
+    }
     bjson_free(&j);
-    if (bad) { r->current = r->previous = 0; r->confirmed = 0; return -1; }
+    if (bad) { r->current = r->previous = 0; r->confirmed = 0; r->previous_manifest[0] = 0; return -1; }
+    if (!r->previous) r->previous_manifest[0] = 0;
     return 0;
 }
 
 int rstate_write(const char *role, const role_state *r) {
-    char p[PATH_MAX], buf[256], cur[8], prev[8];
+    char p[PATH_MAX], buf[256], cur[8], prev[8], manifest[72];
     bpath(p, DATA_DIR "/%s", role);
     if (mkdirs(p, 0755)) return -1;
     bpath(p, DATA_DIR "/%s/state.json", role);
     snprintf(cur, sizeof(cur), r->current ? "\"%c\"" : "null", r->current);
     snprintf(prev, sizeof(prev), r->previous ? "\"%c\"" : "null", r->previous);
-    int n = snprintf(buf, sizeof(buf), "{\"schema\":1,\"current\":%s,\"confirmed\":%s,\"previous\":%s}\n",
-                     cur, r->confirmed ? "true" : "false", prev);
+    if (r->previous && r->previous_manifest[0]) snprintf(manifest, sizeof(manifest), "\"%.64s\"", r->previous_manifest);
+    else snprintf(manifest, sizeof(manifest), "null");
+    int n = snprintf(buf, sizeof(buf), "{\"schema\":1,\"current\":%s,\"confirmed\":%s,\"previous\":%s,\"previousManifest\":%s}\n",
+                     cur, r->confirmed ? "true" : "false", prev, manifest);
     return write_atomic(p, buf, (size_t)n, 0644);
 }
 
