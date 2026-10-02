@@ -119,6 +119,17 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
 
 ## Later
 
+- The emulator repository keeps only its qemu part (owner, 2026-10-02): a
+  separate session after the boot layer's emulator work, one PR into its
+  `2.x` (where `codex/disc-web` was merged as #36, `f70a066`, keeping our
+  reference revisions `a0cf54d` and `992d156` reachable). What our
+  repositories import from it and must keep or move along:
+  `emulator.runtime` (keys, peripherals, boot_ready), `emulator/scripts`
+  (`lib.sh` and the boot scripts), `firmware.tools.firmware_inventory` (this
+  builder's OTA input), `controller.fiio_link`, `research.diagnostics`
+  (`probe_keys`, `player_memory`) and `ci/cleanup.sh`. The DISC Web
+  prototype, `experiments/`, `library/` and the speech work are not used.
+
 - Ready-to-run installers for macOS and Windows (Windows needs a WinUSB
   driver for the USB Boot device); a browser installer over WebUSB.
 - An optional "official" label for packages signed by us.
