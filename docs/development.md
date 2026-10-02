@@ -71,8 +71,10 @@ was staged.
 
 ## Related repositories
 
-- snowsky-disc-web (to become snowsky-disc-server): the gateway, its
-  catalogs and the emulator wrapper (`scripts/emulator.py`) used for guest
-  acceptance today.
+- snowsky-disc-server: the gateway (the `service` package), its catalogs
+  and the emulator wrapper (`scripts/emulator.py`) used for guest acceptance
+  today.
+- snowsky-disc-web: the frozen history of the gateway and the combined
+  images; the running emulator stack still mounts it as `/platform`.
 - snowsky-disc-qemu: the external emulator; never modified from here.
 - snowsky-disc-player: the page, a card app of the server.

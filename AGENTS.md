@@ -5,8 +5,9 @@ This repository is **snowsky-disc-boot**, the boot layer of the SNOWSKY DISC
 platform: what the user's own V2.57 rootfs gains once, through USB Boot (boot
 modes, the package loader with slots and rollback, recovery from the card,
 the USB console), and the tooling that builds, writes and verifies that image.
-Packages run on top of it: snowsky-disc-server (the gateway, today the
-sibling `snowsky-disc-web`) and third-party ones such as diskOS's UI. Read
+Packages run on top of it: snowsky-disc-server (the gateway, a sibling
+repository) and third-party ones such as diskOS's UI. snowsky-disc-web is the
+frozen history of both. Read
 docs/contract.md and docs/plan.md before extending it.
 
 - The contract (docs/contract.md) is what packages build on. Change it only

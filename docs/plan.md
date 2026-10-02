@@ -7,8 +7,12 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
 
 ## Stage 0 — the repository (owner, 2026-10-02)
 
-- [x] Created beside snowsky-disc-web; the boot layer's work continues here,
-  the server's follows once this layer is done (owner, 2026-10-02).
+- [x] Created beside snowsky-disc-web; the boot layer's work continues here
+  (owner, 2026-10-02). The gateway continues in snowsky-disc-server, started
+  the same day while the emulator work is pending; snowsky-disc-web is frozen.
+  The default branch is `2.x`, after the firmware version (owner,
+  2026-10-02); GitHub and its Actions come once all repositories are
+  published.
 - [x] Ported from snowsky-disc-web at `faaf502`, unchanged unless noted: the
   NAND and USB Boot tooling (`scripts/deployment/` without the image builder,
   `device/acquisition/`), the USB console (`device/src/usb_console.c`), the
