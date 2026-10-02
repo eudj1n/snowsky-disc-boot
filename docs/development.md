@@ -12,6 +12,7 @@
 | `device/src/usb_console.c` | The USB ACM engineering console |
 | `device/acquisition/` | The NAND reader and SFC identity payloads for USB Boot sessions |
 | `device/deployment/boot-report.sh` | The boot report written to the card |
+| `scripts/package.py` | Packages: describe a folder, check it as `disc-boot` does, zip it, stage it on a card |
 | `scripts/deployment/build_candidate.py` | The image builder (variant `boot`): stock plus the boot layer, verified offline |
 | `scripts/deployment/` | Reviews, transports, readback and audits of a USB Boot installation |
 | `tests/integration/` | Checks run in the disposable container ([build and flash](build-and-flash.md)) |
@@ -44,6 +45,29 @@ names. To run `test_boot` on Linux against the MIPS build, build
 `DISC_BOOT_FIXTURE_BINARY` at a wrapper that runs it under
 `qemu-mipsel-static -0 "$(basename "$0")"` (the emulator container has one),
 with `DISC_BOOT_FIXTURE_FILE` naming the binary itself.
+
+## Packages
+
+`scripts/package.py` follows the contract's rules and messages (a test holds
+it to `disc-boot verify` case by case):
+
+```sh
+# package.json for a folder: every file with its size, SHA-256 and mode (0755 when executable)
+python3 scripts/package.py describe --source build/pkg --name disc-server --version 2026.10.02 \
+  --role service --entry bin/disc-server --arg --listen --arg 0.0.0.0
+python3 scripts/package.py check --source build/pkg          # or a zip; --role, --profile, --arch
+python3 scripts/package.py zip --source build/pkg --output work/disc-server.zip
+# On a mounted card, for the recovery with Play (an explicit operator step):
+python3 scripts/package.py stage --package work/disc-server.zip --card /Volumes/PLAY --confirm-card-write
+python3 scripts/package.py result --card /Volumes/PLAY        # the last recovery's result.json
+```
+
+A zip holds `package.json` and the files at its root with their modes, in a
+fixed order with fixed times. `stage` checks the package for the player
+(`mips32el-linux-static`, the active firmware profile), writes it beside
+`.disc/boot/install/<role>/`, checks the copy (sizes and digests; a card keeps
+no modes), then swaps it in; a refused package stages nothing and leaves what
+was staged.
 
 ## Related repositories
 

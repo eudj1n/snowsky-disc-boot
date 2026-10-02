@@ -169,7 +169,9 @@ Distributed as a zip; staged and installed as a folder with `package.json`:
   `$DISC_BOOT_SLOT`, never installed into the rootfs.
 - `disc-boot verify ROLE DIR` checks a folder as boot would (manifest, fit,
   every file) and answers in JSON: a server checks a staged update with it
-  before asking for its activation.
+  before asking for its activation. On a computer, `scripts/package.py`
+  writes a folder's `package.json`, checks it with the same rules and
+  messages, zips it and stages it on a card.
 
 ## Slots and state (`/usr/data/disc-boot/`)
 

@@ -98,6 +98,18 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
 
 ## Stage 3 — packages and the two-package acceptance
 
+- [x] The package tool (`scripts/package.py`, owner 2026-10-02): `describe`
+  writes a folder's `package.json` (sizes, digests, modes from the executable
+  bit), `check` applies `disc-boot`'s rules with its messages to a folder or
+  a zip, `zip` packs a deterministic archive with the files' modes, `stage`
+  lays a package out on a card for the recovery with Play (written beside,
+  checked, swapped in; only with `--confirm-card-write`) and `result` reads
+  the recovery's answer. Evidence: `test_package` (7: the tool and
+  `disc-boot verify` give the same decision and message on 33 good and
+  damaged packages; refused zips with links, unsafe paths or too much data;
+  staging replaces a role whole and a broken package stages nothing; a
+  staged zip installed and confirmed by `disc-boot` after Play).
+
 - [ ] The server as a `service` package (in the server's repository): its
   updates, signature and authorization.
 - [ ] diskOS's UI as a `ui` package beside our server and player, on the
