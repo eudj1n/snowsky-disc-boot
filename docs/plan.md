@@ -145,7 +145,10 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   descriptors of the boot program's (3–6, among them the boot log open for
   writing). The supervisor, the spawn and the UI watcher now close every
   descriptor above 2; the contract says so. Evidence: `test_boot` (the
-  package lists none open; without the fix 3, 4, 5 and 6).
+  package lists none open; without the fix 3, 4, 5 and 6), and the guest
+  acceptance repeated on `boot-image-368b0bf` (disc-boot 373,312 bytes
+  `28538fd4…`, review image `d098d530…`): all ten steps passed; the
+  server's gateway there has 5 descriptors idle (9 before).
 
 ## Stage 3 — packages and the two-package acceptance
 
