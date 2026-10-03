@@ -79,19 +79,23 @@ class Screen:
             self.line(('  ' + chunk, fg))
 
     def row(self, title, detail='', on=False, mark=None):
-        """A list row: on, it sits in the selection's pill with an accent dot (the menu's look)."""
-        dot = '● ' if on else '  '
-        box = '' if mark is None else ('◉ ' if mark else '○ ')
+        """A list row: on, it sits in the selection's pill (the menu's look). In a list of one
+        choice the pill has the accent dot; in a list of marks the pill alone is the cursor and
+        the dot's place shows the mark: filled when marked, a ring when not."""
+        if mark is None:
+            dot, dot_fg = ('● ' if on else '  '), ACCENT
+        else:
+            dot, dot_fg = ('● ' if mark else '○ '), (ACCENT if mark else MUTED)
         inner = self.width - 6
-        left = f'{dot}{box}{title}'
+        left = f'{dot}{title}'
         pad = max(1, inner - len(left) - len(detail))
         if self.look == 'plain':
             left = f'  {">" if on else " "} {"[x] " if mark else "[ ] " if mark is not None else ""}{title}'
             self.line((left + ' ' * max(1, self.width - len(left) - len(detail)) + detail, INK))
             return
         bg = SELECTED if on else GROUND
-        self.line(('  ', INK), (' ', INK, bg), (dot, ACCENT, bg), (box, ACCENT if mark else MUTED, bg),
-                  (title, INK if on else MUTED, bg), (' ' * pad, INK, bg), (detail, MUTED, bg), (' ', INK, bg))
+        self.line(('  ', INK), (' ', INK, bg), (dot, dot_fg, bg), (title, INK if on else MUTED, bg), (' ' * pad, INK, bg),
+                  (detail, MUTED, bg), (' ', INK, bg))
 
     def progress(self, label, fraction):
         bar = max(10, self.width - 18)

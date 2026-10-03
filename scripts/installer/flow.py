@@ -67,7 +67,7 @@ class Installer:
         s.clear()
         s.blank()
         mode = '  ·  dry run' if self.args.dry_run else '  ·  guest' if self.args.guest else ''
-        s.line(('  ● ', tui.ACCENT), ('S N O W S K Y   D I S C', tui.MUTED), ('   install' + mode, tui.MUTED))
+        s.line(('  ● ', tui.ACCENT), ('S N O W S K Y   D I S C', tui.MUTED), ('    BOOT' + mode, tui.MUTED))
         s.blank()
         s.steps(STEPS, self.step)
         s.blank()
@@ -240,9 +240,10 @@ class Installer:
         unknown = wanted - {e['name'] for e in entries}
         if unknown:
             raise Stop(f'not in the catalog: {", ".join(sorted(unknown))}')
-        # By role, as the boot layer takes them: one service and one menu at most, any number of UIs.
+        # By role, as the boot layer takes them, in the order the player meets them: the menu, the
+        # UIs it offers, the service behind them; one menu and one service at most, any number of UIs.
         groups = []
-        for role, label, single in (('service', 'Service', True), ('menu', 'Boot menu', True), ('ui', 'UIs', False)):
+        for role, label, single in (('menu', 'Boot menu', True), ('ui', 'UIs', False), ('service', 'Service', True)):
             members = [e for e in entries if e['role'] == role]
             if not members:
                 continue
