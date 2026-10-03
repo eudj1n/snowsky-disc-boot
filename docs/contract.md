@@ -509,7 +509,8 @@ confirmed one without touching the server. What diskOS would change to fit
   #52). With `argv[0]` kept (`d7c0d5b`) the UI starts but cannot set up the
   screen: the emulator answers framebuffer and input `ioctl`s through a
   preload shim that a static program, as a package is, never loads, so it
-  exits, and boot falls back to stock's UI after three starts.
+  exits, and boot falls back to stock's UI after three starts
+  (snowsky-disc-qemu #54).
 
 ## Open before implementation
 

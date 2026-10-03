@@ -233,7 +233,8 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   screen: the emulator serves the framebuffer and input `ioctl`s through a
   preload shim, which a static program never loads (`FBIOGET_VSCREENINFO`
   answers `ENOTTY`), so it gives up and exits, and boot falls back to
-  stock's UI after three starts (`work/emulator-d7c0d5b/`, ignored).
+  stock's UI after three starts (snowsky-disc-qemu #54;
+  `work/emulator-d7c0d5b/`, ignored).
 
 ## Stage 4 — the image and the installation (separately authorized)
 
