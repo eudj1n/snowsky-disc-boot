@@ -67,7 +67,7 @@ class Installer:
         s.clear()
         s.blank()
         mode = '  ·  dry run' if self.args.dry_run else '  ·  guest' if self.args.guest else ''
-        s.line(('  ● ', tui.ACCENT), ('S N O W S K Y   D I S C', tui.MUTED), ('    BOOT' + mode, tui.MUTED))
+        s.line(('  ● ', tui.ACCENT), ('S N O W S K Y   D I S C   B O O T', tui.MUTED), (mode, tui.MUTED))
         s.blank()
         s.steps(STEPS, self.step)
         s.blank()
