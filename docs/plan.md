@@ -392,10 +392,17 @@ boot menu").
       the progress, the faults and the report against a NAND file in the
       reviewed chip's and writer's geometry, a whole-NAND backup first;
       `--restore` back to stock (8 installer tests in all).
-    - [ ] The player's own backend over the reviewed tools (identity,
-      write plan and admission, independent readback, audits). The reviewed
-      readers collect the primary rootfs only: a whole-NAND backup needs the
-      reader payload (`device/acquisition/`) to read every block.
+    - [x] The player's own backend over the reviewed tools (2026-10-03,
+      `scripts/installer/usbboot.py`, `tests/conformance/test_usbboot.py`
+      with the tools replaced by a stand-in; not yet run on a player): the
+      package offline, the backup session compared with the history's
+      image, the admission opened for one writer call and closed in every
+      case, the readback by the approved exact plan, the audits, the next
+      `history.json`, the owner's first-boot answer recorded. To review
+      before its first physical use: the backup's metadata page (the boot
+      capture's), the diskOS checkout at `646212d`. The reviewed readers
+      collect the primary rootfs only: a whole-NAND backup needs the reader
+      payload (`device/acquisition/`) to read every block.
     - [ ] `--guest`: the emulator's guest as the player.
   - [ ] The first boot with Play and `.disc/boot/result.json` read back.
 - [x] `console.py`, the player's USB console from this computer (owner,
@@ -406,7 +413,8 @@ boot menu").
   session took by hand (keys, watchdog, input devices, memory), never the
   serial number, the MAC or tokens.
 - [ ] The owner's player: the image, then the two packages (separately
-  authorized), after stage 3b.
+  authorized), after stage 3b. The server as its debug package (owner,
+  2026-10-03).
 - [ ] Open facts for the device: what "Reset all" removes in `/usr/data`;
   its free space; memory and priority limits. The keys' pins and level are
   settled offline (2026-10-03, [kernel review](nand-kernel-review.md#keys))

@@ -40,6 +40,9 @@ def main():
     parser.add_argument('--simulate-small', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--fault', action='append', help='A simulated fault: no-device, bad-blocks=N,M, write-stops=N, readback-flip=N')
     parser.add_argument('--restore', action='store_true', help="Back to stock: the restore image, the same path to the player")
+    parser.add_argument('--history', help="This player's installation history (history.json of its last installation)")
+    parser.add_argument('--diskos', help="diskOS's checkout at the writer's pinned revision (the reviewed tools check it)")
+    parser.add_argument('--libusb', help='The libusb library the reviewed tools load')
     args = parser.parse_args()
     screen = tui.Screen(look='plain') if args.plain else None
     return flow.Installer(args, screen).run()

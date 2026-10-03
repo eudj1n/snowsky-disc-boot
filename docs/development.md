@@ -114,8 +114,21 @@ It identifies the chip, backs up the whole NAND into the run folder, writes afte
 `WRITE`, reads back and compares every byte; `--restore` writes the stock restore image built
 beside the image the same way (`RESTORE`). `--fault no-device`, `bad-blocks=N,M`,
 `write-stops=N` and `readback-flip=N` show how each failure stops the run with the backup's place
-and nothing retried. Without `--simulate` the step says that the write into a player is the next
-part (the reviewed tools in `scripts/deployment/`). `tests/conformance/test_installer.py` runs both
+and nothing retried. With `--history` (this player's `history.json`: its boot and stock captures, and the last
+installation's review, image, write and readback, or the stage capture of a first one),
+`--diskos` (the checkout at the writer's pinned revision, which the tools check) and
+`--libusb`, the step runs the reviewed tools in `scripts/installer/usbboot.py`, the order of
+[build and flash](build-and-flash.md) steps 3 to 5: the package offline, then after `BACKUP` a
+session that collects the primary rootfs and compares it with the history's image, after
+`WRITE` the profile's admission (only it and the review pin may change), both plans computed
+again and compared, one writer call and the admission closed in every case, then after `READ`
+a fresh collection compared every byte with the image by its approved exact plan, and both USB
+journals audited. An unknown writer outcome stops everything. The run writes the next
+`history.json`. Before its first use on a player two points want a review: the backup session
+is collected with the boot capture's metadata page, as the write plan is, while the procedure's
+readback uses the write session's; and the diskOS checkout must be at the writer's pinned
+revision (`646212d`; a checkout moved elsewhere fails the tools' pin checks).
+Without either, the step says how the player is written instead. `tests/conformance/test_installer.py` runs both
 on a card folder and a 64-block simulated player.
 
 ## The player's console

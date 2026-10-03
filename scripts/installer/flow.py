@@ -15,6 +15,7 @@ from firmware_profile import load_profile
 from installer import card as cards
 from installer import device as devices
 from installer import tui
+from installer import usbboot
 
 ROOT = Path(__file__).resolve().parents[2]
 STEPS = ['Check this computer', 'Firmware and image', 'Packages', 'The card', 'The player (USB Boot)', 'First boot']
@@ -24,9 +25,16 @@ class Stop(Exception):
     pass
 
 
+def load_json_safe(path):
+    try:
+        return json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return {}
+
+
 class Installer:
-    def __init__(self, args, screen=None):
-        self.args, self.screen = args, screen or tui.Screen()
+    def __init__(self, args, screen=None, runner=subprocess.run):
+        self.args, self.screen, self.runner = args, screen or tui.Screen(), runner
         self.interactive = not args.yes and screen is None and sys.stdin.isatty() and self.screen.look != 'plain'
         self.work = Path(args.work or ROOT/'work'/time.strftime('install-%Y%m%d-%H%M%S'))
         self.report = dict(started=time.strftime('%Y-%m-%dT%H:%M:%S'), dryRun=args.dry_run, steps=[])
@@ -279,8 +287,43 @@ class Installer:
                 self.frame(lambda: self.screen.label(title), lambda: self.screen.progress(label, fraction))
         return show
 
+    def player_reviewed(self, image, restore):
+        """The player through the reviewed tools (installer/usbboot.py): each session after its word."""
+        title = 'The player (USB Boot)'
+        if not (self.args.diskos and self.args.libusb):
+            raise Stop('the player is written through the reviewed tools: give --diskos (its pinned checkout) and --libusb')
+        target = 'restore' if restore else 'candidate'
+        try:
+            reviewed = usbboot.Reviewed(load_profile()['version'], self.work/'usb', Path(image).parent, self.args.diskos, self.args.libusb,
+                                        usbboot.History.load(self.args.history), run=self.runner)
+            self.say(title, ['Preparing the installation package (offline: payloads, the review, the plans).'])
+            prepared = reviewed.prepare()
+            self.confirm(title, [f'The package is ready: write plan {prepared["write"][:12]}…, readback plan {prepared["read"][:12]}….',
+                                 'Power the player off, hold Volume Down and connect the cable to this computer.',
+                                 'Next: read what is installed now, the backup, in a session of its own.'], 'BACKUP')
+            backup = reviewed.backup()
+            what = 'stock\'s rootfs' if restore else 'the image with the boot layer'
+            self.confirm(title, [f'The backup is {backup["capture"]}' + (f', the same as {backup["matches"]}.' if backup['matches'] else '.'),
+                                 'Enter USB Boot again (Volume Down and the cable).',
+                                 f'Next: write {what} once. Its outcome is never retried.'], 'RESTORE' if restore else 'WRITE')
+            written = reviewed.write(target)
+            self.confirm(title, ['Written. Leaving USB Boot starts the new system once; then enter USB Boot again.',
+                                 'Next: read it back in a fresh session and compare every byte.'], 'READ')
+            read = reviewed.readback(target)
+            audits = reviewed.audit()
+        except usbboot.ReviewedError as error:
+            raise Stop(f'{error}. The run\'s evidence is in {self.work/"usb"}; nothing was retried.')
+        history = reviewed.next_history(image)
+        self.say(title, ['Written, read back and every byte compared; both USB journals audited.', f'This installation\'s history: {history}'])
+        self.read_capture = Path(read['capture'])
+        self.sessions = (written['session'], load_json_safe(Path(read['capture'])/'result.json').get('session_id'))
+        self.done('player', image=str(image), written=True, simulated=False, target=target, backup=backup, write=written, read=read,
+                  audits=audits, history=str(history))
+
     def player(self, image, restore=False):
         title = 'The player (USB Boot)'
+        if self.args.history and not self.args.simulate:
+            return self.player_reviewed(image, restore)
         if not self.args.simulate:
             self.say(title, [
                 f'The image is ready: {Path(image).name}.',
@@ -314,7 +357,16 @@ class Installer:
     def first_boot(self):
         self.say('First boot', ['Power the player on holding Play: the boot layer installs the packages from the card and '
                                 'writes .disc/boot/result.json; the player page then answers on the network.'])
-        self.done('first boot')
+        answer = None
+        if getattr(self, 'read_capture', None) is not None and self.interactive:
+            self.say('First boot', ['Did the player start normally? Describe what you saw (empty: not checked yet).'])
+            answer = input('  > ').strip() or None
+            if answer:
+                record = dict(observation='owner-confirmed-normal-first-boot', reported_at=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                              owner_answer=answer, reported_via='install.py', write_session_id=self.sessions[0],
+                              readback_session_id=self.sessions[1], automated_boot_test=False, native_process_verified=False)
+                (self.read_capture/'owner-boot-confirmation.json').write_text(json.dumps(record, indent=2, ensure_ascii=False) + '\n')
+        self.done('first boot', ownerAnswer=answer)
 
     def run(self):
         self.work.mkdir(parents=True, exist_ok=True)
