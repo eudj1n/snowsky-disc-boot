@@ -483,9 +483,9 @@ menu's `stock` entry is stock's UI with the `service` package running.
   default; a menu that hangs, fails or answers a name not installed; a
   chosen UI that fails; Volume Up and Play unchanged; the boot-loop guard.
   `boot_guest.py` and `two_packages.py` again on the new layout.
-- `disc-menu` with its screen needs the emulator to serve static programs'
-  screen and input (snowsky-disc-qemu #54); it proves the API before the
-  image fixes it.
+- `disc-menu` with its screen on the guest (emulator `690a55c`, which serves
+  static programs' screen and input since snowsky-disc-qemu #54/#55):
+  accepted 2026-10-03 with the keys, the countdown and a touch (plan, stage 3b).
 
 ## The card guard
 

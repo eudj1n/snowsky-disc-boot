@@ -293,10 +293,18 @@ boot menu").
   without the menu; Volume Up gave stock mode without it. `two_packages.py`
   passed its six steps on the new layout (diskOS under `ui/diskos/`).
   Evidence in `work/boot-image-be681e3/` (ignored).
-- [ ] `disc-menu`, the boot menu built in this repository (owner,
+- [x] `disc-menu`, the boot menu built in this repository (owner,
   2026-10-03): a static program as the `menu` package, released with the
-  boot layer, staged by the installer by default and never part of the
-  image. On the guest (the emulator serves static programs' screen since
+  boot layer, staged by the installer by default (stage 4) and never part
+  of the image. Accepted on the guest (2026-10-03, image `b43034b`,
+  emulator `690a55c`, package `2026.10.03-b43034b`,
+  `tests/integration/menu_guest.py`): after Play its screen showed the
+  package with a `title` by it, the other by its name and "FiiO 2.57",
+  the ring counting down; Volume − moved the pill and stopped the count,
+  Play started the second UI (the pair restarted for its player launcher,
+  stock's player having run); at a plain power-on the countdown started
+  the default while the player waited, without a restart; a touch on the
+  second row chose it. Frames in `work/menu-b43034b/` (ignored). On the guest (the emulator serves static programs' screen since
   `690a55c`), proving the API before the image fixes it. Built on the host
   2026-10-03 (`device/menu/`): the list as chosen, drawn in integer
   arithmetic on a canvas (the ring's geometry once), into the hidden page and
