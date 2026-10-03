@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
 import struct
 import sys
 import zlib
@@ -16,6 +17,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from firmware_profile import PROFILES, fingerprint, load_profile, load_writer, require, sha
 from deployment.chip_review import load_chip
 from deployment.review import regular
+
+# disc-boot's key read at power-on (device/src/boot.c, read_keys): port B's PxPIN, active low.
+BOOT_KEY_PORT = 0x10010100
+BOOT_KEYS = {'vol-up-key': 13, 'play-key': 15}
+KEY_NAMES = {'vol-up-key': 'volume_up', 'vol-down-key': 'volume_down', 'play-key': 'play'}
 
 
 def load_kernel_profile(firmware, writer, directory=PROFILES):
@@ -112,6 +118,38 @@ def dtb_properties(blob):
     raise ValueError('Missing FDT end token')
 
 
+def key_pins(props):
+    """Resolve the stock key node's GPIOs to port registers; refuse a move of disc-boot's keys."""
+    def word(value):
+        require(value is not None and len(value) == 4, 'Unreviewed key GPIO controller')
+        return struct.unpack('>I', value)[0]
+    nodes = [n for (n, k), v in props.items() if k == 'compatible' and v == b'x2000-key\0']
+    require(len(nodes) == 1 and props.get((nodes[0], 'status')) == b'okay\0',
+            'Expected one enabled x2000-key node; repeat the key audit')
+    handles = [(v, n) for (n, k), v in props.items() if k == 'phandle']
+    ports = dict(handles)
+    require(len(ports) == len(handles), 'Duplicate FDT phandle')
+    keys = {}
+    for prop, name in KEY_NAMES.items():
+        cells = props.get((nodes[0], prop))
+        require(cells is not None and len(cells) == 16, f'Unreviewed {prop} specifier')
+        port = ports.get(cells[:4], '')
+        parent, _, leaf = port.rpartition('/')
+        require(re.fullmatch('gp[a-z]', leaf) is not None and props.get((port, 'gpio-controller')) == b'' and
+                word(props.get((port, '#gpio-cells'))) == 3, f'{prop} is not on a reviewed GPIO port')
+        require(props.get((parent, 'compatible'), b'').startswith(b'ingenic,') and
+                len(props.get((parent, 'reg'), b'')) >= 4, f'{prop} is not on a reviewed GPIO port')
+        bit = struct.unpack_from('>I', cells, 4)[0]
+        require(bit < min(32, word(props.get((port, 'ingenic,num-gpios')))), f'{prop} pin outside its port')
+        address = (struct.unpack_from('>I', props[(parent, 'reg')])[0] +
+                   (ord(leaf[2])-ord('a'))*word(props.get((parent, 'ingenic,regs-offset'))))
+        keys[name] = dict(port=f'{address:#010x}', bit=bit)
+    for prop, bit in BOOT_KEYS.items():
+        require(keys[KEY_NAMES[prop]] == dict(port=f'{BOOT_KEY_PORT:#010x}', bit=bit),
+                f'Kernel {prop} is not the pin disc-boot reads; review read_keys')
+    return keys
+
+
 def inspect_kernel(kernel, profile, chip):
     def at(address, size):
         offset = address-profile['kernel_base']
@@ -134,7 +172,7 @@ def inspect_kernel(kernel, profile, chip):
             'Unreviewed SFC partition source; repeat driver audit')
     return dict(kernel_chip_name=name, geometry=list(geometry), partition_source='nand-metadata',
                 metadata_offset=profile['metadata']['offset'],
-                metadata_page=profile['metadata']['offset']//chip['page_bytes'])
+                metadata_page=profile['metadata']['offset']//chip['page_bytes'], keys=key_pins(props))
 
 
 def review_partitions(page, profile, chip, writer):

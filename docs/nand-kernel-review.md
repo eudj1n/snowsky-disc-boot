@@ -40,6 +40,8 @@ partition-source properties. It never executes kernel code.
 Actual-input checks passed. The ignored report is `work/nand-re/kernel-review.json`;
 kernel profile fingerprint:
 `121a5a4fcdb9b1e7b5200992b7922f1a86f1dd45f5fa006d5306f3f1e14932d0`.
+Rerun 2026-10-03 with the key check: passed, `keys` Volume Up, Volume Down
+and Play on port `0x10010100`, bits 13, 14 and 15.
 
 ## RE method and addresses
 
@@ -124,6 +126,45 @@ The kernel copies size/offset/mask flags into MTD partition structures.
 layout would fit in 392 bytes, but is **only a synthetic fixture** here. It does
 not establish the physical table or currently selected boot rootfs.
 
+## Keys
+
+Reviewed 2026-10-03 for `disc-boot`'s key read at power-on (the
+[contract](contract.md), "Facts this rests on"), from the same pinned kernel
+and embedded DTB; no device was involved.
+
+The enabled node `/x2000_key` (`compatible = "x2000-key"`) names its GPIOs
+by property, each `<&port pin 0 flags>`:
+
+| Property | Pin | Driver label |
+| --- | --- | --- |
+| `power-up-key` | GPE31 | `power_up_key` |
+| `vol-up-key` | GPB13 | `vol_up_key` |
+| `vol-down-key` | GPB14 | `vol_down_key` |
+| `play-key` | GPB15 | `play_key` |
+| `chg-int` / `tf-int` / `po-det` | GPB0 / GPB6 / GPB20 | (not keys) |
+
+The ports are children of `/apb/pinctrl@0x10010000` (`reg` `0x10010000`,
+`ingenic,regs-offset` `0x100`), so port B's registers start at
+`0x10010100`, where `disc-boot` reads `PxPIN`.
+
+| Function | Address | Purpose |
+| --- | --- | --- |
+| `key_probe` | `0x804a5864` | Reads the four key properties with `of_get_named_gpio_flags`, requests them in the order power, Volume Up, Volume Down, Play, one IRQ each |
+| `key_work_handler` | `0x804a528c` | Finds the key by its IRQ, reads `gpiod_get_raw_value`; 0 starts a press, nonzero ends it with a release event |
+
+The driver reads the raw level and ignores the specifier's flags: a raw 0
+is a pressed key for all four, the active-low read `disc-boot` makes. The
+review's `keys` report gives each key's port and bit; it refuses a kernel
+whose tree moves Volume Up or Play away from the pins `disc-boot` reads
+(port `0x10010100`, bits 13 and 15), which a new firmware's kernel profile
+then has to answer before an image is built for it. Volume Down is reported,
+not required (the boot layer never reads it).
+
+The level a held key gives on the player is still a device read (plan,
+stage 4); this review settles which pins and which level the stock kernel
+itself uses. Port B also carries the charger, card and power-detect pins,
+so the word as a whole changes with the unit's state.
+
 ## Saved-page parser and next step
 
 The checker optionally accepts one saved **main-data-only** page:
@@ -154,6 +195,10 @@ fixtures cover uImage CRC/decompression bounds, malformed FDT, geometry/source
 changes, future firmware selection, invalid partition records, overlaps, writer
 reserve overruns and unsupported target modes. No proprietary inputs, sibling
 checkout, network, USB library or player are required.
+
+The key check added two (2026-10-03): the pins `disc-boot` reads from a
+synthetic key node, moved, broken, disabled, duplicated and missing nodes,
+and the review's constants against `read_keys` in `device/src/boot.c`.
 
 The full host suite passed: 157 Python tests, eight JavaScript tests and native
 C assertions (`work/nand-re/conformance.log`). Existing GitHub Actions discovery

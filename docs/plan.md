@@ -164,8 +164,14 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   staging replaces a role whole and a broken package stages nothing; a
   staged zip installed and confirmed by `disc-boot` after Play).
 
-- [ ] The server as a `service` package (in the server's repository): its
-  updates, signature and authorization.
+- [x] The server as a `service` package (in the server's repository,
+  2026-10-02/03): signed `.update` streams (Ed25519, the owner's release
+  key in every package) uploaded through its manager under the serial
+  number, a request ID and the control owner, checked and staged into the
+  inactive slot, then `activate`/`rollback` as boot's request; installed
+  with Play and run on a stock-init guest with an update confirmed and
+  rolled back (snowsky-disc-server `0734ee0`, `b070557`, `bc629db`; its
+  plan, stage 1, steps 3 and 4).
 - [ ] diskOS's UI as a `ui` package beside our server and player, on the
   guest (owner, 2026-10-02).
 
@@ -181,13 +187,16 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
 - [ ] The owner's player: the image, then the two packages (separately
   authorized).
 - [ ] Open facts for the device: what "Reset all" removes in `/usr/data`;
-  its free space; Play on GPB15; memory and priority limits. The emulator's
-  review (snowsky-disc-qemu `d7f1b9b`, handoff "How sure each of these is")
-  confirms only bit 13 = Volume Up; bit 14 = Volume Down rests on stock's
-  `pb13`/`pb14` pair, bit 15 = Play on no source, and the released word
-  `0xF6EFE127` is a V2.40 read. Recovery with Play depends on bit 15: read
-  the port on a V2.57 player with each key held before the image is
-  written.
+  its free space; Play on GPB15; memory and priority limits. The keys'
+  pins and level are settled offline (2026-10-03, [kernel
+  review](nand-kernel-review.md#keys)): the stock kernel's board tree puts
+  Volume Up, Volume Down and Play on GPB13, GPB14 and GPB15, its key driver
+  takes a raw 0 as pressed, and `kernel_review.py` now refuses a kernel that
+  moves Volume Up or Play (`test_kernel_review`: the pins disc-boot reads,
+  moved, broken and missing key nodes, and the review against `read_keys`
+  in `boot.c`). A device has read only bit 13 (diskOS). Recovery with Play
+  depends on bit 15: read the port on the owner's player with each key held
+  before the image is written, as confirmation.
 
 ## Later
 

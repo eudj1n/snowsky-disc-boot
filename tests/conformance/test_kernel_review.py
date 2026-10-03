@@ -4,6 +4,7 @@ import gzip
 import hashlib
 import json
 from pathlib import Path
+import re
 import struct
 import sys
 import tempfile
@@ -26,19 +27,46 @@ def uimage(kernel):
     return header+payload
 
 
-def fdt(properties):
+def fdt(properties, nodes=None):
+    """The `/sfc` node with `properties`, then `nodes`: {name: (properties, children)}."""
     def word(n):
         return struct.pack('>I', n)
     def padded(data):
         return data+bytes(-len(data) % 4)
-    names, tree = b'', word(1)+bytes(4)+word(1)+b'sfc\0'
-    for name, data in properties:
-        tree += word(3)+word(len(data))+word(len(names))+padded(data)
-        names += name.encode()+b'\0'
-    tree += word(2)+word(2)+word(9)
+    names = b''
+    def node(name, props, children):
+        nonlocal names
+        out = word(1)+padded(name.encode()+b'\0')
+        for key, data in props:
+            out += word(3)+word(len(data))+word(len(names))+padded(data)
+            names += key.encode()+b'\0'
+        for child, (child_props, grandchildren) in children.items():
+            out += node(child, child_props, grandchildren)
+        return out+word(2)
+    tree = node('', [], {'sfc': (properties, {}), **(nodes or {})})+word(9)
     strings = 56+len(tree)
     return struct.pack('>10I', 0xd00dfeed, strings+len(names), 56, strings, 40,
                        17, 16, 0, len(names), len(tree))+bytes(16)+tree+names
+
+
+def gpio(handle, pin, flags=0):
+    return struct.pack('>4I', handle, pin, 0, flags)
+
+
+def key_nodes(keys=None, offset=0x100, pinctrl='ingenic,x2000-pinctrl'):
+    """The stock key node and its GPIO ports as the reviewed kernel lays them out."""
+    def port(handle):
+        return ([('gpio-controller', b''), ('#gpio-cells', struct.pack('>I', 3)),
+                 ('ingenic,num-gpios', struct.pack('>I', 32)), ('phandle', struct.pack('>I', handle))], {})
+    keys = dict({'vol-up-key': gpio(9, 13), 'vol-down-key': gpio(9, 14), 'play-key': gpio(9, 15)},
+                **(keys or {}))
+    return {'apb': ([], {'pinctrl@0x10010000': (
+                [('compatible', pinctrl.encode()+b'\0'), ('reg', struct.pack('>2I', 0x10010000, 0x1000)),
+                 ('ingenic,regs-offset', struct.pack('>I', offset))],
+                {'gpa': port(8), 'gpb': port(9), 'gpe': port(10)})}),
+            'x2000_key': ([('status', b'okay\0'), ('compatible', b'x2000-key\0'),
+                           *((k, v) for k, v in keys.items() if v is not None),
+                           ('tf-int', gpio(9, 6, 2))], {})}
 
 
 class KernelReviewTests(unittest.TestCase):
@@ -169,7 +197,7 @@ class KernelReviewTests(unittest.TestCase):
     def test_kernel_chip_table_and_partition_source(self):
         properties = [('status', b'okay\0'), ('ingenic,use_ofpart_info', b'\0'),
                       ('ingenic,spiflash_param_offset', bytes(4))]
-        tree = fdt(properties)
+        tree = fdt(properties, key_nodes())
         kernel = bytearray(256)+tree
         base = 0x80010000
         struct.pack_into('<3I', kernel, 0, 0x12, base+32, base+64)
@@ -177,16 +205,55 @@ class KernelReviewTests(unittest.TestCase):
         struct.pack_into('<4I', kernel, 64, 2048, 131072, 128, 268435456)
         profile = dict(self.profile, kernel_base=base, chip_entry_address=base,
                        dtb_address=base+256, dtb_bytes=len(tree), sfc_node='/sfc')
-        self.assertEqual(review.inspect_kernel(bytes(kernel), profile, self.chip)['metadata_page'], 11)
+        report = review.inspect_kernel(bytes(kernel), profile, self.chip)
+        self.assertEqual(report['metadata_page'], 11)
+        self.assertEqual(report['keys']['play'], {'port': '0x10010100', 'bit': 15})
         for offset, value in ((0, 0xe2), (8, base+len(kernel)+4), (64, 4096)):
             altered = bytearray(kernel)
             struct.pack_into('<I', altered, offset, value)
             with self.subTest(offset=offset), self.assertRaises(ValueError):
                 review.inspect_kernel(bytes(altered), profile, self.chip)
         tree = fdt([('status', b'okay\0'), ('ingenic,use_ofpart_info', b'\1'),
-                    ('ingenic,spiflash_param_offset', bytes(4))])
+                    ('ingenic,spiflash_param_offset', bytes(4))], key_nodes())
         with self.assertRaisesRegex(ValueError, 'partition source'):
             review.inspect_kernel(bytes(kernel[:256])+tree, profile, self.chip)
+
+
+    def test_key_pins_are_the_ones_disc_boot_reads(self):
+        def pins(nodes):
+            return review.key_pins(review.dtb_properties(fdt([], nodes)))
+        self.assertEqual(pins(key_nodes()), {
+            'volume_up': {'port': '0x10010100', 'bit': 13},
+            'volume_down': {'port': '0x10010100', 'bit': 14},
+            'play': {'port': '0x10010100', 'bit': 15}})
+        # Volume Down is reported, not read by disc-boot: it may move.
+        self.assertEqual(pins(key_nodes({'vol-down-key': gpio(10, 3)}))['volume_down'],
+                         {'port': '0x10010400', 'bit': 3})
+        moved = [key_nodes({'play-key': gpio(9, 14)}), key_nodes({'play-key': gpio(10, 15)}),
+                 key_nodes({'vol-up-key': gpio(8, 13)}), key_nodes(offset=0x200)]
+        for nodes in moved:
+            with self.subTest(nodes=nodes), self.assertRaisesRegex(ValueError, 'disc-boot reads'):
+                pins(nodes)
+        broken = [key_nodes({'play-key': None}), key_nodes({'play-key': gpio(9, 15)[:12]}),
+                  key_nodes({'play-key': gpio(7, 15)}), key_nodes({'play-key': gpio(9, 32)}),
+                  key_nodes(pinctrl='vendor,pinctrl'), {}]
+        disabled = key_nodes()
+        disabled['x2000_key'][0][0] = ('status', b'disabled\0')
+        twice = dict(key_nodes(), second_key=key_nodes()['x2000_key'])
+        for nodes in broken+[disabled, twice]:
+            with self.subTest(nodes=nodes), self.assertRaises(ValueError):
+                pins(nodes)
+
+    def test_review_mirrors_disc_boot_key_read(self):
+        source = (Path(__file__).resolve().parents[2]/'device/src/boot.c').read_text()
+        body = source[source.index('static int read_keys('):]
+        body = body[:body.index('\n}\n')]
+        base = int(re.search(r'MAP_SHARED, fd, (0x[0-9a-f]+)\)', body)[1], 16)
+        offset = int(re.search(r'\(char \*\)map \+ (0x[0-9a-f]+)\)', body)[1], 16)
+        self.assertEqual(base+offset, review.BOOT_KEY_PORT)
+        for name, prop in (('volume_up', 'vol-up-key'), ('play', 'play-key')):
+            bit = int(re.search(rf'\*{name} = !\(\(gpb >> (\d+)\) & 1u\)', body)[1])
+            self.assertEqual(bit, review.BOOT_KEYS[prop], name)
 
 
 if __name__ == '__main__':

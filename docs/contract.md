@@ -76,10 +76,16 @@ only through USB Boot; everything above it becomes files.
   sees no edge before the input core). The pin level is readable through
   `/dev/mem`: X2000 GPIO port B at `0x10010100`, register `PxPIN`, active
   low; bit 13 Volume Up, 14 Volume Down, 15 Play. Volume Down with USB at
-  power-on is the chip's mask ROM (never a boot-layer gesture). Only bit 13
-  has a source (diskOS, stock's `pb13`); bit 14 rests on stock's
-  `pb13`/`pb14` pair, bit 15 = Play on none, and the released word
-  `0xF6EFE127` is a V2.40 read: to be read on a V2.57 player (plan, stage 4).
+  power-on is the chip's mask ROM (never a boot-layer gesture). The source
+  is the stock V2.57 kernel (reviewed offline 2026-10-03, [kernel
+  review](nand-kernel-review.md#keys)): its board tree's `x2000_key` node
+  puts Volume Up, Volume Down and Play on GPB13, GPB14 and GPB15, and its
+  key driver takes a raw level of 0 as pressed; `kernel_review.py` refuses a
+  kernel whose tree moves Volume Up or Play. diskOS read bit 13 on a device;
+  the read on the owner's player with each key held confirms the others
+  (plan, stage 4). Port B also carries the charger, card and power-detect
+  pins (GPB0, GPB6, GPB20), so its whole word varies (`0xF6EFE127` is a
+  V2.40 read); boot reads bits 13 and 15 only.
 - The emulator (snowsky-disc-qemu `d7f1b9b`) runs stock's `rcS`,
   `fiio_init.sh` and its watch loop, models the port B word in `/dev/mem`
   with keys held from power-on, and power events (reboot and off through
@@ -424,8 +430,9 @@ here or a small, upstreamable change on its side.
 - What "Reset all" removes in `/usr/data` on the device (the emulator does
   not complete it; contract-neutral, see the facts).
 - Free space of `/usr/data` on the owner's player (a diagnostics field).
-- Play on GPB15 on this unit (the device, or the emulator once it models the
-  pins).
+- Play on GPB15 read on this unit: the stock kernel settles the pin and its
+  level (facts above); the device read confirms it before the image is
+  written.
 - Memory and priority limits that keep stock's audio smooth (the device).
 - The emulator runs stock's `rcS` and `fiio_init.sh`, so boot's hooks and the
   `mq_ui` launcher can be accepted on the guest (the emulator session).
