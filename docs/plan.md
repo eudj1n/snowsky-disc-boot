@@ -233,16 +233,20 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
 - [ ] The owner's player: the image, then the two packages (separately
   authorized).
 - [ ] Open facts for the device: what "Reset all" removes in `/usr/data`;
-  its free space; Play on GPB15; memory and priority limits. The keys'
-  pins and level are settled offline (2026-10-03, [kernel
-  review](nand-kernel-review.md#keys)): the stock kernel's board tree puts
-  Volume Up, Volume Down and Play on GPB13, GPB14 and GPB15, its key driver
-  takes a raw 0 as pressed, and `kernel_review.py` now refuses a kernel that
-  moves Volume Up or Play (`test_kernel_review`: the pins disc-boot reads,
-  moved, broken and missing key nodes, and the review against `read_keys`
-  in `boot.c`). A device has read only bit 13 (diskOS). Recovery with Play
-  depends on bit 15: read the port on the owner's player with each key held
-  before the image is written, as confirmation.
+  its free space; memory and priority limits. The keys' pins and level are
+  settled offline (2026-10-03, [kernel review](nand-kernel-review.md#keys))
+  and **confirmed on the owner's V2.57 player** (2026-10-03, read-only over
+  the engineering USB console, busybox `devmem` of port B `PxPIN` at
+  `0x10010100`; no NAND access; `work/device-read/key-read.json`): resting
+  word `0xF6EFF327` (a V2.57 read; `0xF6EFE127` was the V2.40 one), and with
+  each key held in turn 20 of 20 samples read Volume Up `0xF6EFD327`
+  (bit 13), Volume Down `0xF6EFB327` (bit 14) and Play `0xF6EF7327`
+  (bit 15) — active low, each key clearing only its own bit, matching the
+  kernel review and `read_keys`. The same session confirmed `/dev/mem` is
+  present, `/usr/data` has 58 MiB free of 67.6 (ubifs) and the NAND layout
+  matches the reviewed one. Recovery with Play (bit 15) is therefore
+  qualified on this unit. Still open (not blocking the write): what "Reset
+  all" removes in `/usr/data`; memory and priority limits.
 
 ## Later
 

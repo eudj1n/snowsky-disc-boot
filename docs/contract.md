@@ -81,11 +81,13 @@ only through USB Boot; everything above it becomes files.
   review](nand-kernel-review.md#keys)): its board tree's `x2000_key` node
   puts Volume Up, Volume Down and Play on GPB13, GPB14 and GPB15, and its
   key driver takes a raw level of 0 as pressed; `kernel_review.py` refuses a
-  kernel whose tree moves Volume Up or Play. diskOS read bit 13 on a device;
-  the read on the owner's player with each key held confirms the others
-  (plan, stage 4). Port B also carries the charger, card and power-detect
-  pins (GPB0, GPB6, GPB20), so its whole word varies (`0xF6EFE127` is a
-  V2.40 read); boot reads bits 13 and 15 only.
+  kernel whose tree moves Volume Up or Play. Confirmed on the owner's V2.57
+  player (2026-10-03, read-only over the engineering USB console; plan,
+  stage 4): resting word `0xF6EFF327`, and with each key held 20 of 20 reads
+  gave Volume Up `0xF6EFD327` (bit 13), Volume Down `0xF6EFB327` (bit 14)
+  and Play `0xF6EF7327` (bit 15), active low. Port B also carries the
+  charger, card and power-detect pins (GPB0, GPB6, GPB20), so its whole word
+  varies (`0xF6EFE127` was the V2.40 read); boot reads bits 13 and 15 only.
 - Stock's player can delete the mounted card (read in the V2.57 `mq_player`
   and run on the guest, 2026-10-03; diskOS 1.1.3 found the same on V2.09,
   V2.28 and V2.40). Its mount routine (`util/src/mount_storage_dev.c`,
