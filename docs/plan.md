@@ -247,10 +247,19 @@ boot menu").
   restarts the pair; the choice by the menu, `next` or the default, with
   stock's UI as the fallback; `ui-default`, `ui-next` and `ui-remove`
   requests; Volume Up and Play unchanged.
-- [ ] Device facts, read-only over the console: which process holds
-  `/dev/jz_watchdog`; whether stock's player tolerates another process
-  taking `event0` (`EVIOCGRAB`) for a while and gets its keys back after;
-  whether the backlight is on while the menu runs (stock's player sets it).
+- [x] Device facts on the owner's player (2026-10-03, over the console,
+  read-only but for a test program run from `/tmp` and removed;
+  `work/device-read/menu-facts.json`; contract, "Facts this rests on"):
+  stock's `mq_player` owns the watchdog (`cmd_watchdog start 10000`, fed by
+  its thread), so the pair's restart after a choice is stock's own;
+  `fiio_init.sh` checks every 5 s and restarts both with Wi-Fi and
+  Bluetooth, the backlight off until the new player lights it; the
+  backlight is lit from power-on. A test program took `event0`
+  (`EVIOCGRAB`) for 30 s: every key reached it and the player reacted to
+  none (two rounds of Volume +, Volume −, Play, seen by the owner); after
+  the release the player changed the volume as usual (seen by the owner)
+  and its key thread kept waiting in `evdev_read`. Key codes on `event0`:
+  Volume + `0xfb`, Volume − `0xfc`, Play `0xfa`.
 - [ ] The boot program: storage per `ui` package, the choice and
   `choice.json`, the `menu` role and its turn, the requests, recovery of
   several staged packages, the status; `scripts/package.py` and
@@ -264,7 +273,8 @@ boot menu").
   before the image fixes it.
   - Input by the keys (owner, 2026-10-03): Volume + and − move, Play
     chooses. Stock's player reads the same keys as events on `event0`
-    (firmware codes: `0xfb`/`0xfc` a volume click, `0x10c` Play) and runs
+    (firmware codes, read on the player: `0xfb`/`0xfc` a volume click,
+    `0xfa` Play) and runs
     beside the menu, so the menu takes `event0` for itself (`EVIOCGRAB`)
     while it runs and neither volume nor playback changes under it. A key
     already down when it starts is ignored until released (Play at
@@ -312,7 +322,9 @@ boot menu").
   present, `/usr/data` has 58 MiB free of 67.6 (ubifs) and the NAND layout
   matches the reviewed one. Recovery with Play (bit 15) is therefore
   qualified on this unit. Still open (not blocking the write): what "Reset
-  all" removes in `/usr/data`; memory and priority limits.
+  all" removes in `/usr/data`; memory and priority limits (idle baseline
+  read 2026-10-03: 71 of 117 MiB available, no swap, `mq_ui` 16 MiB and
+  `mq_player` 9 MiB resident; not yet during playback).
 
 ## Later
 

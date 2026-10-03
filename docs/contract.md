@@ -109,6 +109,24 @@ only through USB Boot; everything above it becomes files.
   first start and its watch loop), and BusyBox 1.31.1's `sh` finds `rm`
   through `PATH` (checked on the guest), so a guard first in their `PATH`
   takes the removal (below, "The card guard").
+- Read on the owner's V2.57 player (2026-10-03, over the console;
+  `work/device-read/menu-facts.json`, ignored):
+  - Stock's `mq_player` owns the hardware watchdog: `cmd_watchdog start
+    10000` when it starts, fed by its own thread, stopped on a clean exit;
+    `mq_ui` never touches it. Once it has started, 10 s without a player
+    reset the device.
+  - `fiio_init.sh` starts `mq_ui`, then `mq_player` 2 s later. Its loop
+    checks both every 5 s; when either is gone it kills both, with the
+    Wi-Fi and Bluetooth helpers (`udhcpc`, `wpa_supplicant`, `bluetoothd`,
+    …), turns the backlight off and starts them again the same way; the new
+    player lights the screen. The backlight is lit from power-on (the boot
+    logo, also in USB Boot).
+  - The player holds `event0` and gets the keys there: Volume + `0xfb`,
+    Volume − `0xfc`, Play `0xfa`; the UI holds `event1`. A process that takes
+    `event0` (`EVIOCGRAB`) gets every key and the player none; after the
+    release the player handles them as before (a test program from `/tmp`).
+  - Idle: 71 of 117 MiB available, no swap; `mq_ui` 16 MiB resident (24 at
+    its peak), `mq_player` 9 (12).
 - The emulator (snowsky-disc-qemu `d7f1b9b`, now `bfa1988`) runs stock's `rcS`,
   `fiio_init.sh` and its watch loop, models the port B word in `/dev/mem`
   with keys held from power-on, and power events (reboot and off through
@@ -207,7 +225,9 @@ Distributed as a zip; staged and installed as a folder with `package.json`:
   of stock's player (diskOS's sets up its card protection there and tells
   its UI so). Boot runs it as `mq_player` while that package's UI runs (not
   after a fallback to stock's UI), with the package's environment; it must
-  end in `exec /usr/bin/mq_player` and never keep the player from starting.
+  end in `exec /usr/bin/mq_player` and never keep the player from starting:
+  when stock restarts the pair, the watchdog the previous player started
+  keeps running, and 10 s without a player reset the device.
   A `service` package with `player` is refused.
 - A package may carry its own shared libraries in `lib/`; boot puts that
   folder ahead of stock's `LD_LIBRARY_PATH`. Helper programs (diskOS's SSH
@@ -369,8 +389,11 @@ menu's `stock` entry is stock's UI with the `service` package running.
   package's `player` runs while the choice is pending.
 - The menu writes `$DISC_BOOT_RUN/choice` (`{"ui": "<name>"|"stock"}`)
   atomically and exits 0. Boot checks and records it; stock's watch loop
-  restarts the pair (2.5–3 s on the guest) and the launchers start the
-  chosen UI and its `player`.
+  restarts the pair as after any crash (within its 5 s check and 2 s
+  between the two, inside the watchdog's 10 s; 2.5–3 s on the guest) and
+  the launchers start the chosen UI and its `player`. Wi-Fi and Bluetooth
+  restart with the pair and the screen stays dark until the new player
+  lights it, so the menu shows what it starts before it exits.
 - It may answer at once (a remembered choice, a timeout of its own). Boot
   stops it after 60 s and takes the default; an exit without a valid answer
   counts as a menu failure, and after 2 in one boot the default runs
@@ -417,9 +440,9 @@ menu's `stock` entry is stock's UI with the `service` package running.
 
 ### Before it is built
 
-- On the device, read-only over the console: which process holds
-  `/dev/jz_watchdog`, so that the pair's restart after a choice is as safe
-  as stock's own restarts.
+- Settled on the device (2026-10-03, "Facts this rests on"): the watchdog
+  belongs to stock's player, so the pair's restart after a choice is
+  stock's own; the menu may take `event0` and give it back.
 - Accepted on the guest with probe packages (shell scripts): two `ui` probes
   and a menu probe; a choice by the menu, by `ui-next` and by the
   default; a menu that hangs, fails or answers a name not installed; a
