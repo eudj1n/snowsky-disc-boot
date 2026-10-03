@@ -39,7 +39,7 @@ PROFILE = load_profile()['version']
 ROOTFS = Path('/work/rootfs')
 SCRIPTS = '/repo/emulator/scripts'
 CARD = Path('/mnt/boot-guest-card')
-NAME, UI_NAME = 'disc-probe', 'disc-probe-ui'
+NAME, UI_NAME, TWO, MENU_NAME = 'disc-probe', 'disc-probe-ui', 'disc-probe-two', 'disc-probe-menu'
 DATA = f'/usr/data/disc-boot/data/{NAME}'
 SERVICE = r'''#!/bin/sh
 # A probe service for the boot layer's guest acceptance: it behaves as its package says.
@@ -68,7 +68,10 @@ while :; do
       while read path mode; do chmod "$mode" "$inactive/$path"; done < "$inactive/modes"
       "$DISC_BOOT_PROGRAM" verify service "$inactive" > "$data/verify-$id.json"
     fi
-    printf '{"action":"%s"}' "$action" > "$DISC_BOOT_REQUEST.new" && mv "$DISC_BOOT_REQUEST.new" "$DISC_BOOT_REQUEST"
+    case "$action" in
+      ui-*) set -- $action; printf '{"action":"%s","ui":"%s"}' "$1" "$2" > "$DISC_BOOT_REQUEST.new" ;;
+      *) printf '{"action":"%s"}' "$action" > "$DISC_BOOT_REQUEST.new" ;;
+    esac && mv "$DISC_BOOT_REQUEST.new" "$DISC_BOOT_REQUEST"
     log "request $action $id"
     exit 0
   done
@@ -86,6 +89,13 @@ PLAYER = r'''#!/bin/sh
 read version < "$DISC_BOOT_SLOT/version"
 echo "$(date +%s) $version player" >> "$DISC_BOOT_DATA/probe.log"
 exec /usr/bin/mq_player "$@"
+'''
+MENU = r'''#!/bin/sh
+# A probe menu: records its turn and what it was offered, answers the second probe UI and hands over.
+echo "$(date +%s) menu" >> "$DISC_BOOT_DATA/probe.log"
+cp "$DISC_BOOT_STATUS/ui/choices.json" "$DISC_BOOT_DATA/choices.json"
+printf '{"ui":"disc-probe-two"}' > "$DISC_BOOT_RUN/choice.new" && mv "$DISC_BOOT_RUN/choice.new" "$DISC_BOOT_RUN/choice"
+exec "$DISC_BOOT_LAUNCHER"
 '''
 evidence = {'profile': PROFILE, 'steps': []}
 
@@ -165,10 +175,10 @@ def card():
         subprocess.run(['umount', str(CARD)], check=True)
 
 
-def probe(folder, version, behavior='healthy', role='service'):
+def probe(folder, version, behavior='healthy', role='service', name=None):
     entry = 'bin/run' if role == 'service' else 'bin/mq_ui'
     (folder/'bin').mkdir(parents=True)
-    files = {entry: (SERVICE if role == 'service' else UI, 0o755), 'version': (version + '\n', 0o644),
+    files = {entry: ({'service': SERVICE, 'ui': UI, 'menu': MENU}[role], 0o755), 'version': (version + '\n', 0o644),
              'behavior': (behavior + '\n', 0o644)}
     if role == 'ui':
         files['bin/player'] = (PLAYER, 0o755)
@@ -176,7 +186,8 @@ def probe(folder, version, behavior='healthy', role='service'):
     for path, (text, mode) in files.items():
         (folder/path).write_text(text)
         (folder/path).chmod(mode)
-    package.describe(folder, NAME if role == 'service' else UI_NAME, version, role, entry, ready=30, profiles=[PROFILE],
+    name = name or {'service': NAME, 'ui': UI_NAME, 'menu': MENU_NAME}[role]
+    package.describe(folder, name, version, role, entry, ready=30, profiles=[PROFILE],
                      player='bin/player' if role == 'ui' else None)
     return folder
 
@@ -251,6 +262,21 @@ def busy_card_event(mount):
 
 def stock_ui_runs():
     return bool(guest('pgrep -x mq_ui').strip()) and bool(guest('pgrep -x mq_player').strip())
+
+
+def count(path, pattern):
+    """Lines of a guest file that match."""
+    return int(guest(f'grep -c "{pattern}" {path} 2>/dev/null').strip() or 0)
+
+
+def pair_restarts():
+    """The restarts of the UI and the player stock's watch loop logged."""
+    return count('/usr/data/fiio/log/process_failed.txt', 'Restarting')
+
+
+def ui_runs(name):
+    return wait(lambda: guest_json('/run/disc-boot/ui.json'), lambda u: u['state'] in ('ready', 'confirmed') and u['name'] == name,
+                f'{name} runs', 300)
 
 
 def run(output):
@@ -370,6 +396,63 @@ def run(output):
     launches = int(guest(f'grep -c " player" /usr/data/disc-boot/data/{UI_NAME}/probe.log').strip() or 0)
     assert player['launch'] == 'package' and launches >= 2, (player, launches)
     step('ui package', ui=ui, starts=int(starts.strip()), player=player, playerLaunches=launches, path=guarded_player())
+    # 11. A second ui package and the boot menu with Play. Stock's player ran before the card came in
+    #     this boot, so it starts beside the menu at once, and the menu's choice, which brings its own
+    #     player launcher, gets the pair restarted by stock's loop.
+    power('off')
+    with card() as root:
+        package.stage(probe(work/'two', '1', role='ui', name=TWO), root, profile=PROFILE)
+        package.stage(probe(work/'menu', '1', role='menu'), root, profile=PROFILE)
+    power('on', hold='play')
+    ui = ui_runs(TWO)
+    choice = guest_json('/run/disc-boot/ui/choice.json')
+    assert (choice['ui'], choice['by'], choice['menu']) == (TWO, 'menu', False), choice
+    menu = guest_json('/run/disc-boot/menu.json')
+    assert menu['state'] == 'answered', menu
+    offered = guest_json(f'/usr/data/disc-boot/data/{MENU_NAME}/choices.json')
+    assert (offered['default'], [e['ui'] for e in offered['entries']]) == (UI_NAME, [TWO, UI_NAME, 'stock']), offered
+    player = wait(lambda: guest_json('/run/disc-boot/ui/player.json'), lambda p: p['launch'] == 'package' and p['name'] == TWO,
+                  'the chosen ui package launches the player', 120)
+    step('a second ui and the menu with play', choice=choice, menu=menu, offered=offered, ui=ui, player=player)
+    # 12. A plain power-on: the menu asks at the boot's first start of the pair. No player ran yet, so the
+    #     player waits for the choice; the menu hands over in its own process; nothing is restarted.
+    restarts = pair_restarts()
+    menus = count(f'/usr/data/disc-boot/data/{MENU_NAME}/probe.log', 'menu')
+    power('off')
+    power('on')
+    ui = ui_runs(TWO)
+    choice = guest_json('/run/disc-boot/ui/choice.json')
+    assert (choice['ui'], choice['by']) == (TWO, 'menu'), choice
+    player = wait(lambda: guest_json('/run/disc-boot/ui/player.json'), lambda p: p['launch'] == 'package' and p['name'] == TWO,
+                  'the player waited for the choice', 120)
+    ui = wait(lambda: guest_json('/run/disc-boot/ui.json'), lambda u: u['state'] == 'confirmed' and u['name'] == TWO, f'{TWO} confirmed', 420)
+    assert count(f'/usr/data/disc-boot/data/{MENU_NAME}/probe.log', 'menu') == menus + 1
+    assert pair_restarts() == restarts, ('stock restarted the pair', restarts, pair_restarts())
+    assert stock_ui_runs()
+    step('the menu hands over without a restart', choice=choice, player=player, ui=ui, pairRestarts=pair_restarts() - restarts,
+         path=guarded_player())
+    # 13. A choice for the next boot only, asked by the service: that boot runs it without the menu.
+    menus = count(f'/usr/data/disc-boot/data/{MENU_NAME}/probe.log', 'menu')
+    power('off')
+    job(work, f'ui-next {UI_NAME}')
+    power('on')
+    service(lambda s: s['lastRequest'] == f"next boot's ui {UI_NAME}", 'the next boot\'s ui asked for', 300)
+    power('off')
+    power('on')
+    ui = ui_runs(UI_NAME)
+    choice = guest_json('/run/disc-boot/ui/choice.json')
+    assert (choice['ui'], choice['by'], choice['menu']) == (UI_NAME, 'next', False), choice
+    assert count(f'/usr/data/disc-boot/data/{MENU_NAME}/probe.log', 'menu') == menus + 1, 'only the asking boot ran the menu'
+    step('next skips the menu', choice=choice, ui=ui)
+    # 14. Volume Up with the menu installed: stock mode, no menu, no package.
+    power('off')
+    power('on', hold='volume_up')
+    boot = boot_status()
+    assert (boot['mode'], boot['reason']) == ('stock', 'key'), boot
+    assert wait(lambda: stock_ui_runs() or None, bool, 'stock UI', 120)
+    assert not guest('ls /run/disc-boot/ui-launch /run/disc-boot/ui/choice.json 2>/dev/null').strip()
+    assert count(f'/usr/data/disc-boot/data/{MENU_NAME}/probe.log', 'menu') == menus + 1
+    step('volume up with the menu installed', boot=boot)
     power('off')
     evidence['status'] = 'passed'
     Path(output).write_text(json.dumps(evidence, indent=2) + '\n')

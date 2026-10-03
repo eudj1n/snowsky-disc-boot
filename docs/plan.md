@@ -281,8 +281,18 @@ boot menu").
   Bluetooth stay up. Once a player ran (`player-ran`, marked by every start
   of one, the wrapper's included), stock's player starts beside the menu and
   a chosen UI with its own player gets the pair restarted. Conformance: 298.
-- [ ] Guest acceptance with probe packages (contract, "Before it is
-  built"), then `boot_guest.py` and `two_packages.py` on the new layout.
+- [x] Guest acceptance with probe packages (2026-10-03, image `be681e3`,
+  emulator `690a55c`): `boot_guest.py` passed all 14 steps, the four new
+  ones with two ui probes and a menu probe (shell scripts). Play installed
+  a second UI and the menu after stock's player had run, so stock's player
+  started beside the menu and the pair restarted into its choice (the
+  second UI with its own player launcher); a plain power-on ran the menu at
+  the pair's first start, the player waited (`waiting`, then the chosen
+  package's launcher) and stock's loop restarted nothing (its
+  `process_failed.txt` unchanged); `ui-next` from the service gave one boot
+  without the menu; Volume Up gave stock mode without it. `two_packages.py`
+  passed its six steps on the new layout (diskOS under `ui/diskos/`).
+  Evidence in `work/boot-image-be681e3/` (ignored).
 - [ ] `disc-menu`, the boot menu built in this repository (owner,
   2026-10-03): a static program as the `menu` package, released with the
   boot layer, staged by the installer by default and never part of the
