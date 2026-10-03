@@ -370,6 +370,14 @@ boot menu").
   its digest or its published url. `tests/conformance/test_catalog.py` (5).
 - [ ] `install.py`, the guided installer (owner, 2026-10-03), drawn in the
   boot menu's style and colours, in three parts:
+  - [x] On the guest (2026-10-03, image `b43034b`, emulator `690a55c`,
+    `tests/integration/install_guest.py`): the installer's card code put
+    `disc-server` `2026.10.03-c502ce6-debug` (the first with
+    `catalog/apps.json`, now the catalog's), `disc-menu`, the player page
+    taken by its digest from the server's catalog, and the marker on the
+    guest's card; Play installed both, the menu counted down to stock's UI
+    (the only entry), the server was confirmed and served the page at `/`,
+    and the marker stayed.
   - [x] Without a player (2026-10-03): the computer's check, the image from
     the update (or one built before), the packages of the catalog and the
     apps of the chosen server's catalog, the card after a typed
