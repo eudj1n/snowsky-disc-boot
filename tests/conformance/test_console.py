@@ -36,6 +36,7 @@ class StandIn:
             buffer += chunk
             while b'\n' in buffer:
                 line, buffer = buffer.split(b'\n', 1)
+                line = line.rsplit(b'\x15', 1)[-1]       # Ctrl-U erases the line, as the tty's line discipline does
                 if not line.strip():
                     os.write(self.master, b'# ')
                     continue
@@ -67,6 +68,11 @@ class ConsoleTests(unittest.TestCase):
         self.assertEqual(self.console.run('echo hello; echo world'), ('hello\nworld', 0))
         self.assertEqual(self.console.run('false')[1], 1)
         self.assertEqual(self.console.run('printf "a b"'), ('a b', 0))
+
+    def test_what_a_session_left_typed_is_erased_not_run(self):
+        os.write(self.player.master, b'')
+        self.console.write(']rm -rf /tmp/never')                # half a line from an earlier shell, no newline
+        self.assertEqual(self.console.run('echo clean'), ('clean', 0))
 
     def test_it_never_reads_identity_or_secrets(self):
         for command in ('cat /usr/data/fiio/sn.txt', 'cat /sys/class/net/wlan0/address', 'cat /tmp/token', 'cat /dev/mtd6ro', 'dd if=/dev/mtd6 bs=64 count=1'):

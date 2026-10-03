@@ -32,6 +32,7 @@ import tty
 
 # Never read through this tool: the player's identity and secrets (owner's rule).
 PRIVATE = re.compile(r'sn\.txt|/sn\b|serial|\bmac\b|/mac/|address\b|token|secret|\.key\b|/dev/mtd', re.I)
+KILL_LINE = '\x15'
 PORTS = ('/dev/cu.usbmodemdisc_web_debug*', '/dev/cu.usbmodem*', '/dev/ttyACM*')
 
 
@@ -91,7 +92,8 @@ class Console:
             raise ConsoleError('refused: the command names the serial number, the MAC address or a secret')
         nonce = secrets.token_hex(4)
         self.read(0.1)
-        self.write(f'{command}; printf "\\n__disc_end_{nonce}_%s__\\n" "$?"\n')
+        # Ctrl-U first: what a shell session left typed but unsent is erased, never run.
+        self.write(f'{KILL_LINE}{command}; printf "\\n__disc_end_{nonce}_%s__\\n" "$?"\n')
         out, end = '', time.monotonic() + timeout
         pattern = re.compile(rf'__disc_end_{nonce}_(\d+)__')
         while time.monotonic() < end:
@@ -135,9 +137,14 @@ class Console:
                         os.write(stdout, os.read(self.fd, 65536).replace(b'\r\n', b'\n').replace(b'\n', b'\r\n'))
                     except BlockingIOError:
                         pass
+                    except OSError:
+                        # The player's shell exited (exit) or the cable was pulled: the port is gone.
+                        os.write(stdout, b'\r\nThe console closed.\r\n')
+                        return
                 if stdin in ready:
                     key = os.read(stdin, 1024)
                     if b'\x1d' in key:
+                        self.write(KILL_LINE)          # nothing half typed stays for the next command
                         os.write(stdout, b'\r\n')
                         return
                     if echo:
