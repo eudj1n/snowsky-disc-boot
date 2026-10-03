@@ -393,5 +393,5 @@ boot menu").
 - Ready-to-run installers for macOS and Windows (Windows needs a WinUSB
   driver for the USB Boot device); a browser installer over WebUSB.
 - An optional "official" label for packages signed by us.
-- Whether the installer writes the console marker always or as an option,
-  and whether it removes it after the installation.
+- The console marker: the installer writes it and leaves it after the
+  installation (owner, 2026-10-03).

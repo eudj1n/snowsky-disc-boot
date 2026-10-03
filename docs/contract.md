@@ -581,7 +581,7 @@ Unchanged in behavior ([USB diagnostics](usb-diagnostics.md), whose marker
 moved to `.disc/` with combined-008): the card file `.disc/dev/usb-console`
 with the exact content `DISC_WEB_LOCAL_ROOT_CONSOLE` and a newline enables it
 at boot, independently of the mode. The installer writes the marker (owner,
-2026-10-02). USB needs the cable at the user's computer, so the marker alone
+2026-10-02) and leaves it in place after the installation (owner, 2026-10-03). USB needs the cable at the user's computer, so the marker alone
 is the console's gate, as today.
 
 ## Trust
@@ -708,7 +708,5 @@ confirmed one without touching the server. What diskOS would change to fit
 - Memory and priority limits that keep stock's audio smooth (the device).
 - The emulator runs stock's `rcS` and `fiio_init.sh`, so boot's hooks and the
   `mq_ui` launcher can be accepted on the guest (the emulator session).
-- Whether the installer writes the console marker always or as an option,
-  and whether it removes it after the installation.
 - An optional "official" label for packages signed by us (shown, never
   required).
