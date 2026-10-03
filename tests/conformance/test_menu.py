@@ -37,7 +37,7 @@ class MenuTests(unittest.TestCase):
         launcher = self.root/'launcher'
         # The launcher the menu hands over to: its name, and which descriptors above 2 are still open.
         launcher.write_text(f'#!/bin/sh\necho "$0" > "{self.root}/launched"\n'
-                            f'for fd in 3 4 5 6 7 8 9; do {{ : >&$fd; }} 2>/dev/null && echo $fd; done > "{self.root}/fds"\nexit 0\n')
+                            f'for fd in 3 4 5 6 7 8 9; do {{ true >&$fd; }} 2>/dev/null && echo $fd; done > "{self.root}/fds"\nexit 0\n')
         launcher.chmod(0o755)
         self.choices(['alpha', 'beta'], 'beta')
 

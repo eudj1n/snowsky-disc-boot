@@ -7,7 +7,7 @@ mode="${1:-host}"
 # toolchain's pinned recipe) leave their bytes as they were, so a release built later from the
 # same sources is the build the guest accepted.
 sources=(device/src device/menu device/vendor device/Makefile)
-build_id="$(git log -1 --format=%H -- "${sources[@]}" 2>/dev/null | cut -c1-12)"
+build_id="$( (git log -1 --format=%H -- "${sources[@]}" 2>/dev/null || true) | cut -c1-12)"
 build_id="${build_id:-unknown}"
 git diff --quiet HEAD -- "${sources[@]}" 2>/dev/null || build_id="$build_id+changes"
 case "$mode" in

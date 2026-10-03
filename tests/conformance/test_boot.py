@@ -226,7 +226,7 @@ class BootTests(unittest.TestCase):
     def test_a_service_is_confirmed_with_its_environment(self):
         # Which descriptors above 2 are open: a duplicate of one succeeds only when it is.
         script = ('env > "$DISC_BOOT_DATA/env.txt"\nps -o nice= -p $$ > "$DISC_BOOT_DATA/nice.txt"\n'
-                  'for fd in 3 4 5 6 7 8 9; do { : >&$fd; } 2>/dev/null && echo $fd; done > "$DISC_BOOT_DATA/fds.txt"\n' + GOOD)
+                  'for fd in 3 4 5 6 7 8 9; do { true >&$fd; } 2>/dev/null && echo $fd; done > "$DISC_BOOT_DATA/fds.txt"\n' + GOOD)
         self.install('service', 'a', script)
         self.early()
         self.assertEqual(self.global_state()['unconfirmed'], 1)

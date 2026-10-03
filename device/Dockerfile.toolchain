@@ -14,9 +14,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # inside CivetWeb's read_websocket on the first WebSocket (docs/combined-browser-observation.md).
 # Pinned by SHA-256: if musl.cc changes the tarball the build fails loudly instead of
 # drifting - update the checksum here when you intentionally bump the toolchain.
+# musl.cc refuses some networks (GitHub's runners among them); the Internet Archive's copy of
+# the same file (its 2024-03-16 capture, byte for byte the pinned one) is the fallback, checked
+# by the same SHA-256. Nothing of the compiler is redistributed from these repositories.
 ARG TC_URL=https://musl.cc/mipsel-linux-muslsf-cross.tgz
+ARG TC_MIRROR=https://web.archive.org/web/20240316215615id_/https://musl.cc/mipsel-linux-muslsf-cross.tgz
 ARG TC_SHA256=a61c3bbf9fbb0be80fe2abdb4ea8b6f5afdf664b5b4104a3784a326270905216
-RUN curl -fsSL "$TC_URL" -o /tmp/tc.tgz \
+RUN { curl -fsSL --connect-timeout 20 "$TC_URL" -o /tmp/tc.tgz || curl -fsSL --retry 3 "$TC_MIRROR" -o /tmp/tc.tgz; } \
     && echo "$TC_SHA256  /tmp/tc.tgz" | sha256sum -c - \
     && tar -xzf /tmp/tc.tgz -C /opt \
     && rm /tmp/tc.tgz
