@@ -396,26 +396,39 @@ menu's `stock` entry is stock's UI with the `service` package running.
   `mq_ui` launcher starts the menu first. `/run/disc-boot/ui/choices.json`
   lists every installed `ui` package (`ui`, `version`, `confirmed`), then
   `{"ui": "stock"}`, and the `default` of this boot.
-- Meanwhile `/sbin/mq_player` starts stock's player as stock's: no
-  package's `player` runs while the choice is pending.
 - The menu writes `$DISC_BOOT_RUN/choice` (`{"ui": "<name>"|"stock"}`)
-  atomically and exits 0. Boot checks and records it; stock's watch loop
-  restarts the pair as after any crash (within its 5 s check and 2 s
-  between the two, inside the watchdog's 10 s; 2.5–3 s on the guest) and
-  the launchers start the chosen UI and its `player`. Wi-Fi and Bluetooth
-  restart with the pair and the screen stays dark until the new player
-  lights it, so the menu shows what it starts before it exits.
+  atomically and hands over (owner, 2026-10-03): it execs
+  `$DISC_BOOT_LAUNCHER`, the UI launcher, in its own process, which checks
+  and records the answer and starts the chosen UI at once. Everything the
+  menu opened must close on that exec (`O_CLOEXEC`), its hold of `event0`
+  with it.
+- At the boot's first start of the pair no player has run yet, so no
+  watchdog runs (stock's player starts it): `/sbin/mq_player` waits for
+  the choice (at most the menu's 60 s and 10 more) and then starts the
+  chosen UI's `player`, or stock's. The pair is never restarted: the
+  screen stays lit, Wi-Fi and Bluetooth stay up. Once a player has run in
+  the boot (`/run/disc-boot/player-ran`, marked by every start of a player,
+  the wrapper's own start of stock's included), stock's player starts at
+  once beside the menu, and when the chosen UI brings its own `player` the
+  launcher exits instead of starting it, so that stock's watch loop
+  restarts the pair (within its 5 s check and 2 s between the two, inside
+  the watchdog's 10 s; dark until the new player lights the screen).
+- A menu that exits after answering, rather than hand over, gets the pair
+  restarted by stock's loop the same way; the answer stands.
 - It may answer at once (a remembered choice, a timeout of its own). Boot
   stops it after 60 s and takes the default; an exit without a valid answer
   counts as a menu failure, and after 2 in one boot the default runs
   without it. Its exits are never counted against a `ui` package; a valid
   answer confirms a tentative menu version (it does not run 180 s), and
   a failing tentative version gives way to the previous one.
-- The keys drive it: it takes `event0` for itself (`EVIOCGRAB`) while it
-  runs, since stock's player beside it reads the same keys there and would
-  otherwise change the volume or start playback; the grab ends when it
-  exits. A key already down when it starts counts only after its release.
-  The touch panel (`event1`) is the UI's own and may choose as well.
+- The keys drive it. When stock's player runs beside it (a player ran
+  earlier in the boot), the menu takes `event0` for itself (`EVIOCGRAB`),
+  since that player reads the same keys there and would otherwise change
+  the volume or start playback; taking it when no player runs is harmless.
+  A key already down when it starts counts only after its release. The
+  touch panel (`event1`) is the UI's own and may choose as well.
+- Its countdown to the default is its own; `disc-menu`'s is 5 s (owner,
+  2026-10-03).
 
 ### Requests
 
@@ -520,6 +533,7 @@ service package starts with its own `PATH` and does not need it.
 | `DISC_BOOT_STATUS` | `/run/disc-boot/`, the status files below |
 | `DISC_BOOT_CARD` | The card's mount point (it may be absent) |
 | `DISC_BOOT_PROGRAM` | The boot program (`/opt/disc-boot/disc-boot`), for `verify` of a staged update |
+| `DISC_BOOT_LAUNCHER` | The menu only: the UI launcher (`/opt/disc-boot/mq_ui`) it hands over to |
 
 A `service` package starts from a clean environment (these, `PATH`, `HOME`
 and `LD_LIBRARY_PATH`); its standard output and error go to
@@ -551,8 +565,9 @@ enforce this: packages run as root, at the installer's risk.
 - `ui/choice.json`: this boot's choice of UI; `ui/choices.json`: what the
   menu was offered.
 - `ui/player.json`: how stock's player last started while the launcher ran
-  (`launch`: `package` or `stock`, the package, a note such as "the menu is
-  choosing").
+  (`launch`: `package`, `stock`, or `waiting` while it waits for the
+  menu's choice; the package; a note such as "the menu is choosing").
+- `player-ran`: a player has run in this boot.
 - `guard.log`: the card guard's refusals.
 - `disc-boot status` prints the boot, the roles, the choice and `player`
   together; the server shows them in its diagnostics.

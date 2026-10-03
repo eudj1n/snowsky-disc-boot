@@ -270,6 +270,14 @@ boot menu").
   `scripts/package.py` stages ui packages under their names and knows the
   `menu` role, with the same messages as `disc-boot verify`. Conformance:
   296 tests (10 new for multi-boot), the existing ui tests on the new layout.
+- [x] The hand-over without a restart (owner, 2026-10-03): the menu execs
+  `$DISC_BOOT_LAUNCHER`, which records its answer and starts the chosen UI
+  in the same process; at the boot's first start of the pair the player
+  waits for the choice (no watchdog runs before stock's player starts it)
+  and starts the chosen UI's player, so the screen stays lit and Wi-Fi and
+  Bluetooth stay up. Once a player ran (`player-ran`, marked by every start
+  of one, the wrapper's included), stock's player starts beside the menu and
+  a chosen UI with its own player gets the pair restarted. Conformance: 298.
 - [ ] Guest acceptance with probe packages (contract, "Before it is
   built"), then `boot_guest.py` and `two_packages.py` on the new layout.
 - [ ] `disc-menu`, the boot menu built in this repository (owner,
@@ -278,11 +286,11 @@ boot menu").
   image. On the guest once snowsky-disc-qemu #54 is fixed, proving the API
   before the image fixes it.
   - Input by the keys (owner, 2026-10-03): Volume + and − move, Play
-    chooses. Stock's player reads the same keys as events on `event0`
-    (firmware codes, read on the player: `0xfb`/`0xfc` a volume click,
-    `0xfa` Play) and runs
-    beside the menu, so the menu takes `event0` for itself (`EVIOCGRAB`)
-    while it runs and neither volume nor playback changes under it. A key
+    chooses, as events on `event0` (firmware codes, read on the player:
+    `0xfb`/`0xfc` a volume click, `0xfa` Play). At the boot's first start no
+    player runs beside the menu; when one does (after a recovery), the menu
+    takes `event0` for itself (`EVIOCGRAB`) so that neither volume nor
+    playback changes under it. A key
     already down when it starts is ignored until released (Play at
     power-on was the recovery). The touch panel (`event1`, the UI's own) may
     choose as well.
@@ -292,9 +300,11 @@ boot menu").
     emulator's evidence of a frame). A small renderer of its own and a font
     rasterised at build time from an OFL font, not LVGL: a list of a few
     entries needs neither its size nor its widgets.
-  - Behaviour: the default highlighted with a 3 s countdown, stopped by any
-    key or touch; it answers `$DISC_BOOT_RUN/choice` and exits. Its settings
-    (remember the last choice, ask or not) in `$DISC_BOOT_DATA`.
+  - Behaviour: the default highlighted with a 5 s countdown (owner,
+    2026-10-03), stopped by any key or touch; it answers
+    `$DISC_BOOT_RUN/choice` and execs `$DISC_BOOT_LAUNCHER`, every
+    descriptor closed on exec. Its settings (remember the last choice, ask
+    or not) in `$DISC_BOOT_DATA`.
   - Shares the boot program's JSON reading and atomic writes. Package names
     are ASCII (`[a-z0-9-]`); an optional display `title` in the manifest is
     a contract addition to settle with it.

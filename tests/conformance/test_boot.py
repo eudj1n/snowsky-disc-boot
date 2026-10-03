@@ -651,7 +651,7 @@ exit 0
         self.assertEqual(self.choice()['ui'], 'stock')
         self.assertTrue((self.data/'ui/beta/a').exists())
 
-    def test_the_menu_chooses_and_the_pair_restarts_into_its_choice(self):
+    def test_a_menu_that_exits_gets_the_pair_restarted_into_its_choice(self):
         self.stock_ui(); self.stock_player()
         self.two_uis()
         self.set_global(ui='alpha')
@@ -665,9 +665,11 @@ exit 0
         offered = json.loads((self.root/'out/choices.json').read_text())
         self.assertEqual(offered['default'], 'alpha')
         self.assertEqual([e['ui'] for e in offered['entries']], ['alpha', 'beta', 'stock'])
-        # Stock's player starts beside the menu, never a package's launcher while the choice is open.
+        # A player already ran in this boot (it runs the watchdog): stock's player starts beside the
+        # menu at once, never a package's launcher while the choice is open.
+        (self.run_dir/'player-ran').write_text('\n')
         self.launch_player().wait(timeout=10)
-        self.assertEqual(self.player_status()['note'], 'the menu is choosing')
+        self.assertEqual((self.player_status()['launch'], self.player_status()['note']), ('stock', 'the menu is choosing'))
         self.launch().wait(timeout=10)
         self.assertEqual(self.runs(), ['menu', 'beta'])
         self.assertEqual(self.choice(), dict(schema=1, ui='beta', by='menu', menu=False, note=''))
@@ -679,6 +681,55 @@ exit 0
         self.set_global(next='alpha')
         self.early()
         self.assertEqual((self.choice()['ui'], self.choice()['menu']), ('alpha', False))
+
+    def ui_with_player(self, name):
+        extra = {'bin/player': (f'#!/bin/sh\necho "launcher $DISC_BOOT_ROLE" >> "{self.root}/out/player"\n'
+                                f'exec "{self.root}/usr/bin/mq_player" "$@"\n', 0o755)}
+        self.install('ui', 'a', f'echo {name} >> "{self.root}/out/ui"\n: > "$DISC_BOOT_RUN/ready"\nsleep 2.5\n',
+                     name=name, confirmed=True, extra=extra, edit=lambda m: m.update(player='bin/player'))
+
+    def test_the_menu_hands_over_without_a_restart(self):
+        self.stock_ui(); self.stock_player()
+        self.install('ui', 'a', f'echo alpha >> "{self.root}/out/ui"\n', name='alpha', confirmed=True)
+        self.ui_with_player('beta')
+        self.set_global(ui='alpha')
+        self.menu('printf \'{"ui":"beta"}\' > "$DISC_BOOT_RUN/choice"\nexec "$DISC_BOOT_LAUNCHER"\n')
+        self.early()
+        # The boot's first start of the pair: no player ran yet, so the player waits for the choice.
+        player = self.launch_player()
+        until = time.monotonic() + 5
+        while not (self.run_dir/'ui/player.json').exists() and time.monotonic() < until:
+            time.sleep(0.05)
+        self.assertEqual(self.player_status()['launch'], 'waiting')
+        self.assertIsNone(player.poll())
+        # The menu answers and hands over in its own process: the chosen UI starts at once.
+        self.launch().wait(timeout=10)
+        self.assertEqual(self.runs(), ['menu', 'beta'])
+        player.wait(timeout=10)
+        self.assertEqual(self.players(), ['launcher ui', f'stock ui {self.root}/opt/disc-boot/guard'])
+        self.assertEqual({k: self.player_status()[k] for k in ('launch', 'name')}, {'launch': 'package', 'name': 'beta'})
+        self.assertEqual((self.choice()['ui'], self.choice()['by']), ('beta', 'menu'))
+        self.assertEqual(self.wait_status('ui', 'confirmed')['name'], 'beta')
+        self.assertTrue((self.run_dir/'player-ran').exists())
+
+    def test_after_a_player_ran_the_pair_restarts_for_the_package_player(self):
+        self.stock_ui(); self.stock_player()
+        self.ui_with_player('beta')
+        self.set_global(ui='beta')
+        self.menu('printf \'{"ui":"beta"}\' > "$DISC_BOOT_RUN/choice"\nexec "$DISC_BOOT_LAUNCHER"\n')
+        self.early()
+        # Stock's player started before the menu in this boot (after a recovery, say): the wrapper marks it.
+        (self.run_dir/'ui-launch').unlink()
+        self.launch_player().wait(timeout=10)
+        self.assertTrue((self.run_dir/'player-ran').exists())
+        (self.run_dir/'ui-launch').write_text('ui\n')
+        self.assertEqual(self.launch().wait(timeout=10), 0)
+        self.assertEqual(self.runs(), ['menu'], 'the launcher leaves the restart to stock\'s loop')
+        self.assertEqual(self.status('ui')['note'], 'the pair restarts for the package\'s player')
+        self.launch().wait(timeout=10)
+        self.launch_player().wait(timeout=10)
+        self.assertEqual(self.runs(), ['menu', 'beta'])
+        self.assertEqual(self.player_status()['launch'], 'package')
 
     def test_a_failing_menu_gives_way_to_the_default(self):
         self.stock_ui()
@@ -767,7 +818,7 @@ exit 0
             launcher.symlink_to(BINARY)
         wrapper = self.root/'sbin/mq_player'
         text = BUILDER.player_wrapper()
-        for path in ('/run/disc-boot/ui-launch', '/run/disc-boot/ui/fallback', '/opt/disc-boot/', '/usr/bin/mq_player'):
+        for path in ('/run/disc-boot/ui-launch', '/run/disc-boot/ui/fallback', '/run/disc-boot/player-ran', '/opt/disc-boot/', '/usr/bin/mq_player'):
             text = text.replace(path, str(self.root) + path)
         wrapper.write_text(text)
         wrapper.chmod(0o755)

@@ -221,11 +221,13 @@ def player_wrapper():
     return f'''#!/bin/sh
 # Stock's player with the card guard first in its PATH (docs/contract.md, "The card guard"):
 # stock removes the card's mount point with rm -rf after an unmount it never checks, which
-# empties a card that is still mounted. While a ui package runs (not after its fallback to
-# stock's UI) the boot program starts the player launcher that package brings, if any;
-# that launcher ends in stock's player, and stock's player starts at once otherwise.
+# empties a card that is still mounted. While a ui package runs or the boot menu chooses
+# (not after a fallback to stock's UI) the boot program starts the player: the launcher the
+# chosen package brings, if any, else stock's. Started here, stock's player marks that a
+# player ran in this boot: it runs the watchdog from then on, so no later start waits.
 PATH=/{GUARD.rsplit('/', 1)[0]}:$PATH; export PATH
 [ -f /run/disc-boot/ui-launch ] && [ ! -f /run/disc-boot/ui/fallback ] && [ -x /{PLAYER_LAUNCHER} ] && exec /{PLAYER_LAUNCHER} "$@"
+{{ : > /run/disc-boot/player-ran; }} 2>/dev/null
 exec /usr/bin/mq_player "$@"
 '''
 

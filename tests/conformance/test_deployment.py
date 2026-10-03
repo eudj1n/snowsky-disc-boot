@@ -107,9 +107,11 @@ class DeploymentTests(unittest.TestCase):
     def test_the_player_wrapper_puts_the_guard_first_and_ends_in_stock_player(self):
         wrapper = candidate.player_wrapper()
         lines = [line for line in wrapper.splitlines() if line and not line.startswith('#')]
+        # Started here, stock's player marks that a player ran in this boot (it runs the watchdog).
         self.assertEqual(lines, ['PATH=/opt/disc-boot/guard:$PATH; export PATH',
                                  '[ -f /run/disc-boot/ui-launch ] && [ ! -f /run/disc-boot/ui/fallback ] && '
                                  '[ -x /opt/disc-boot/mq_player ] && exec /opt/disc-boot/mq_player "$@"',
+                                 '{ : > /run/disc-boot/player-ran; } 2>/dev/null',
                                  'exec /usr/bin/mq_player "$@"'])
         self.assertEqual(candidate.GUARD.rsplit('/', 1), ['opt/disc-boot/guard', 'rm'])
 

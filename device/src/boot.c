@@ -574,6 +574,12 @@ static char **package_env(const char *domain, const manifest *m, char slot, int 
     add_env(envp, &n, "DISC_BOOT_STATUS", status);
     add_env(envp, &n, "DISC_BOOT_CARD", cardp);
     add_env(envp, &n, "DISC_BOOT_PROGRAM", program);
+    if (!strcmp(role, "menu")) {
+        /* Where the menu hands over once it answered: the UI launcher, in its own process. */
+        char launcher[PATH_MAX];
+        bpath(launcher, "/opt/disc-boot/mq_ui");
+        add_env(envp, &n, "DISC_BOOT_LAUNCHER", launcher);
+    }
 #ifdef DISC_BOOT_FIXTURE
     /* The fixture's world reaches a package only so that the boot program it runs (verify) sees it too. */
     add_env(envp, &n, "DISC_BOOT_FIXTURE_ROOT", boot_root);
@@ -1054,6 +1060,21 @@ static int count_start(void) {
     return before;
 }
 
+/* Whether a player already ran in this boot. Stock's player starts the hardware watchdog (10 s)
+   and it keeps running across a restart of the pair; before the first player of a boot nothing
+   runs it. The wrapper's own start of stock's player marks it too. */
+static int player_ran(void) {
+    char p[PATH_MAX];
+    bpath(p, RUN_DIR "/player-ran");
+    return exists(p);
+}
+
+static void mark_player_ran(void) {
+    char p[PATH_MAX];
+    bpath(p, RUN_DIR "/player-ran");
+    write_atomic(p, "\n", 1, 0644);
+}
+
 /* The menu's failures in this boot, after adding add. */
 static int menu_failures(int add) {
     char p[PATH_MAX], buf[32];
@@ -1073,8 +1094,11 @@ static void menu_watch(pid_t menu) {
     bpath(answer, RUN_DIR "/menu/choice");
     bpath(started, RUN_DIR "/menu/started");
     double until = mono() + t_menu;
-    while (mono() < until) { if (!ui_alive(menu)) return; pause_s(0.1); }
     ui_choice c;
+    while (mono() < until) {
+        if (!ui_alive(menu) || exists(answer) || read_choice(&c) || !c.menu) return;
+        pause_s(0.1);
+    }
     if (exists(answer) || read_choice(&c) || !c.menu) return;
     c.menu = 0;
     snprintf(c.note, sizeof(c.note), "the menu did not answer in time");
@@ -1090,7 +1114,7 @@ static void menu_watch(pid_t menu) {
 /* The menu's turn (contract, "The menu's turn"). The menu runs in the UI's place and exits with
    its answer; stock's watch loop then restarts the pair, and at this next start the answer
    settles the boot's choice. Returns when the choice is settled; otherwise runs the menu. */
-static void menu_turn(ui_choice *c, manifest *m, char **argv) {
+static int menu_turn(ui_choice *c, manifest *m, char **argv) {
     char answer[PATH_MAX], started[PATH_MAX], p[PATH_MAX], err[200] = "", entry[PATH_MAX];
     role_state rs;
     bpath(p, RUN_DIR "/menu");
@@ -1116,7 +1140,7 @@ static void menu_turn(ui_choice *c, manifest *m, char **argv) {
             confirm("menu");
             rstate_read("menu", &rs);
             role_status("menu", "answered", NULL, &rs, failures, wanted);
-            return;
+            return 1;
         }
         if (readable) snprintf(err, sizeof(err), "it answered %s, which is not installed", wanted);
         else snprintf(err, sizeof(err), "its answer is unreadable");
@@ -1129,7 +1153,7 @@ static void menu_turn(ui_choice *c, manifest *m, char **argv) {
     if (rstate_read("menu", &rs) || !rs.current) {
         c->menu = 0; write_choice(c);
         role_status("menu", "absent", NULL, NULL, failures, NULL);
-        return;
+        return 0;
     }
     if (failures && !rs.confirmed && !rollback("menu", &rs)) blog("menu: a tentative version failed (%s); back to the previous one", err);
     if (failures >= MENU_FAILURES) {
@@ -1137,7 +1161,7 @@ static void menu_turn(ui_choice *c, manifest *m, char **argv) {
         snprintf(c->note, sizeof(c->note), "the menu failed %d times (%s)", failures, err);
         write_choice(c);
         role_status("menu", "failed", NULL, &rs, failures, err);
-        return;
+        return 0;
     }
     if (slot_check("menu", rs.current, m, err, sizeof(err))) {
         int recovered = !rs.confirmed && !rollback("menu", &rs) && !slot_check("menu", rs.current, m, err, sizeof(err));
@@ -1146,7 +1170,7 @@ static void menu_turn(ui_choice *c, manifest *m, char **argv) {
             snprintf(c->note, sizeof(c->note), "the menu fails its check: %s", err);
             write_choice(c);
             role_status("menu", "failed", NULL, &rs, failures, err);
-            return;
+            return 0;
         }
     }
     write_choices(c);
@@ -1175,6 +1199,7 @@ static void menu_turn(ui_choice *c, manifest *m, char **argv) {
     snprintf(c->note, sizeof(c->note), "the menu did not start");
     write_choice(c);
     role_status("menu", "failed", m, &rs, failures, "did not start");
+    return 0;
 }
 
 static int launcher(int argc, char **argv) {
@@ -1203,7 +1228,7 @@ static int launcher(int argc, char **argv) {
     }
     handle_request("menu", name);
     apply_pending();
-    if (c.menu) menu_turn(&c, m, argv);
+    int answered = c.menu ? menu_turn(&c, m, argv) : 0;
     if (exists(fallback)) { role_status("ui", "fallback", NULL, NULL, 0, NULL); exec_stock(argv); }
     if (!strcmp(c.ui, "stock")) { role_status("ui", "stock-ui", NULL, NULL, 0, c.note[0] ? c.note : NULL); exec_stock(argv); }
     ui_domain(domain, c.ui);
@@ -1226,6 +1251,12 @@ static int launcher(int argc, char **argv) {
         /* A tentative slot that fails its check gives way to the previous one, if that one checks. */
         int recovered = !rs.confirmed && !rollback(domain, &rs) && !slot_check(domain, rs.current, m, err, sizeof(err));
         if (!recovered) { write_atomic(fallback, "\n", 1, 0644); role_status(domain, "fallback", NULL, &rs, before, err); exec_stock(argv); }
+    }
+    if (answered && m->player[0] && player_ran()) {
+        /* Stock's player already runs (a player ran before the menu in this boot), and the chosen UI
+           brings its own: stock's loop restarts the pair when the UI is gone, the menu settled. */
+        role_status(domain, "starting", m, &rs, before, "the pair restarts for the package's player");
+        _exit(0);
     }
     char ready[PATH_MAX], entry[PATH_MAX];
     bpath(ready, RUN_DIR "/ui/ready");
@@ -1253,6 +1284,7 @@ static int launcher(int argc, char **argv) {
 
 static void exec_stock_player(char **argv) {
     char stock[PATH_MAX];
+    mark_player_ran();
     bpath(stock, "/usr/bin/mq_player");
     argv[0] = "mq_player";
     execv(stock, argv);
@@ -1288,6 +1320,15 @@ static int player_launcher(int argc, char **argv) {
         player_status("stock", NULL, m ? "no ui package runs" : "out of memory");
         exec_stock_player(argv);
     }
+    if (c.menu && !player_ran()) {
+        /* The first start of the pair in this boot: no player ran, so no watchdog runs yet. The player
+           waits for the menu's choice and starts as the chosen UI needs it, without a restart. Its
+           process already carries the name stock's watch loop looks for. */
+        player_status("waiting", NULL, "the menu is choosing");
+        double until = mono() + t_menu + 10;
+        while (mono() < until && !read_choice(&c) && c.menu) pause_s(0.2);
+        if (read_choice(&c)) { player_status("stock", NULL, "no choice of UI for this boot"); exec_stock_player(argv); }
+    }
     if (c.menu) { player_status("stock", NULL, "the menu is choosing"); exec_stock_player(argv); }
     if (!strcmp(c.ui, "stock")) { player_status("stock", NULL, "stock's UI was chosen"); exec_stock_player(argv); }
     ui_domain(domain, c.ui);
@@ -1311,6 +1352,7 @@ static int player_launcher(int argc, char **argv) {
     char **envp = package_env(domain, m, rs.current, 1);
     player_status("package", m, "");
     argv[0] = "mq_player";
+    mark_player_ran();
     execve(named, argv, envp);
     player_status("stock", m, "the player launcher did not start");
     exec_stock_player(argv);
