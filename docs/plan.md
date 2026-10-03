@@ -355,8 +355,12 @@ boot menu").
   first platform boot with Play; the user-confirmed first boot before the
   readback (combined-008's order).
 - [ ] An installer for any unit, not only the owner's: that player's NAND
-  layout and bad blocks, V2.57 checked, a full backup, write, verify every
-  byte, the way back to stock.
+  layout and bad blocks, V2.57 checked, a full backup before every write
+  (owner, 2026-10-03), write, verify every byte, the way back to stock. First
+  as a guided command on macOS over the existing reviewed tools (owner,
+  2026-10-03): the OTA and the image, the packages and the console marker on
+  the card, USB Boot with backup, write and readback, the first boot with
+  Play, and stock restored by the same path; desktop or WebUSB later.
 - [ ] The owner's player: the image, then the two packages (separately
   authorized), after stage 3b.
 - [ ] Open facts for the device: what "Reset all" removes in `/usr/data`;
