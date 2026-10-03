@@ -369,7 +369,24 @@ boot menu").
   and fetches an entry as a checked package folder, from a local file with
   its digest or its published url. `tests/conformance/test_catalog.py` (5).
 - [ ] `install.py`, the guided installer (owner, 2026-10-03), drawn in the
-  boot menu's style and colours.
+  boot menu's style and colours, in three parts:
+  - [x] Without a player (2026-10-03): the computer's check, the image from
+    the update (or one built before), the packages of the catalog and the
+    apps of the chosen server's catalog, the card after a typed
+    confirmation (packages for Play, `Apps/`, the console's marker);
+    `--dry-run` into its own folder, `--yes` without questions;
+    `tests/conformance/test_installer.py` (4).
+  - [ ] The player through USB Boot: a full backup before every write, the
+    write, the independent readback and every byte compared, over the
+    reviewed tools; the way back to stock; `--simulate` (a NAND file with
+    injected faults) and `--guest` (the emulator's guest as the player).
+  - [ ] The first boot with Play and `.disc/boot/result.json` read back.
+- [ ] `console.py`, the player's USB console from this computer (owner,
+  2026-10-03): find the ACM port, run commands and read their answers (the
+  shell wants `\n` line endings), send a file to `/tmp` and check its
+  SHA-256 (the way `keygrab` went over), and the read-only facts this
+  session took by hand (keys, watchdog, input devices, memory), never the
+  serial number, the MAC or tokens.
 - [ ] The owner's player: the image, then the two packages (separately
   authorized), after stage 3b.
 - [ ] Open facts for the device: what "Reset all" removes in `/usr/data`;

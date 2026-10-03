@@ -11,6 +11,8 @@
 | `device/vendor/jsmn/` | The JSON tokenizer (MIT, pinned) |
 | `device/menu/` | `disc-menu`, the boot menu package: the screen (`draw.c`), the list, keys and touch, the hand-over (`menu.c`) and its font (`font.h`, generated) |
 | `scripts/menu_font.py` | Rasterises Inter into `device/menu/font.h` (the toolchain has no font rasteriser) |
+| `install.py`, `scripts/installer/` | The guided installer: the terminal look in the menu's colours (`tui.py`), the card (`card.py`), the steps (`flow.py`) |
+| `catalog/packages.json`, `scripts/catalog.py` | The packages the installer offers, and their checks and fetching |
 | `device/src/usb_console.c` | The USB ACM engineering console |
 | `device/acquisition/` | The NAND reader and SFC identity payloads for USB Boot sessions |
 | `device/deployment/boot-report.sh` | The boot report written to the card |
@@ -90,6 +92,19 @@ python3 scripts/package.py zip --source work/<run>/menu --output work/<run>/disc
 The font header is generated, not edited: `python3 scripts/menu_font.py --font
 <Inter[opsz,wght].ttf> --output device/menu/font.h` (Pillow with FreeType; the source font's
 SHA-256 and the versions used are written into the header, docs/provenance.md).
+
+## The installer
+
+`python3 install.py` runs the guided installer in the terminal (the boot menu's colours;
+`--plain` or a non-terminal output gives plain text). This part checks the computer, builds
+the image from FiiO's update in the emulator's image (or takes one with `--image`), offers
+`catalog/packages.json` and the chosen server's `catalog/apps.json`, and puts the packages,
+the default apps (`Apps/`) and the console's marker on the card after the typed confirmation.
+Archives come from local files with their catalog digest (`--from`) or, once published,
+`--download`. `--dry-run` stages into the run's own folder (`work/install-*/card`) and writes
+nothing else; `--yes` answers nothing and takes the defaults and the options given. The run's
+report is `work/install-*/report.json`. The write through USB Boot and the first boot follow in
+the installer's next parts. `tests/conformance/test_installer.py` runs it on a card folder.
 
 ## The image and its guest
 
