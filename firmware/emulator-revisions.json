@@ -19,6 +19,12 @@
         "2.57"
       ],
       "note": "2.x after #53 (2026-10-03): guest programs receive the caller's argv[0] (binfmt P flag); boot_guest.py passed on it"
+    },
+    "690a55cac4773bf30be69902653e7d7195833b72": {
+      "profiles": [
+        "2.57"
+      ],
+      "note": "2.x after #55 (2026-10-03): static programs see the framebuffer and the input devices through the rebuilt qemu, readiness by the UI's own frame, the rebuilt qemu registered by its build; boot_guest.py and two_packages.py (diskOS's UI running) passed on its tree (the head 6d85cc2)"
     }
   }
 }

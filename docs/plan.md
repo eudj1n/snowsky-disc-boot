@@ -226,9 +226,12 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   as `mq_ui` endlessly; contract, "Acceptance: two independent packages");
   the run checked the process and its launcher's verdict, and its
   screenshots were empty.
-- [ ] diskOS's UI running on the guest: `two_packages.py` without the
-  emulator workarounds and requiring the UI to hold the touch panel. At
-  `bfa1988` it stopped at its first step (the lost `argv[0]`,
+- [x] diskOS's UI running on the guest (2026-10-03, emulator `690a55c`,
+  snowsky-disc-qemu #52–#55): `two_packages.py` without the emulator
+  workarounds and requiring the UI to hold the touch panel passed all six
+  steps (on #55's head `6d85cc2`, the same tree, starting from a stale
+  shared interpreter that setup replaced itself); `boot_guest.py` passed its
+  11. Earlier runs: at `bfa1988` it stopped at its first step (the lost `argv[0]`,
   snowsky-disc-qemu #52). At `d7c0d5b` the UI starts but cannot set up the
   screen: the emulator serves the framebuffer and input `ioctl`s through a
   preload shim, which a static program never loads (`FBIOGET_VSCREENINFO`
