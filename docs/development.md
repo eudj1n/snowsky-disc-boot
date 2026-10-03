@@ -9,6 +9,8 @@
 | `device/src/boot.c` | `disc-boot`: modes, the service's supervisor, requests, recovery, the `mq_ui` launcher |
 | `device/src/manifest.c`, `boot_util.c`, `sha256.c` | Package manifests and verification, files, JSON and state, SHA-256 |
 | `device/vendor/jsmn/` | The JSON tokenizer (MIT, pinned) |
+| `device/menu/` | `disc-menu`, the boot menu package: the screen (`draw.c`), the list, keys and touch, the hand-over (`menu.c`) and its font (`font.h`, generated) |
+| `scripts/menu_font.py` | Rasterises Inter into `device/menu/font.h` (the toolchain has no font rasteriser) |
 | `device/src/usb_console.c` | The USB ACM engineering console |
 | `device/acquisition/` | The NAND reader and SFC identity payloads for USB Boot sessions |
 | `device/deployment/boot-report.sh` | The boot report written to the card |
@@ -70,6 +72,24 @@ place (`.disc/boot/install/service/`, `.disc/boot/install/menu/`, or
 `.disc/boot/install/ui/<name>/` for each ui package), checks the copy (sizes
 and digests; a card keeps no modes), then swaps it in; a refused package
 stages nothing and leaves what was staged.
+
+## The boot menu
+
+`scripts/build.sh host` and `mips` build `disc-menu` beside `disc-boot` (soft-float, no FPU
+instructions, as the boot program); the host build also makes `disc-menu-fixture`, whose
+framebuffer and input devices are files (`DISC_MENU_FB`, `DISC_MENU_KEYS`, `DISC_MENU_TOUCH`;
+`DISC_MENU_COUNTDOWN_MS`, `DISC_MENU_HELD` for the tests), checked by
+`tests/conformance/test_menu.py`. Its package is the MIPS binary as the menu's entry:
+
+```sh
+mkdir -p work/<run>/menu/bin && cp build/mips/disc-menu work/<run>/menu/bin/mq_ui
+python3 scripts/package.py describe --source work/<run>/menu --name disc-menu --version <version> --role menu --entry bin/mq_ui
+python3 scripts/package.py zip --source work/<run>/menu --output work/<run>/disc-menu.zip
+```
+
+The font header is generated, not edited: `python3 scripts/menu_font.py --font
+<Inter[opsz,wght].ttf> --output device/menu/font.h` (Pillow with FreeType; the source font's
+SHA-256 and the versions used are written into the header, docs/provenance.md).
 
 ## The image and its guest
 

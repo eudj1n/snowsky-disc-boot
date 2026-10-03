@@ -286,8 +286,14 @@ boot menu").
 - [ ] `disc-menu`, the boot menu built in this repository (owner,
   2026-10-03): a static program as the `menu` package, released with the
   boot layer, staged by the installer by default and never part of the
-  image. On the guest once snowsky-disc-qemu #54 is fixed, proving the API
-  before the image fixes it.
+  image. On the guest (the emulator serves static programs' screen since
+  `690a55c`), proving the API before the image fixes it. Built on the host
+  2026-10-03 (`device/menu/`): the list as chosen, drawn in integer
+  arithmetic on a canvas (the ring's geometry once), into the hidden page and
+  panned, 180° turned; Volume ± and Play on `event0` (taken only when a
+  player already ran), a touch on `event1`, a key down at the start ignored
+  until released; the answer, then the hand-over with every descriptor closed
+  on exec. `tests/conformance/test_menu.py` (7); the MIPS build is soft-float.
   - Input by the keys (owner, 2026-10-03): Volume + and − move, Play
     chooses, as events on `event0` (firmware codes, read on the player:
     `0xfb`/`0xfc` a volume click, `0xfa` Play). At the boot's first start no
