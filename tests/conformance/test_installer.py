@@ -119,6 +119,50 @@ class InstallerTests(unittest.TestCase):
         result, report = self.install('--dry-run', '--yes', '--package', 'nothing-like-it')
         self.assertIn('not in the catalog: nothing-like-it', report['status'])
 
+    def simulate(self, *args):
+        """A simulated player on 64 blocks of the reviewed chip: the image fills 16 logical blocks from block 8."""
+        images = self.root/'images'
+        images.mkdir(exist_ok=True)
+        image = images/'disc-boot-v257-review-only.bin'
+        image.write_bytes(bytes(range(256)) * (16 * 131072 // 256))
+        (images/'stock-v257-restore-review-only.bin').write_bytes(b'\x5a' * (16 * 131072))
+        result = subprocess.run([sys.executable, str(ROOT/'install.py'), '--plain', '--yes', '--dry-run', '--image', str(image),
+                                 '--catalog', str(self.catalog), '--from', str(self.local), '--work', str(self.root/'run'),
+                                 '--simulate', '--simulate-small', *args], capture_output=True, text=True, timeout=120)
+        return result, json.loads((self.root/'run/report.json').read_text())
+
+    def test_a_simulated_player_is_backed_up_written_and_read_back(self):
+        result, report = self.simulate('--fault', 'bad-blocks=9,12')
+        self.assertEqual(result.returncode, 0, result.stdout)
+        player = report['steps'][4]
+        self.assertEqual((player['written'], player['badBlocks']), (True, [9, 12]))
+        self.assertEqual(player['backup']['bytes'], 64 * 131072, 'the whole NAND')
+        self.assertEqual(player['readbackSha256'], digest(self.root/'images/disc-boot-v257-review-only.bin'))
+        nand = (self.root/'run/simulated-player/nand.bin').read_bytes()
+        self.assertEqual(nand[8 * 131072:9 * 131072], bytes(range(256)) * 512, 'logical block 0 in block 8')
+        self.assertEqual(nand[9 * 131072:10 * 131072], bytes(131072), 'bad block 9 skipped')
+
+    def test_a_simulated_player_stops_on_each_fault(self):
+        cases = {
+            ('no-device',): 'no player in USB Boot was found',
+            ('write-stops=3',): 'the write stopped at logical block 3: the outcome is uncertain, nothing is retried',
+            ('readback-flip=70000',): 'the readback differs from the image at byte 70000',
+            ('bad-blocks=8,9,10,11,12',): 'more bad blocks than the reserve',
+        }
+        for faults, message in cases.items():
+            with self.subTest(faults):
+                import shutil
+                shutil.rmtree(self.root/'run', ignore_errors=True)
+                result, report = self.simulate(*[a for f in faults for a in ('--fault', f)])
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(message, report['status'])
+
+    def test_stock_goes_back_the_same_way(self):
+        result, report = self.simulate('--restore')
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(report['status'], 'restored')
+        self.assertEqual(report['steps'][-1]['readbackSha256'], digest(self.root/'images/stock-v257-restore-review-only.bin'))
+
     def test_what_the_card_step_refuses(self):
         for path in ('/', str(Path.home())):
             with self.subTest(path), self.assertRaises(cards.CardError):

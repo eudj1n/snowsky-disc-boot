@@ -36,6 +36,10 @@ def main():
     parser.add_argument('--download', action='store_true', help='Download published archives that are not local')
     parser.add_argument('--work', help='The run folder (default: work/install-<time>)')
     parser.add_argument('--catalog', help='Another catalog of packages (tests)')
+    parser.add_argument('--simulate', nargs='?', const='run', help='Write a simulated player (a NAND file; default in the run folder)')
+    parser.add_argument('--simulate-small', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--fault', action='append', help='A simulated fault: no-device, bad-blocks=N,M, write-stops=N, readback-flip=N')
+    parser.add_argument('--restore', action='store_true', help="Back to stock: the restore image, the same path to the player")
     args = parser.parse_args()
     screen = tui.Screen(look='plain') if args.plain else None
     return flow.Installer(args, screen).run()

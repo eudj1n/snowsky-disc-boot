@@ -13,6 +13,7 @@ import time
 import catalog
 from firmware_profile import load_profile
 from installer import card as cards
+from installer import device as devices
 from installer import tui
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -247,12 +248,68 @@ class Installer:
         self.done('card', card=str(target), packages=staged, apps=placed, marker=str(marker))
         return target
 
-    def player(self, image):
-        self.say('The player (USB Boot)', [
-            f'The image is ready: {Path(image).name}.',
-            'Writing it through USB Boot (backup, write, readback, every byte compared) comes in the installer\'s next part; '
-            'until then it is the reviewed operator procedure, docs/build-and-flash.md.'])
-        self.done('player', image=str(image), written=False)
+    def faults(self):
+        """--fault no-device | bad-blocks=81,90 | write-stops=5 | readback-flip=123 (simulated player)."""
+        faults = {}
+        for fault in self.args.fault or []:
+            name, _, value = fault.partition('=')
+            if name == 'no-device':
+                faults[name] = True
+            elif name == 'bad-blocks':
+                faults[name] = [int(v) for v in value.split(',') if v]
+            elif name in ('write-stops', 'readback-flip'):
+                faults[name] = int(value)
+            else:
+                raise Stop(f'unknown fault {fault}')
+        return faults
+
+    def device(self):
+        geometry = devices.Geometry.for_profile(load_profile())
+        if self.args.simulate_small:
+            geometry = geometry.scaled(blocks=64, start=8, logical=16, reserve=4)
+        folder = Path(self.args.simulate) if self.args.simulate != 'run' else self.work/'simulated-player'
+        return devices.Simulated(folder, geometry, self.faults())
+
+    def progress(self, title, label):
+        last = [-1]
+
+        def show(fraction):
+            if int(fraction * 50) != last[0]:
+                last[0] = int(fraction * 50)
+                self.frame(lambda: self.screen.label(title), lambda: self.screen.progress(label, fraction))
+        return show
+
+    def player(self, image, restore=False):
+        title = 'The player (USB Boot)'
+        if not self.args.simulate:
+            self.say(title, [
+                f'The image is ready: {Path(image).name}.',
+                'Writing it into the player through USB Boot (backup, write, readback, every byte compared) is the '
+                'installer\'s next part; until then it is the reviewed operator procedure, docs/build-and-flash.md. '
+                '--simulate runs this step against a simulated player.'])
+            self.done('player', image=str(image), written=False)
+            return
+        player = self.device()
+        self.say(title, ['Hold Volume Down and connect the cable to this computer (a simulated player here).'])
+        try:
+            info = player.identify()
+            self.say(title, [f'{info["chip"]}, {info["blocks"]} blocks, {len(info["badBlocks"])} bad.'])
+            backup = player.backup(self.work/'backup', self.progress(title, 'Backup of the whole NAND'))
+            what = 'stock\'s rootfs' if restore else 'the image with the boot layer'
+            self.confirm(title, [f'The backup is {backup["data"]} (SHA-256 {backup["sha256"][:12]}…).',
+                                 f'Next: write {what} into the primary rootfs, read it back and compare every byte.'],
+                         'RESTORE' if restore else 'WRITE')
+            player.write(image, self.progress(title, 'Writing ' + Path(image).name))
+            readback = player.readback(self.work/'readback.bin', self.progress(title, 'Reading it back'))
+        except devices.DeviceError as error:
+            raise Stop(f'{error}. The backup of this run is in {self.work/"backup"}; nothing was retried.')
+        differs = devices.compare(image, readback)
+        if differs is not None:
+            raise Stop(f'the readback differs from the image at byte {differs}: the player is not confirmed. '
+                       f'The backup is in {self.work/"backup"}; restore stock with install.py --restore.')
+        self.say(title, ['Written and read back: every byte matches the image.'])
+        self.done('player', image=str(image), written=True, simulated=True, chip=info['chip'], badBlocks=info['badBlocks'],
+                  backup=backup, readbackSha256=devices.sha256_file(readback))
 
     def first_boot(self):
         self.say('First boot', ['Power the player on holding Play: the boot layer installs the packages from the card and '
@@ -264,6 +321,15 @@ class Installer:
         try:
             self.check()
             image = self.firmware()
+            if self.args.restore:
+                # Back to stock: the restore image built beside the boot layer's, the same path to the player.
+                stock = next(Path(image).parent.glob('stock-v*-restore-review-only.bin'), None)
+                if stock is None:
+                    raise Stop('no stock restore image beside the image')
+                self.step = 4
+                self.player(stock, restore=True)
+                self.report['status'] = 'restored'
+                return 0
             folders, apps = self.packages()
             self.card(folders, apps)
             self.player(image)
@@ -274,4 +340,4 @@ class Installer:
             self.say('Stopped', [str(stop)], tui.ACCENT)
         finally:
             (self.work/'report.json').write_text(json.dumps(self.report, indent=2) + '\n')
-        return 0 if self.report['status'] == 'prepared' else 1
+        return 0 if self.report['status'] in ('prepared', 'restored') else 1

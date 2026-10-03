@@ -104,8 +104,18 @@ the default apps (`Apps/`) and the console's marker on the card after the typed 
 Archives come from local files with their catalog digest (`--from`) or, once published,
 `--download`. `--dry-run` stages into the run's own folder (`work/install-*/card`) and writes
 nothing else; `--yes` answers nothing and takes the defaults and the options given. The run's
-report is `work/install-*/report.json`. The write through USB Boot and the first boot follow in
-the installer's next parts. `tests/conformance/test_installer.py` runs it on a card folder.
+report is `work/install-*/report.json`.
+
+The player's step runs against a simulated player with `--simulate` (`scripts/installer/device.py`):
+a NAND file with its spare area in the reviewed chip's and writer's geometry (2,048 blocks of
+128 KiB; the image's 768 logical blocks from block 80, bad ones skipped within a reserve of 64).
+It identifies the chip, backs up the whole NAND into the run folder, writes after the typed
+`WRITE`, reads back and compares every byte; `--restore` writes the stock restore image built
+beside the image the same way (`RESTORE`). `--fault no-device`, `bad-blocks=N,M`,
+`write-stops=N` and `readback-flip=N` show how each failure stops the run with the backup's place
+and nothing retried. Without `--simulate` the step says that the write into a player is the next
+part (the reviewed tools in `scripts/deployment/`). `tests/conformance/test_installer.py` runs both
+on a card folder and a 64-block simulated player.
 
 ## The image and its guest
 

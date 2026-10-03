@@ -380,6 +380,15 @@ boot menu").
     write, the independent readback and every byte compared, over the
     reviewed tools; the way back to stock; `--simulate` (a NAND file with
     injected faults) and `--guest` (the emulator's guest as the player).
+    - [x] `--simulate` (2026-10-03): the steps, the typed `WRITE`/`RESTORE`,
+      the progress, the faults and the report against a NAND file in the
+      reviewed chip's and writer's geometry, a whole-NAND backup first;
+      `--restore` back to stock (8 installer tests in all).
+    - [ ] The player's own backend over the reviewed tools (identity,
+      write plan and admission, independent readback, audits). The reviewed
+      readers collect the primary rootfs only: a whole-NAND backup needs the
+      reader payload (`device/acquisition/`) to read every block.
+    - [ ] `--guest`: the emulator's guest as the player.
   - [ ] The first boot with Play and `.disc/boot/result.json` read back.
 - [ ] `console.py`, the player's USB console from this computer (owner,
   2026-10-03): find the ACM port, run commands and read their answers (the
