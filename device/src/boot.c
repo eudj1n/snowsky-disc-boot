@@ -201,7 +201,7 @@ static int list_uis(ui_entry *out, int cap) {
         if (!package_name_ok(e->d_name)) continue;
         ui_domain(domain, e->d_name);
         if (rstate_read(domain, &rs) || !rs.current) continue;
-        snprintf(out[n].name, sizeof(out[n].name), "%s", e->d_name);
+        snprintf(out[n].name, sizeof(out[n].name), "%.32s", e->d_name);
         bpath(slot, DATA_DIR "/%s/%c", domain, rs.current);
         out[n].version[0] = 0;
         if (!manifest_load(slot, m, err, sizeof(err))) snprintf(out[n].version, sizeof(out[n].version), "%s", m->version);
@@ -822,7 +822,7 @@ static void recovery(void) {
             if (!package_name_ok(e->d_name) || count >= MAX_UIS) continue;
             char sub[PATH_MAX];
             bpath(sub, "%s/.disc/boot/install/ui/%s", card, e->d_name);
-            if (is_dir(sub)) snprintf(names[count++], sizeof(names[0]), "%s", e->d_name);
+            if (is_dir(sub)) snprintf(names[count++], sizeof(names[0]), "%.32s", e->d_name);
         }
         closedir(d);
         qsort(names, (size_t)count, sizeof(names[0]), name_order);
@@ -838,7 +838,7 @@ static void recovery(void) {
             ui_domain(domain, names[k]);
             bpath(staged, "%s/.disc/boot/install/ui/%s", card, names[k]);
             int ok = install(domain, staged, note, sizeof(note)) == 0;
-            if (ok && !first_ui[0]) snprintf(first_ui, sizeof(first_ui), "%s", names[k]);
+            if (ok && !first_ui[0]) snprintf(first_ui, sizeof(first_ui), "%.32s", names[k]);
             if (ok) ui_installed_now = 1;
             add_result(result, sizeof(result), &o, first, names[k], ok, note);
             first = 0;
@@ -1158,7 +1158,7 @@ static int menu_turn(ui_choice *c, manifest *m, char **argv) {
     if (failures && !rs.confirmed && !rollback("menu", &rs)) blog("menu: a tentative version failed (%s); back to the previous one", err);
     if (failures >= MENU_FAILURES) {
         c->menu = 0;
-        snprintf(c->note, sizeof(c->note), "the menu failed %d times (%s)", failures, err);
+        snprintf(c->note, sizeof(c->note), "the menu failed %d times (%.150s)", failures, err);
         write_choice(c);
         role_status("menu", "failed", NULL, &rs, failures, err);
         return 0;
@@ -1167,7 +1167,7 @@ static int menu_turn(ui_choice *c, manifest *m, char **argv) {
         int recovered = !rs.confirmed && !rollback("menu", &rs) && !slot_check("menu", rs.current, m, err, sizeof(err));
         if (!recovered) {
             c->menu = 0;
-            snprintf(c->note, sizeof(c->note), "the menu fails its check: %s", err);
+            snprintf(c->note, sizeof(c->note), "the menu fails its check: %.150s", err);
             write_choice(c);
             role_status("menu", "failed", NULL, &rs, failures, err);
             return 0;
