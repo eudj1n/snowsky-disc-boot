@@ -131,7 +131,10 @@ installation's review, image, write and readback, or the stage capture of a firs
 [build and flash](build-and-flash.md) steps 3 to 5: the package offline, then after `BACKUP` a
 session that collects the primary rootfs and compares it with the history's image, after
 `WRITE` the profile's admission (only it and the review pin may change), both plans computed
-again and compared, one writer call and the admission closed in every case, then after `READ`
+again and compared, one writer call and the admission closed in every case, the owner's word on
+the new system's first start (leaving USB Boot starts it once), kept with its time in the
+readback capture's `owner-boot-confirmation.json` so that the next installation's review finds
+it between the write and the readback, then after `READ`
 a fresh collection compared every byte with the image by its approved exact plan, and both USB
 journals audited. An unknown writer outcome stops everything. The run writes the next
 `history.json`. Before its first use on a player two points want a review: the backup session

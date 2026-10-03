@@ -163,7 +163,7 @@ class ReviewedTests(unittest.TestCase):
                                   package=None, app=None, packages_from=[], download=False, work=str(self.root/'run'),
                                   catalog=str(catalog), simulate=None, simulate_small=False, fault=None, restore=False, guest=False,
                                   history=str(self.root/'history.json'), diskos='/diskos', libusb='/libusb.dylib')
-        tools = Tools(self)
+        tools = self.tools = Tools(self)
         installer = flow.Installer(args, tui.Screen(look='plain', stream=io.StringIO()), runner=tools)
         original = usbboot.Reviewed.__init__
 
@@ -176,6 +176,40 @@ class ReviewedTests(unittest.TestCase):
         self.assertTrue(player['written'])
         self.assertEqual(player['target'], 'candidate')
         self.assertIn('audit_usb_readback.py', tools.calls)
+        return installer, tools
+
+    def test_the_owner_confirms_the_start_between_the_write_and_the_readback(self):
+        """The order the next installation's review checks (installed_candidate.py): written <
+        the owner's answer < the readback's start, with both sessions named."""
+        from unittest import mock
+        import builtins
+        asked = {}
+
+        def typed(prompt=''):
+            words = iter_words.pop(0)
+            if words == 'ANSWER':
+                asked['calls'] = list(self.tools.calls)
+                return 'the stock UI came up, the volume works'
+            return words
+        iter_words = ['BACKUP', 'WRITE', 'ANSWER', 'READ']
+        original = flow.Installer.__init__
+
+        def interactive(installer, *a, **k):
+            original(installer, *a, **k)
+            installer.interactive = True
+        with mock.patch.object(flow.Installer, '__init__', interactive), mock.patch.object(builtins, 'input', side_effect=typed), \
+                mock.patch.object(tui, 'read_key', return_value='enter'):
+            installer, tools = self.test_install_py_runs_the_player_through_them()
+        self.assertEqual(iter_words, [], 'every word was asked for')
+        self.assertIn('writer_transport.py acquire', asked['calls'])
+        self.assertEqual(asked['calls'].count('collect_rootfs.py acquire'), 1, 'asked before the readback session')
+        record = json.loads((self.root/'run/usb/read/owner-boot-confirmation.json').read_text())
+        self.assertEqual((record['observation'], record['owner_answer']),
+                         ('owner-confirmed-normal-first-boot', 'the stock UI came up, the volume works'))
+        read = json.loads((self.root/'run/usb/read/result.json').read_text())
+        self.assertEqual((record['write_session_id'], record['readback_session_id']), ('write-session', read['session_id']))
+        self.assertIs(record['automated_boot_test'], False)
+        self.assertTrue(record['reported_at'].endswith('Z'))
 
 
 if __name__ == '__main__':

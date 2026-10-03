@@ -387,18 +387,38 @@ class Installer:
                                  'Enter USB Boot again (Volume Down and the cable).',
                                  f'Next: write {what} once. Its outcome is never retried.'], 'RESTORE' if restore else 'WRITE')
             written = reviewed.write(target)
-            self.confirm(title, ['Written. Leaving USB Boot starts the new system once; then enter USB Boot again.',
+            # The owner sees the new system start between the write and the readback (the order
+            # of the installations since combined-008, which the next installation's review checks).
+            answer = self.boot_answer(title)
+            self.confirm(title, ['Enter USB Boot again (Volume Down and the cable).',
                                  'Next: read it back in a fresh session and compare every byte.'], 'READ')
             read = reviewed.readback(target)
             audits = reviewed.audit()
         except usbboot.ReviewedError as error:
             raise Stop(f'{error}. The run\'s evidence is in {self.work/"usb"}; nothing was retried.')
         history = reviewed.next_history(image)
-        self.say(title, ['Written, read back and every byte compared; both USB journals audited.', f'This installation\'s history: {history}'])
-        self.read_capture = Path(read['capture'])
-        self.sessions = (written['session'], load_json_safe(Path(read['capture'])/'result.json').get('session_id'))
+        sessions = (written['session'], load_json_safe(Path(read['capture'])/'result.json').get('session_id'))
+        if answer:
+            text, reported = answer
+            record = dict(observation='owner-confirmed-normal-first-boot', reported_at=reported, owner_answer=text,
+                          reported_via='install.py, after the write and before the readback', write_session_id=sessions[0],
+                          readback_session_id=sessions[1], automated_boot_test=False, native_process_verified=False)
+            (Path(read['capture'])/'owner-boot-confirmation.json').write_text(json.dumps(record, indent=2, ensure_ascii=False) + '\n')
+        self.say(title, ['Written, read back and every byte compared; both USB journals audited.', f'This installation\'s history: {history}'] +
+                 ([] if answer else ['No answer about the new system\'s start was recorded: the next installation\'s review needs one '
+                                     '(owner-boot-confirmation.json in the readback capture).']))
         self.done('player', image=str(image), written=True, simulated=False, target=target, backup=backup, write=written, read=read,
-                  audits=audits, history=str(history))
+                  audits=audits, history=str(history), ownerAnswer=answer[0] if answer else None)
+
+    def boot_answer(self, title):
+        """The owner's word on the new system's start after the write, with its time (UTC)."""
+        if not self.interactive:
+            return None
+        self.say(title, ['Written. Disconnect the cable: leaving USB Boot starts the new system once. Let it start without '
+                         'holding a key and look at it.',
+                         'Did it start normally? Describe what you saw (empty: not checked).'])
+        text = self.input().strip()
+        return (text, time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())) if text else None
 
     def player_guest(self, image):
         """The emulator's guest of the image in the player's place, with the staged card."""
@@ -484,18 +504,10 @@ class Installer:
     def first_boot(self):
         if self.args.guest:
             return self.first_boot_guest()
-        self.say('First boot', ['Power the player on holding Play: the boot layer installs the packages from the card and '
-                                'writes .disc/boot/result.json; the player page then answers on the network.'])
-        answer = None
-        if getattr(self, 'read_capture', None) is not None and self.interactive:
-            self.say('First boot', ['Did the player start normally? Describe what you saw (empty: not checked yet).'])
-            answer = self.input().strip() or None
-            if answer:
-                record = dict(observation='owner-confirmed-normal-first-boot', reported_at=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-                              owner_answer=answer, reported_via='install.py', write_session_id=self.sessions[0],
-                              readback_session_id=self.sessions[1], automated_boot_test=False, native_process_verified=False)
-                (self.read_capture/'owner-boot-confirmation.json').write_text(json.dumps(record, indent=2, ensure_ascii=False) + '\n')
-        self.done('first boot', ownerAnswer=answer)
+        self.say('First boot', ['Disconnect the cable, put the card in and power the player on holding Play: the boot layer '
+                                'installs the packages from the card and writes .disc/boot/result.json; the player page then '
+                                'answers on the network.'])
+        self.done('first boot')
 
     def run(self):
         self.work.mkdir(parents=True, exist_ok=True)
