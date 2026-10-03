@@ -236,6 +236,28 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   stock's UI after three starts (snowsky-disc-qemu #54;
   `work/emulator-d7c0d5b/`, ignored).
 
+## Stage 3b — several UIs (multi-boot), before the image
+
+Owner, 2026-10-03: built into the image before its first write to a device,
+so that it never needs a second USB Boot (contract, "Several UIs and the
+chooser").
+
+- [x] Designed in the contract (2026-10-03): several `ui` packages, one per
+  boot; a `chooser` package that asks at power-on, after which stock's loop
+  restarts the pair; the choice by the chooser, `next` or the default, with
+  stock's UI as the fallback; `ui-default`, `ui-next` and `ui-remove`
+  requests; Volume Up and Play unchanged.
+- [ ] Device fact, read-only over the console: which process holds
+  `/dev/jz_watchdog`.
+- [ ] The boot program: storage per `ui` package, the choice and
+  `choice.json`, the `chooser` role and its turn, the requests, recovery of
+  several staged packages, the status; `scripts/package.py` and
+  `disc-boot verify` with the `chooser` role. Conformance tests with it.
+- [ ] Guest acceptance with probe packages (contract, "Before it is
+  built"), then `boot_guest.py` and `two_packages.py` on the new layout.
+- [ ] A chooser with a screen on the guest once snowsky-disc-qemu #54 is
+  fixed, proving the API before the image fixes it.
+
 ## Stage 4 — the image and the installation (separately authorized)
 
 - [ ] The installation for users: the image built from the user's own OTA,
@@ -246,7 +268,7 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   layout and bad blocks, V2.57 checked, a full backup, write, verify every
   byte, the way back to stock.
 - [ ] The owner's player: the image, then the two packages (separately
-  authorized).
+  authorized), after stage 3b.
 - [ ] Open facts for the device: what "Reset all" removes in `/usr/data`;
   its free space; memory and priority limits. The keys' pins and level are
   settled offline (2026-10-03, [kernel review](nand-kernel-review.md#keys))
