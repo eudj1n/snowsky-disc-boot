@@ -105,6 +105,31 @@ class CatalogTests(unittest.TestCase):
         with self.assertRaisesRegex(catalog.CatalogError, 'the catalog names disc-server 8'):
             catalog.fetch(entry, self.root/'out3', [local])
 
+    def test_a_published_archive_is_downloaded_checked_and_kept(self):
+        folder = self.root/'src'
+        (folder/'bin').mkdir(parents=True)
+        (folder/'bin/run').write_text('#!/bin/sh\n')
+        (folder/'bin/run').chmod(0o755)
+        package.describe(folder, 'disc-server', '7', 'service', 'bin/run', profiles=['2.57'])
+        published = self.root/'published'
+        published.mkdir()
+        package.zip_package(folder, published/'server.zip')
+        data = (published/'server.zip').read_bytes()
+        source = dict(url=(published/'server.zip').as_uri(), sha256=digest(data), size=len(data))
+        entry = dict(name='disc-server', role='service', version='7', source=source)
+        seen = []
+        with self.assertRaisesRegex(catalog.NotLocal, 'downloads not allowed'):
+            catalog.fetch(entry, self.root/'out0', [])
+        fetched = catalog.fetch(entry, self.root/'out', [], allow_download=True, progress=lambda n, f: seen.append(f),
+                                downloads=self.root/'downloads')
+        self.assertEqual(json.loads((fetched/'package.json').read_text())['version'], '7')
+        self.assertEqual(seen[-1], 1.0)
+        self.assertEqual(catalog.find_local(source, [self.root/'downloads']), self.root/'downloads/server.zip', 'kept for the next run')
+        with self.assertRaisesRegex(catalog.NotLocal, 'the download from .* failed'):
+            catalog.obtain(dict(source, url=(published/'gone.zip').as_uri()), [], self.root, True)
+        with self.assertRaisesRegex(catalog.CatalogError, 'does not match its catalog entry'):
+            catalog.obtain(dict(source, sha256='0' * 64), [], self.root, True)
+
     def release(self, member, data):
         buffer = io.BytesIO()
         with tarfile.open(fileobj=buffer, mode='w:gz') as tar:

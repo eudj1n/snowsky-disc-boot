@@ -104,9 +104,12 @@ counted against the profile before the build), offers
 `catalog/packages.json` by role (a service and a boot menu, one at most each; any number of
 UIs) and the chosen server's `catalog/apps.json`, and puts the packages,
 the default apps (`Apps/`) and the console's marker on the card after the typed confirmation.
-Archives come from local files with their catalog digest (`--from`) or, once published,
-`--download`; asked, the installer takes the file or a folder to look in (dropped into the
-terminal) when none is found, before the card. `--dry-run` stages into the run's own folder (`work/install-*/card`) and writes
+Archives come from local files with their catalog digest (`--from`, and the downloads of
+earlier runs in `work/downloads`) or are downloaded from their published address, with the
+certificate checked (the system's bundle where a Python build has none of its own) and kept only
+when their size and digest match; `--offline` never downloads. When an archive is neither local
+nor downloadable, the guided run asks for the file or a folder to look in (dropped into the
+terminal), before the card. `--dry-run` stages into the run's own folder (`work/install-*/card`) and writes
 nothing else; `--yes` answers nothing and takes the defaults and the options given. The run's
 report is `work/install-*/report.json`.
 

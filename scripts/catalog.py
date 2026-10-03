@@ -17,11 +17,14 @@ import argparse
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import shutil
+import ssl
 import sys
 import tarfile
 import tempfile
+import urllib.parse
 import urllib.request
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -157,32 +160,54 @@ def find_local(archive, places):
     return None
 
 
-def download(archive, folder):
-    """The archive from its url into folder, kept only when its size and digest match."""
+def tls_context():
+    """Certificates checked always: Python's own roots, or, where a Python build has none (the
+    python.org builds for macOS before "Install Certificates"), the system's bundle."""
+    paths = ssl.get_default_verify_paths()
+    own = any(p and os.path.exists(p) for p in (paths.cafile, paths.capath, paths.openssl_cafile, os.environ.get('SSL_CERT_FILE')))
+    for bundle in ('/etc/ssl/cert.pem', '/etc/ssl/certs/ca-certificates.crt'):
+        if not own and os.path.exists(bundle):
+            return ssl.create_default_context(cafile=bundle)
+    return ssl.create_default_context()
+
+
+def download(archive, folder, progress=None):
+    """The archive from its url into folder, kept only when its size and digest match.
+    progress(name, fraction) follows it."""
     if not archive.get('url'):
         fail('the archive is not published yet: give a local file with its digest')
     target = Path(folder)/Path(archive['url']).name
     digest, size = hashlib.sha256(), 0
-    with urllib.request.urlopen(archive['url'], timeout=60) as response, open(target, 'wb') as out:
-        while chunk := response.read(1 << 20):
-            size += len(chunk)
-            if size > archive['size']:
-                break
-            digest.update(chunk)
-            out.write(chunk)
+    try:
+        context = tls_context() if archive['url'].startswith('https:') else None
+        with urllib.request.urlopen(archive['url'], timeout=60, context=context) as response, open(target, 'wb') as out:
+            while chunk := response.read(1 << 20):
+                size += len(chunk)
+                if size > archive['size']:
+                    break
+                digest.update(chunk)
+                out.write(chunk)
+                if progress:
+                    progress(target.name, size / archive['size'])
+    except OSError as error:
+        target.unlink(missing_ok=True)
+        raise NotLocal(f'the download from {urllib.parse.urlsplit(archive["url"]).netloc} failed ({error}); '
+                       'give a local file with its digest')
     if size != archive['size'] or digest.hexdigest() != archive['sha256']:
         target.unlink(missing_ok=True)
         fail(f'{archive["url"]} does not match its catalog entry')
     return target
 
 
-def obtain(archive, places, folder, allow_download):
+def obtain(archive, places, folder, allow_download, progress=None):
+    """A local file with the archive's digest, else its download when it is published and allowed."""
     found = find_local(archive, places)
     if found:
         return found
-    if allow_download:
-        return download(archive, folder)
-    raise NotLocal(f'no local file with sha256 {archive["sha256"][:12]}… (allow the download, or give its folder)')
+    if allow_download and archive.get('url'):
+        return download(archive, folder, progress)
+    why = 'not published yet' if not archive.get('url') else 'downloads not allowed'
+    raise NotLocal(f'no local file with sha256 {archive["sha256"][:12]}… ({why}: give its file or folder)')
 
 
 def diskos_release(entry, archive_path, output):
@@ -211,16 +236,20 @@ def diskos_release(entry, archive_path, output):
     return output
 
 
-def fetch(entry, output, places=(), allow_download=False):
-    """The entry's package as a folder at output, checked as disc-boot will check it."""
+def fetch(entry, output, places=(), allow_download=False, progress=None, downloads=None):
+    """The entry's package as a folder at output, checked as disc-boot will check it. Downloads
+    are kept in downloads when given (found by their digest next time), else dropped."""
     source = entry['source']
     with tempfile.TemporaryDirectory() as temp:
+        if downloads:
+            Path(downloads).mkdir(parents=True, exist_ok=True)
+            temp = str(downloads)
         if 'recipe' in source:
             archive = next((a for a in source['archives'] if find_local(a, places)), source['archives'][0])
-            path = obtain(archive, places, temp, allow_download)
+            path = obtain(archive, places, temp, allow_download, progress)
             folder = diskos_release(entry, path, output)
         else:
-            path = obtain(source, places, temp, allow_download)
+            path = obtain(source, places, temp, allow_download, progress)
             folder = package.unpack(path, Path(output))
     m = package.check(folder, entry.get('role'))
     if (m['name'], m['version']) != (entry['name'], entry['version']):

@@ -12,8 +12,9 @@ through USB Boot with the reviewed tools (--history) and records its first boot.
     python3 install.py --guest --image FILE --ota DIR --from work/packages   # the emulator's guest as the player
     python3 install.py --yes --ota DIR --card /Volumes/PLAY --from work/packages   # without questions
 
-Packages are taken from local files with their catalog digest (--from) or, once published,
-downloaded (--download). The run's report is work/install-*/report.json.
+Packages are taken from local files with their catalog digest (--from) or downloaded from
+their published address and checked by that digest (not with --offline). The run's report is
+work/install-*/report.json.
 """
 import argparse
 from pathlib import Path
@@ -40,7 +41,9 @@ def main():
     parser.add_argument('--package', action='append', help='A package to install (default: the catalog\'s defaults)')
     parser.add_argument('--app', action='append', help='An app of the server to stage (default: its defaults)')
     parser.add_argument('--from', dest='packages_from', action='append', default=[], help='A file or folder of local archives')
-    parser.add_argument('--download', action='store_true', help='Download published archives that are not local')
+    parser.add_argument('--offline', dest='download', action='store_false',
+                        help='Never download: only local files with the catalog\'s digests (by default a published archive '
+                             'that is not local is downloaded and checked by its digest)')
     parser.add_argument('--work', help='The run folder (default: work/install-<time>)')
     parser.add_argument('--catalog', help='Another catalog of packages (tests)')
     parser.add_argument('--simulate-small', action='store_true', help=argparse.SUPPRESS)

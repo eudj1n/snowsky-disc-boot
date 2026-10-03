@@ -386,7 +386,9 @@ boot menu").
     `tests/conformance/test_installer.py` (4). FiiO's update may be given as
     its own folder, `main_os` or `main_os/ota_v<version>` (its chunks
     counted against the profile); the ground fills the window; Ctrl-C stops
-    like any refusal.
+    like any refusal. Published archives are downloaded by default and kept
+    in `work/downloads` (diskOS 1.2.0's release fetched from GitHub and its
+    package assembled, 2026-10-03); an archive found nowhere is asked for.
   - [ ] The player through USB Boot: a full backup before every write, the
     write, the independent readback and every byte compared, over the
     reviewed tools; the way back to stock; `--simulate` (a NAND file with

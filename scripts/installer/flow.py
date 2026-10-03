@@ -63,8 +63,10 @@ class Installer:
         self.work = Path(args.work or ROOT/'work'/time.strftime('install-%Y%m%d-%H%M%S')).resolve()
         self.report = dict(started=time.strftime('%Y-%m-%dT%H:%M:%S'), dryRun=args.dry_run, guest=bool(args.guest), steps=[])
         self.step, self.guest, self.ota = 0, None, None
-        # Where archives are looked for by their digest: --from, and the places given on the way.
-        self.places = [Path(p) for p in args.packages_from]
+        # Where archives are looked for by their digest: --from, the places given on the way, and
+        # the downloads of earlier runs (work/downloads, kept: each is checked by its digest again).
+        self.downloads = ROOT/'work/downloads'
+        self.places = [Path(p) for p in args.packages_from] + [self.downloads]
 
     # The screen
 
@@ -249,8 +251,8 @@ class Installer:
             except catalog.NotLocal as error:
                 if not self.interactive:
                     raise Stop(f'{what}: {error}')
-                answer = self.ask('Packages', f'{note}{what}: no file here has its digest. Where is it? A file, or a folder to '
-                                  'look in (drop it here; empty stops).', '')
+                answer = self.ask('Packages', f'{note}{what}: {error}. Where is it? A file, or a folder to look in '
+                                  '(drop it here; empty stops).', '')
                 if not answer:
                     raise Stop(f'{what}: {error}')
                 place = typed_path(answer)
@@ -259,6 +261,15 @@ class Installer:
                     self.places.append(place)
             except catalog.CatalogError as error:
                 raise Stop(f'{what}: {error}')
+
+    def downloading(self, title):
+        last = [None]
+
+        def show(name, fraction):
+            if (name, int(fraction * 50)) != last[0]:
+                last[0] = (name, int(fraction * 50))
+                self.frame(lambda: self.screen.label(title), lambda: self.screen.progress(f'Downloading {name}', fraction))
+        return show
 
     def packages(self):
         entries = catalog.load(self.args.catalog or catalog.CATALOG, kind='packages')['entries']
@@ -284,7 +295,7 @@ class Installer:
         for k, entry in enumerate(chosen):
             self.frame(lambda: self.screen.label('Packages'), lambda: self.screen.progress(f'{entry["name"]} {entry["version"]}', k / len(chosen)))
             folders[entry['name']] = self.obtained(f'{entry["name"]} {entry["version"]}', lambda places: catalog.fetch(
-                entry, self.work/'packages'/entry['name'], places, self.args.download))
+                entry, self.work/'packages'/entry['name'], places, self.args.download, self.downloading('Packages'), self.downloads))
         apps, offered = [], cards.app_entries(folders['disc-server']) if 'disc-server' in folders else []
         if 'disc-server' in folders and not offered:
             self.say('Apps of the server', ['This server package offers no apps (it carries no catalog/apps.json).'], tui.MUTED)
@@ -294,10 +305,10 @@ class Installer:
             app_marks = self.choose('Apps of the server', [(a['name'], a['version']) for a in offered], app_marks)
             apps = [a for a, on in zip(offered, app_marks) if on]
         # Each app's archive found now, before the card: its file joins the places the card step uses.
-        (self.work/'downloads').mkdir(parents=True, exist_ok=True)
+        self.downloads.mkdir(parents=True, exist_ok=True)
         for app in apps:
             self.places.append(self.obtained(f'{app["name"]} {app["version"]}', lambda places: catalog.obtain(
-                app['source'], places, self.work/'downloads', self.args.download)))
+                app['source'], places, self.downloads, self.args.download, self.downloading('Apps of the server'))))
         self.done('packages', packages=[dict(name=e['name'], version=e['version']) for e in chosen],
                   apps=[dict(name=a['name'], version=a['version']) for a in apps])
         return list(folders.values()), apps
