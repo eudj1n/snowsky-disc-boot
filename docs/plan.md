@@ -136,7 +136,8 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   truncation warning in the status (`beb59b4`); stale build IDs in images
   (the Makefile now relinks on a new ID). Recorded in the contract: a
   version restored by a rollback clears the boot-loop count only after its
-  180 s again.
+  180 s again. Again on the emulator at `bfa1988` (#48 and #49 fixed) with
+  `boot-image-12d7c02`: all 11 steps passed (2026-10-03).
 
 - [x] Only the standard descriptors for a package (2026-10-03, found by the
   server's soak on the guest): the supervisor kept the boot log and
@@ -218,8 +219,16 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   also lists what diskOS would change to fit). Found on the way: on the
   guest a restart of stock's player in stock mode ran `rm -rf` on the
   mounted card after an unmount that failed (the mount kept its id); the
-  guard refused it, twice. The emulator's gaps are snowsky-disc-qemu #48 and
-  #49.
+  guard refused it, twice. The emulator's gaps were snowsky-disc-qemu #48 and
+  #49. Corrected the same day: diskOS's UI itself never got past its start
+  on the guest (the emulator drops `argv[0]`, and diskOS runs itself again
+  as `mq_ui` endlessly; contract, "Acceptance: two independent packages");
+  the run checked the process and its launcher's verdict, and its
+  screenshots were empty.
+- [ ] diskOS's UI running on the guest: `two_packages.py` without the
+  emulator workarounds and requiring the UI to hold the touch panel, on the
+  emulator at `bfa1988`, stops at its first step until the emulator keeps
+  `argv[0]` (`work/emulator-bfa1988/`, ignored).
 
 ## Stage 4 — the image and the installation (separately authorized)
 

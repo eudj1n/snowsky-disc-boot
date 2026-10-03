@@ -102,7 +102,7 @@ only through USB Boot; everything above it becomes files.
   first start and its watch loop), and BusyBox 1.31.1's `sh` finds `rm`
   through `PATH` (checked on the guest), so a guard first in their `PATH`
   takes the removal (below, "The card guard").
-- The emulator (snowsky-disc-qemu `d7f1b9b`) runs stock's `rcS`,
+- The emulator (snowsky-disc-qemu `d7f1b9b`, now `bfa1988`) runs stock's `rcS`,
   `fiio_init.sh` and its watch loop, models the port B word in `/dev/mem`
   with keys held from power-on, and power events (reboot and off through
   `rcK`, a cut, `poweroff -f`), with `/usr/data` as an 83 MiB file system.
@@ -473,8 +473,9 @@ the guest), so the server's bridge does not depend on the UI process, and
 `song.db` stays open in stock's player under diskOS's UI.
 
 Accepted on the guest (2026-10-03, plan, stage 3; `tests/integration/
-two_packages.py` with diskOS 1.2.0 built locally by `diskos_package.py`):
-both installed with Play and confirmed, stock's player started by diskOS's
+two_packages.py` with diskOS 1.2.0 built locally by `diskos_package.py`),
+except diskOS's UI itself, which on the guest never got past its start
+(below): both installed with Play and confirmed, stock's player started by diskOS's
 own launcher (its verdict `guard=1 local=1`, its guard and then boot's first
 in the player's `PATH`), the server answering and serving the player page
 it installed, a busy card kept through stock's card event, the pair killed
@@ -496,10 +497,16 @@ confirmed one without touching the server. What diskOS would change to fit
   logs) rather than `$DISC_BOOT_DATA`, and finds its helpers at fixed
   `/opt/diskos/bin/` paths (the artwork decoder, its updates' keys), absent
   in a package: those features are off as a package.
-- The emulator needed two workarounds (snowsky-disc-qemu #48: a package's
-  UI never counts as ready, so the test mounts the card after stock's player
-  starts and lets the keys go; #49: the guest's uptime is the host's, so
-  diskOS's cold-boot mount of the card does not run).
+- On the guest diskOS's UI never got past its start. The emulator's
+  qemu-user drops `argv[0]` (its binfmt entry lacks `P`), so the entry's
+  `exec -a mq_ui` arrives as the binary's path and diskOS runs itself again
+  as `mq_ui` through `/proc/self/exe`, endlessly, without drawing or opening
+  the touch panel; on the player the kernel keeps `argv[0]`. The first run
+  did not see it: it checked the process and the launcher's verdict, and
+  its screenshots were empty. With the emulator at `bfa1988` (#48 and #49
+  fixed, the test's workarounds removed) the acceptance requires the UI to
+  hold the touch panel and stops at its first step until the emulator keeps
+  `argv[0]`.
 
 ## Open before implementation
 

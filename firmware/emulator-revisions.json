@@ -7,6 +7,12 @@
         "2.57"
       ],
       "note": "2.x after #37-#47 (2026-10-02): stock-init guest, keys at power-on, power events, /usr/data as a file system, environment presets, card and network options, output stream state, FPU guard"
+    },
+    "bfa19880b86b34f7ee77754e2d5be1c000190706": {
+      "profiles": [
+        "2.57"
+      ],
+      "note": "2.x after #50-#51 (2026-10-03): the UI and the player found by name and held input device (a ui package's UI counts as ready, the card is mounted again after a restart in mid-run), guest uptime from its power-on; boot_guest.py passed on it"
     }
   }
 }

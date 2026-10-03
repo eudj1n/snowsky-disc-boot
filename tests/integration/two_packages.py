@@ -10,9 +10,9 @@ page installed through the server's application manager:
         --output /work/two-packages.json
 
 Both are staged on the card and installed with Play, then: both confirmed; diskOS's
-UI under stock's watch loop and stock's player through diskOS's own launcher (its
-card guard, its local-mode check, its verdict); the server answering and serving
-the page beside it; a busy card kept through stock's card event; the pair killed
+UI under stock's watch loop, past its start-up (it holds the touch panel), and
+stock's player through diskOS's own launcher (its card guard, its local-mode check,
+its verdict); the server answering and serving the page beside it; a busy card kept through stock's card event; the pair killed
 and brought back by stock's loop with the server untouched; stock mode with both
 installed (Volume Up); and a broken diskOS update giving way to the confirmed one
 without touching the server. Real timings: a version is confirmed after 180 s.
@@ -70,11 +70,20 @@ def environ(pid):
     return {key.decode(): value.decode(errors='replace') for key, value in pairs}
 
 
+def holds(pid, device):
+    """Whether the process holds the guest's input device (its touch panel: event1)."""
+    try:
+        return any(fd.resolve() == bg.ROOTFS/'dev/input'/device for fd in Path(f'/proc/{pid}/fd').iterdir())
+    except OSError:
+        return False
+
+
 def diskos_runs(slot):
-    """diskOS's binary as the UI, stock's player started by its launcher with both guards first."""
+    """diskOS's UI running (past its start-up: it holds the touch panel), stock's player started by its
+    launcher with both guards first."""
     # By its binary: the launcher's watcher (until the confirmation) and diskOS's own helpers share the name.
     binary = f'{slot}/diskos/mq_ui'.encode()
-    uis = sorted(p for p in bg.guest_pids('mq_ui') if binary in cmdline(p))
+    uis = sorted(p for p in bg.guest_pids('mq_ui') if binary in cmdline(p) and holds(p, 'event1'))
     players = bg.guest_pids('mq_player')
     if not uis or len(players) != 1:
         return None
@@ -115,61 +124,12 @@ def busy_card_kept(mount):
     return dict(files=len(before), refusals=logs[-2:])
 
 
-def power_on(hold=''):
-    """Power on; with diskOS's UI from the start of the boot, finish the emulator's boot ourselves.
-
-    The emulator mounts the card after stock's UI has started (stock unmounts it while
-    starting and expects a hotplug event the emulator never sends) and waits for that
-    by stock's /usr/bin/mq_ui opening its input device (emulator/runtime/boot_ready.py),
-    which a ui package's UI never is: it gives up after 60 s, before mounting the card
-    and letting the power-on keys go, and a recovery with Play waits only 90 s for the
-    card. So with the boot layer starting diskOS from the start, this mounts the card as
-    the emulator would once stock's player has started, and lets the keys go."""
-    import threading
-    failure = []
-    def boot():
-        try:
-            bg.power('on', hold=hold)
-        except subprocess.CalledProcessError as error:
-            failure.append(error)
-    thread = threading.Thread(target=boot)
-    thread.start()
-    card_root = bg.ROOTFS/'tmp/sdcard'
-    finished = False
-    until = time.monotonic() + 90
-    while thread.is_alive() and time.monotonic() < until:
-        status = ui_status()
-        players = bg.guest_pids('mq_player')
-        if status and status.get('name') == 'diskos' and players:
-            time.sleep(15)  # stock's player unmounts the card while it starts
-            if subprocess.run(['mountpoint', '-q', str(card_root)]).returncode != 0:
-                bg.shell('cd /repo && sd_mount', timeout=60)
-            finished = True
-            break
-        time.sleep(1)
-    thread.join()
-    if failure:
-        if not finished or bg.machine().get('state') != 'running':
-            raise failure[0]
-        bg.shell('cd /repo && python3 -B -m emulator.runtime.gpio release >/dev/null', timeout=60)
-    return finished
-
-
-def card_back(mount):
-    """The card mounted again after a restart of stock's player in mid-run.
-
-    Stock's player unmounts the card when it starts and mounts it again; on the guest
-    that second mount does not happen, so the emulator mounts the card itself at the
-    end of its boot (lib.sh sd_mount). A restart in mid-run (the pair restarted after
-    Play installed a ui package, or by stock's watch loop) leaves it to us; the step
-    records whether it was needed."""
+def card_mounted(mount):
+    """The card mounted, by the emulator: at the end of its boot and again after stock's
+    player was restarted in mid-run (stock's player unmounts the card when it starts)."""
     card_root = bg.ROOTFS/mount.lstrip('/')
-    time.sleep(15)
-    needed = subprocess.run(['mountpoint', '-q', str(card_root)]).returncode != 0
-    if needed:
-        bg.shell('cd /repo && sd_mount', timeout=60)
-    bg.wait(lambda: subprocess.run(['mountpoint', '-q', str(card_root)]).returncode == 0 or None, bool, 'card mounted', 60)
-    return needed
+    return bg.wait(lambda: subprocess.run(['mountpoint', '-q', str(card_root)]).returncode == 0 or None, bool,
+                   'card mounted', 90)
 
 
 def screenshot(prefix):
@@ -211,9 +171,9 @@ def run(server, ui, app, output):
     player = bg.guest_json('/run/disc-boot/ui/player.json')
     assert player['launch'] == 'package' and player['name'] == 'diskos', player
     assert bg.guest('cat /tmp/.diskos_boot_select').strip() == 'diskos'
-    remounted = card_back(boot['card'])
+    card_mounted(boot['card'])
     bg.step('both installed and confirmed', boot=boot, service=service, ui=ui_state, player=player, runs=runs,
-            cardRemountedByTheTest=remounted, screens=screenshot('two-installed'),
+            screens=screenshot('two-installed'),
             rmGuardLog=bg.guest('tail -n 4 /usr/data/diskos_rmguard.log 2>/dev/null').splitlines())
     # 2. The server beside diskOS: it answers, installs the page and serves it.
     status, health = http(PORT, 'GET', '/api/health')
@@ -231,7 +191,8 @@ def run(server, ui, app, output):
     again = bg.wait(lambda: (lambda r: r if r and r['player'] != runs['player'] else None)(diskos_runs(slot)), bool,
                     'the pair restarted through the launchers', 120)
     assert service_pid() == server_before and server_before, (server_before, service_pid())
-    bg.step('the pair restarted by stock', runs=again, serverPid=server_before, cardRemountedByTheTest=card_back(boot['card']))
+    card_mounted(boot['card'])
+    bg.step('the pair restarted by stock', runs=again, serverPid=server_before)
     # 5. Volume Up with both installed: stock mode, stock's UI and player, no package running.
     bg.power('off')
     bg.power('on', hold='volume_up')
@@ -245,7 +206,7 @@ def run(server, ui, app, output):
     bg.power('off')
     with bg.card() as root:
         bg.package.stage(broken(ui, work), root, profile=bg.PROFILE)
-    finished_boot = power_on('play')
+    bg.power('on', hold='play')                   # diskOS's UI from the start of the boot
     back = bg.wait(ui_status, lambda u: u['version'] == ui_version and u['slot'] == ui_state['slot'],
                    'diskOS back after the broken update', 300)
     after = bg.service(lambda s: s['state'] == 'confirmed', 'server confirmed after the ui rollback', 480)
@@ -256,8 +217,7 @@ def run(server, ui, app, output):
         result = json.loads((root/'.disc/boot/result.json').read_text())
     assert result['roles']['ui']['installed'] and result['roles']['ui']['note'].endswith('-broken'), result
     assert 'service' not in result['roles'], result
-    bg.step('broken ui update rolled back', result=result, ui=back, service=after, runs=runs,
-            emulatorBootFinishedByTheTest=finished_boot)
+    bg.step('broken ui update rolled back', result=result, ui=back, service=after, runs=runs)
     bg.evidence['status'] = 'passed'
     Path(output).write_text(json.dumps(bg.evidence, indent=2) + '\n')
     print(json.dumps({'status': 'passed', 'steps': [s['step'] for s in bg.evidence['steps']]}, indent=2))
