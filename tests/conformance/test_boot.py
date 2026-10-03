@@ -43,7 +43,7 @@ class BootTests(unittest.TestCase):
             (self.root/name).mkdir(parents=True, exist_ok=True)
         (self.root/'proc/mounts').write_text('/dev/root / squashfs ro 0 0\n')
         self.env = dict(os.environ, DISC_TEST_LEAK='1', DISC_BOOT_FIXTURE_ROOT=str(self.root),
-                        DISC_BOOT_FIXTURE_TIMING='confirm=1,grace=1,window=30,backoff=0.1,card=2,ui=30')
+                        DISC_BOOT_FIXTURE_TIMING='confirm=1,grace=1,window=30,backoff=0.1,card=2,ui=30,menu=2')
         self.data = self.root/'usr/data/disc-boot'
         self.run_dir = self.root/'run/disc-boot'
         self.addCleanup(self.cleanup)
@@ -55,18 +55,9 @@ class BootTests(unittest.TestCase):
     def boot(self, *args, check=False):
         return subprocess.run([str(BINARY), *args], env=self.env, capture_output=True, text=True, timeout=30, check=check)
 
-    def early(self, keys=None):
-        path = self.root/'fixture/keys'
-        if keys is None:
-            path.unlink(missing_ok=True)
-        else:
-            path.write_text(keys)
-        self.boot('early', '--profile', PROFILE, '--card', '/tmp/sdcard', '--card-source', '/dev/mmcblk0p1', check=True)
-        return json.loads((self.run_dir/'boot.json').read_text())
-
     def package(self, directory, script, name='disc-server', version='1', role='service', entry=None, edit=None, extra=None):
         directory.mkdir(parents=True, exist_ok=True)
-        entry = entry or ('bin/mq_ui' if role == 'ui' else 'bin/run')
+        entry = entry or ('bin/run' if role == 'service' else 'bin/mq_ui')
         files = {entry: ('#!/bin/sh\n' + script, 0o755), **(extra or {})}
         listed = {}
         for path, (text, mode) in files.items():
@@ -83,23 +74,29 @@ class BootTests(unittest.TestCase):
         (directory/'package.json').write_text(json.dumps(manifest))
         return manifest
 
+    @staticmethod
+    def domain(role, name):
+        """Where boot keeps a package: service and menu by role, each ui package under its name."""
+        return f'ui/{name}' if role == 'ui' else role
+
     def install(self, role, slot, script, confirmed=False, previous=None, **kwargs):
-        manifest = self.package(self.data/role/slot, script, role=role, **kwargs)
-        self.state(role, slot, confirmed, previous)
+        domain = self.domain(role, kwargs.get('name', 'disc-server'))
+        manifest = self.package(self.data/domain/slot, script, role=role, **kwargs)
+        self.state(domain, slot, confirmed, previous)
         return manifest
 
-    def state(self, role, current, confirmed=False, previous=None):
-        """The role's state as boot writes it: a previous slot keeps its package.json's fingerprint."""
-        (self.data/role).mkdir(parents=True, exist_ok=True)
-        (self.data/role/'state.json').write_text(json.dumps(dict(schema=1, current=current, confirmed=confirmed, previous=previous,
-                                                                 previousManifest=self.fingerprint(role, previous))))
+    def state(self, domain, current, confirmed=False, previous=None):
+        """A domain's state as boot writes it: a previous slot keeps its package.json's fingerprint."""
+        (self.data/domain).mkdir(parents=True, exist_ok=True)
+        (self.data/domain/'state.json').write_text(json.dumps(dict(schema=1, current=current, confirmed=confirmed, previous=previous,
+                                                                   previousManifest=self.fingerprint(domain, previous))))
 
-    def fingerprint(self, role, slot):
-        path = self.data/role/str(slot)/'package.json'
+    def fingerprint(self, domain, slot):
+        path = self.data/domain/str(slot)/'package.json'
         return hashlib.sha256(path.read_bytes()).hexdigest() if slot and path.exists() else None
 
-    def role_state(self, role):
-        return json.loads((self.data/role/'state.json').read_text())
+    def role_state(self, domain):
+        return json.loads((self.data/domain/'state.json').read_text())
 
     def status(self, role):
         try:
@@ -416,7 +413,7 @@ exit 0
     def test_play_installs_the_staged_packages(self):
         (self.root/'proc/mounts').write_text('/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
         self.package(self.staged('service'), GOOD, version='7')
-        broken = self.staged('ui')
+        broken = self.staged('ui/other-ui')
         self.package(broken, GOOD, role='ui', name='other-ui')
         (broken/'bin/mq_ui').write_text('changed')
         self.early('play')
@@ -425,8 +422,8 @@ exit 0
         self.assertEqual((status['version'], status['slot']), ('7', 'a'))
         result = json.loads((self.root/'tmp/sdcard/.disc/boot/result.json').read_text())
         self.assertEqual(result['roles']['service'], dict(installed=True, note='installed disc-server 7'))
-        self.assertFalse(result['roles']['ui']['installed'])
-        self.assertIn('bin/mq_ui has 7 bytes', result['roles']['ui']['note'])
+        self.assertFalse(result['roles']['ui']['other-ui']['installed'])
+        self.assertIn('bin/mq_ui has 7 bytes', result['roles']['ui']['other-ui']['note'])
         self.assertFalse(self.staged('service').exists())
         self.assertTrue(broken.exists(), 'a refused package stays on the card')
         self.assertEqual(oct((self.data/'service/a/bin/run').stat().st_mode & 0o777), '0o755')
@@ -435,7 +432,7 @@ exit 0
         # The card comes after stock's UI: the recovery stops that UI by its name, as stock's watch
         # loop finds it, so the loop starts the launcher (and with it the package).
         (self.root/'proc/mounts').write_text('/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
-        self.package(self.staged('ui'), GOOD, role='ui', name='other-ui')
+        self.package(self.staged('ui/other-ui'), GOOD, role='ui', name='other-ui')
         stock_ui = subprocess.Popen(['sleep', '60'])
         self.addCleanup(stock_ui.kill)
         other = subprocess.Popen(['sleep', '60'])
@@ -449,7 +446,8 @@ exit 0
         self.assertIsNone(other.poll(), 'only the UI is stopped')
         self.assertTrue((self.run_dir/'ui-launch').exists())
         result = json.loads((self.root/'tmp/sdcard/.disc/boot/result.json').read_text())
-        self.assertEqual(result['roles']['ui'], dict(installed=True, note='installed other-ui 1'))
+        self.assertEqual(result['roles']['ui'], {'other-ui': dict(installed=True, note='installed other-ui 1')})
+        self.assertEqual(self.global_state()['ui'], 'other-ui', 'the first ui package installed becomes the default')
 
     def test_recovery_needs_the_expected_card(self):
         (self.root/'proc/mounts').write_text('/dev/other /tmp/sdcard exfat rw 0 0\n')
@@ -503,7 +501,7 @@ exit 0
         self.assertEqual(self.runs(), ['package'])
         status = self.wait_status('ui', 'confirmed')
         self.assertEqual((status['name'], status['slot']), ('other-ui', 'a'))
-        self.assertTrue(self.role_state('ui')['confirmed'])
+        self.assertTrue(self.role_state('ui/other-ui')['confirmed'])
         self.early('volume-up')
         self.launch().wait(timeout=10)
         self.assertEqual(self.runs(), ['package', 'stock'])
@@ -542,13 +540,13 @@ exit 0
 
     def test_a_crashing_new_ui_gives_way_to_the_previous_one(self):
         self.stock_ui()
-        self.package(self.data/'ui/a', f'echo old >> "{self.root}/out/ui"\nexit 1\n', role='ui', name='other-ui')
+        self.package(self.data/'ui/other-ui/a', f'echo old >> "{self.root}/out/ui"\nexit 1\n', role='ui', name='other-ui')
         self.install('ui', 'b', f'echo new >> "{self.root}/out/ui"\nexit 1\n', name='other-ui', previous='a')
         self.early()
         for _ in range(4):
             self.launch().wait(timeout=10)
         self.assertEqual(self.runs(), ['new', 'new', 'new', 'old'])
-        self.assertEqual(self.role_state('ui')['current'], 'a')
+        self.assertEqual(self.role_state('ui/other-ui')['current'], 'a')
 
     def test_a_ui_request_applies_at_its_next_start(self):
         self.stock_ui()
@@ -557,7 +555,207 @@ exit 0
         self.launch().wait(timeout=10)
         self.launch().wait(timeout=10)
         self.assertEqual(self.runs(), ['package', 'stock'])
-        self.assertFalse((self.data/'ui/a').exists())
+        self.assertFalse((self.data/'ui/other-ui').exists())
+
+    # Several UIs and the boot menu
+
+    def set_global(self, **fields):
+        self.data.mkdir(parents=True, exist_ok=True)
+        current = self.global_state() if (self.data/'state.json').exists() else dict(schema=1, default='platform', unconfirmed=0)
+        current.update(fields)
+        (self.data/'state.json').write_text(json.dumps(current))
+
+    def choice(self):
+        return json.loads((self.run_dir/'ui/choice.json').read_text())
+
+    def two_uis(self, confirmed=True):
+        for name in ('alpha', 'beta'):
+            self.install('ui', 'a', f'echo {name} >> "{self.root}/out/ui"\n: > "$DISC_BOOT_RUN/ready"\nsleep 2.5\n',
+                         name=name, confirmed=confirmed)
+
+    def menu(self, script, confirmed=False, **kwargs):
+        return self.install('menu', 'a', f'echo menu >> "{self.root}/out/ui"\n' + script, name='disc-menu', confirmed=confirmed, **kwargs)
+
+    def test_the_default_chooses_among_several_uis(self):
+        self.stock_ui()
+        self.two_uis()
+        self.set_global(ui='beta')
+        self.early()
+        self.assertEqual(self.choice(), dict(schema=1, ui='beta', by='default', menu=False, note=''))
+        self.launch().wait(timeout=10)
+        self.assertEqual(self.runs(), ['beta'])
+        status = self.wait_status('ui', 'confirmed')
+        self.assertEqual([(i['name'], i['slot']) for i in status['installed']], [('alpha', 'a'), ('beta', 'a')])
+        self.assertEqual(status['choice']['ui'], 'beta')
+        # Without a default the first installed runs; a default that is gone gives stock's UI, and
+        # with nothing of ours to start the boot program stays out of the UI's way.
+        self.set_global(ui=None)
+        self.early()
+        self.assertEqual(self.choice()['ui'], 'alpha')
+        self.set_global(ui='gamma')
+        self.early()
+        self.assertEqual(self.choice(), dict(schema=1, ui='stock', by='fallback', menu=False, note='gamma is not installed'))
+        self.assertFalse((self.run_dir/'ui-launch').exists())
+        self.set_global(ui='stock')
+        self.early()
+        self.assertEqual((self.choice()['ui'], self.choice()['by']), ('stock', 'default'))
+        self.assertFalse((self.run_dir/'ui-launch').exists())
+
+    def test_next_chooses_one_boot_and_requests_are_checked(self):
+        self.two_uis()
+        self.install('service', 'a', GOOD, confirmed=True)
+        self.set_global(ui='alpha')
+        # A running service's request about the choice applies at the next boot, before anything starts.
+        (self.data/'service/request').write_text('{"action":"ui-next","ui":"beta"}')
+        self.early()
+        self.assertEqual((self.choice()['ui'], self.choice()['by']), ('beta', 'next'))
+        self.assertFalse((self.data/'service/request').exists())
+        self.assertIsNone(self.global_state()['next'])
+        self.early()
+        self.assertEqual((self.choice()['ui'], self.choice()['by']), ('alpha', 'default'))
+        for request, why in (('{"action":"ui-default","ui":"gamma"}', 'ui-default refused: gamma is not installed'),
+                             ('{"action":"ui-default","ui":"Bad Name"}', 'ui-default refused: ui must name an installed ui package or stock'),
+                             ('{"action":"ui-remove","ui":"alpha"}', 'ui-remove refused: only the service or the menu removes a ui package')):
+            with self.subTest(request):
+                (self.data/'ui/beta/request').write_text(request)
+                self.set_global(unconfirmed=0)  # each boot here counts; none runs long enough to confirm
+                self.early()
+                self.assertIn(f'ui/beta request: {why}', self.boot_log_of_early())
+        (self.data/'service/request').write_text('{"action":"ui-default","ui":"beta"}')
+        self.set_global(unconfirmed=0)
+        self.early()
+        self.assertEqual((self.global_state()['ui'], self.choice()['ui']), ('beta', 'beta'))
+
+    def boot_log_of_early(self):
+        return self.last_early.stderr
+
+    def early(self, keys=None):
+        path = self.root/'fixture/keys'
+        if keys is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_text(keys)
+        self.last_early = self.boot('early', '--profile', PROFILE, '--card', '/tmp/sdcard', '--card-source', '/dev/mmcblk0p1', check=True)
+        return json.loads((self.run_dir/'boot.json').read_text())
+
+    def test_ui_remove_from_the_service_goes_before_any_ui_starts(self):
+        self.two_uis()
+        self.install('service', 'a', GOOD, confirmed=True)
+        self.set_global(ui='alpha', next='alpha')
+        (self.data/'data/alpha').mkdir(parents=True)
+        (self.data/'service/request').write_text('{"action":"ui-remove","ui":"alpha","purge":true}')
+        self.early()
+        self.assertFalse((self.data/'ui/alpha').exists())
+        self.assertFalse((self.data/'data/alpha').exists())
+        self.assertEqual((self.global_state()['ui'], self.global_state()['next']), ('stock', None))
+        self.assertEqual(self.choice()['ui'], 'stock')
+        self.assertTrue((self.data/'ui/beta/a').exists())
+
+    def test_the_menu_chooses_and_the_pair_restarts_into_its_choice(self):
+        self.stock_ui(); self.stock_player()
+        self.two_uis()
+        self.set_global(ui='alpha')
+        self.menu(f'cp "$DISC_BOOT_STATUS/ui/choices.json" "{self.root}/out/choices.json"\n'
+                  'printf \'{"ui":"beta"}\' > "$DISC_BOOT_RUN/choice"\n')
+        self.early()
+        self.assertEqual(self.choice(), dict(schema=1, ui='alpha', by='default', menu=True, note=''))
+        self.assertTrue((self.run_dir/'ui-launch').exists())
+        self.launch().wait(timeout=10)
+        self.assertEqual(self.runs(), ['menu'])
+        offered = json.loads((self.root/'out/choices.json').read_text())
+        self.assertEqual(offered['default'], 'alpha')
+        self.assertEqual([e['ui'] for e in offered['entries']], ['alpha', 'beta', 'stock'])
+        # Stock's player starts beside the menu, never a package's launcher while the choice is open.
+        self.launch_player().wait(timeout=10)
+        self.assertEqual(self.player_status()['note'], 'the menu is choosing')
+        self.launch().wait(timeout=10)
+        self.assertEqual(self.runs(), ['menu', 'beta'])
+        self.assertEqual(self.choice(), dict(schema=1, ui='beta', by='menu', menu=False, note=''))
+        self.assertEqual(self.status('menu')['state'], 'answered')
+        self.assertTrue(self.role_state('menu')['confirmed'], 'a valid answer confirms a tentative menu')
+        self.launch_player().wait(timeout=10)
+        self.assertEqual(self.player_status()['note'], 'the ui package brings no player launcher')
+        # next skips the menu.
+        self.set_global(next='alpha')
+        self.early()
+        self.assertEqual((self.choice()['ui'], self.choice()['menu']), ('alpha', False))
+
+    def test_a_failing_menu_gives_way_to_the_default(self):
+        self.stock_ui()
+        self.two_uis()
+        self.set_global(ui='alpha')
+        self.menu('printf \'{"ui":"gamma"}\' > "$DISC_BOOT_RUN/choice"\n')
+        self.early()
+        for _ in range(3):
+            self.launch().wait(timeout=10)
+        self.assertEqual(self.runs(), ['menu', 'menu', 'alpha'])
+        choice = self.choice()
+        self.assertEqual((choice['ui'], choice['by'], choice['menu']), ('alpha', 'default', False))
+        self.assertIn('the menu failed 2 times', choice['note'])
+        self.assertIn('gamma, which is not installed', choice['note'])
+        self.menu('exit 0\n')
+        self.early()
+        for _ in range(3):
+            self.launch().wait(timeout=10)
+        self.assertEqual(self.runs()[3:], ['menu', 'menu', 'alpha'])
+        self.assertIn('exited without an answer', self.choice()['note'])
+
+    def test_a_menu_that_never_answers_is_stopped(self):
+        self.stock_ui()
+        self.two_uis()
+        self.set_global(ui='beta')
+        self.menu('while :; do sleep 0.1; done\n')
+        self.early()
+        started = time.monotonic()
+        self.assertEqual(self.launch().wait(timeout=15), -signal.SIGKILL)
+        self.assertGreater(time.monotonic() - started, 1.5)
+        self.assertEqual(self.choice()['note'], 'the menu did not answer in time')
+        self.launch().wait(timeout=10)
+        self.assertEqual(self.runs(), ['menu', 'beta'])
+
+    def test_stock_chosen_in_the_menu_clears_the_boot_count(self):
+        self.stock_ui()
+        self.two_uis()
+        self.menu('printf \'{"ui":"stock"}\' > "$DISC_BOOT_RUN/choice"\n', confirmed=True)
+        self.early()
+        self.assertEqual(self.global_state()['unconfirmed'], 1)
+        self.launch().wait(timeout=10)
+        self.launch().wait(timeout=10)
+        self.assertEqual(self.runs(), ['menu', 'stock'])
+        self.assertEqual(self.status('ui')['state'], 'stock-ui')
+        self.assertEqual(self.global_state()['unconfirmed'], 0, 'nothing of ours runs: no boot-loop count')
+
+    def test_play_installs_several_uis_and_a_menu(self):
+        (self.root/'proc/mounts').write_text('/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
+        for name in ('beta', 'alpha'):
+            self.package(self.staged(f'ui/{name}'), GOOD, role='ui', name=name)
+        self.package(self.staged('ui/gamma'), GOOD, role='ui', name='other')
+        self.package(self.staged('menu'), GOOD, role='menu', name='disc-menu')
+        (self.staged('ui')/'package.json').write_text('{}')
+        self.early('play')
+        self.boot('start', check=True)
+        until = time.monotonic() + 15
+        path = self.root/'tmp/sdcard/.disc/boot/result.json'
+        while not path.exists() and time.monotonic() < until:
+            time.sleep(0.05)
+        roles = json.loads(path.read_text())['roles']
+        self.assertEqual(roles['menu'], dict(installed=True, note='installed disc-menu 1'))
+        self.assertEqual(roles['ui']['alpha'], dict(installed=True, note='installed alpha 1'))
+        self.assertEqual(roles['ui']['beta'], dict(installed=True, note='installed beta 1'))
+        self.assertEqual(roles['ui']['gamma'], dict(installed=False, note='refused: the folder is named gamma, the package other'))
+        self.assertFalse(roles['ui']['package.json']['installed'])
+        self.assertEqual(self.global_state()['ui'], 'alpha', 'the first installed, by name, becomes the default')
+        self.assertEqual((self.choice()['ui'], self.choice()['menu']), ('alpha', True))
+        self.assertTrue((self.run_dir/'ui-launch').exists())
+
+    def test_a_menu_package_is_checked_like_a_ui(self):
+        directory = self.root/'menu'
+        self.package(directory, GOOD, role='menu', name='disc-menu')
+        self.assertEqual(self.verify(directory, 'menu')[0], 0)
+        self.package(directory, GOOD, role='menu', name='disc-menu', entry='bin/launch')
+        self.assertIn("a menu package's entry must be named mq_ui", self.verify(directory, 'menu')[1]['error'])
+        self.package(directory, GOOD, role='menu', name='disc-menu', edit=lambda m: m.update(player='bin/mq_ui'))
+        self.assertIn('only a ui package brings a player launcher', self.verify(directory, 'menu')[1]['error'])
 
     # Stock's player and a ui package's player launcher
 
@@ -602,7 +800,7 @@ exit 0
         self.assertEqual(self.players(), ['launcher ui', f'stock ui {guard}'])
         self.assertEqual({k: self.player_status()[k] for k in ('launch', 'name')}, {'launch': 'package', 'name': 'other-ui'})
         # By the name stock's watch loop looks for: a link named mq_player to the package's launcher.
-        self.assertEqual(os.readlink(self.run_dir/'ui/mq_player'), str(self.data/'ui/a/bin/player'))
+        self.assertEqual(os.readlink(self.run_dir/'ui/mq_player'), str(self.data/'ui/other-ui/a/bin/player'))
         status = json.loads(self.boot('status', check=True).stdout)
         self.assertEqual(status['player']['launch'], 'package')
         # After the UI's fallback to stock, stock's player starts from the wrapper alone.
@@ -624,7 +822,7 @@ exit 0
         self.assertEqual(self.players(), [f'stock none {self.root}/opt/disc-boot/guard'])
         self.assertEqual(self.player_status()['note'], 'the ui package brings no player launcher')
         self.install_with_player()
-        (self.data/'ui/a/bin/player').write_text('#!/bin/sh\necho tampered\n')
+        (self.data/'ui/other-ui/a/bin/player').write_text('#!/bin/sh\necho tampered\n')
         self.launch_player().wait(timeout=10)
         self.assertEqual(len(self.players()), 2)
         self.assertTrue(self.players()[1].startswith('stock none'))

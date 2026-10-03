@@ -4,8 +4,9 @@
 Describes a folder as a package (package.json), checks a folder or a zip the
 way disc-boot does (same rules, same messages), packs a checked folder as a
 deterministic zip, and stages a package on a card for the recovery with Play
-(.disc/boot/install/<role>/). Only `stage` writes to a card, and only with
---confirm-card-write.
+(.disc/boot/install/service/, .disc/boot/install/menu/, or
+.disc/boot/install/ui/<name>/ for each ui package). Only `stage` writes to a
+card, and only with --confirm-card-write.
 """
 import argparse
 import hashlib
@@ -31,7 +32,7 @@ MAX_PROFILES = 8
 MANIFEST_BYTES = 65536
 PACKAGE_BYTES = 32 * 1024 * 1024
 MAX_READY = 120
-ROLES = ('service', 'ui')
+ROLES = ('service', 'ui', 'menu')
 STAGING = Path('.disc/boot/install')
 RESULT = Path('.disc/boot/result.json')
 ZIP_TIME = (2026, 1, 1, 0, 0, 0)
@@ -124,7 +125,7 @@ def load(folder):
         fail('version must be 1-64 printable ASCII')
     m['role'] = root.get('role')
     if m['role'] not in ROLES:
-        fail('role must be service or ui')
+        fail('role must be service, ui or menu')
     m['bootApi'] = root.get('bootApi')
     if not integer(m['bootApi'], 1, 1000):
         fail('bootApi must be a positive integer')
@@ -175,8 +176,9 @@ def load(folder):
             fail('the package exceeds 32 MiB')
     if m['files'].get(m['entry'], {}).get('mode') != '0755':
         fail('entry must be a listed file with mode 0755')
-    if m['role'] == 'ui' and m['entry'].rsplit('/', 1)[-1] != 'mq_ui':
-        fail("a ui package's entry must be named mq_ui")
+    # Stock's watch loop finds the UI by its process name, and the menu runs in its place.
+    if m['role'] != 'service' and m['entry'].rsplit('/', 1)[-1] != 'mq_ui':
+        fail(f"a {m['role']} package's entry must be named mq_ui")
     if m['player'] is not None and m['role'] != 'ui':
         fail('only a ui package brings a player launcher')
     if m['player'] is not None and m['files'].get(m['player'], {}).get('mode') != '0755':
@@ -352,8 +354,9 @@ def write_new(path, data):
 
 
 def stage(source, card, profile=None, arch=ARCH):
-    """Copies a package (zip or folder) into <card>/.disc/boot/install/<role>/ for the recovery
-    with Play, replacing what was staged for that role. Written beside, checked, then swapped in."""
+    """Copies a package (zip or folder) into <card>/.disc/boot/install/ for the recovery with Play:
+    service/ and menu/ by role, ui/<name>/ for each ui package, replacing what was staged there.
+    Written beside, checked, then swapped in."""
     card = Path(card)
     if not card.is_dir() or card.is_symlink():
         fail('Card mount is not a directory')
@@ -361,8 +364,9 @@ def stage(source, card, profile=None, arch=ARCH):
         folder = source_folder(source, temp)
         m = check(folder, profile=profile, arch=arch)
         files = {path: (folder/path).read_bytes() for path in ['package.json', *m['files']]}
-    staging = card/STAGING
-    target, fresh = staging/m['role'], staging/f".{m['role']}.staging"
+    staging = card/STAGING/'ui' if m['role'] == 'ui' else card/STAGING
+    place = m['name'] if m['role'] == 'ui' else m['role']
+    target, fresh = staging/place, staging/f'.{place}.staging'
     if fresh.exists():
         shutil.rmtree(fresh)
     space = os.statvfs(card)
@@ -382,7 +386,7 @@ def stage(source, card, profile=None, arch=ARCH):
         os.sync()
     except (OSError, PackageError) as failure:
         shutil.rmtree(fresh, ignore_errors=True)
-        fail(f'Staging failed ({failure}); nothing new is staged for {m["role"]}')
+        fail(f'Staging failed ({failure}); nothing new is staged for {place}')
     return dict(role=m['role'], name=m['name'], version=m['version'], path=str(target),
                 files=len(m['files']), physical_device_accessed=False)
 

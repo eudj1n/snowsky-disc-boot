@@ -260,10 +260,16 @@ boot menu").
   the release the player changed the volume as usual (seen by the owner)
   and its key thread kept waiting in `evdev_read`. Key codes on `event0`:
   Volume + `0xfb`, Volume − `0xfc`, Play `0xfa`.
-- [ ] The boot program: storage per `ui` package, the choice and
-  `choice.json`, the `menu` role and its turn, the requests, recovery of
-  several staged packages, the status; `scripts/package.py` and
-  `disc-boot verify` with the `menu` role. Conformance tests with it.
+- [x] The boot program (2026-10-03): `ui/<name>/` per ui package, the
+  choice (`next`, the default or the first installed, stock's UI as the
+  fallback) in `choice.json`, the `menu` role and its turn (its answer
+  after the pair's restart, two failures or 60 s give the default, a valid
+  answer confirms it), `ui-default`, `ui-next` and `ui-remove` (applied at
+  the next boot or the launcher's next start, a running service's too), Play
+  installing several staged ui packages and a menu, the status;
+  `scripts/package.py` stages ui packages under their names and knows the
+  `menu` role, with the same messages as `disc-boot verify`. Conformance:
+  296 tests (10 new for multi-boot), the existing ui tests on the new layout.
 - [ ] Guest acceptance with probe packages (contract, "Before it is
   built"), then `boot_guest.py` and `two_packages.py` on the new layout.
 - [ ] `disc-menu`, the boot menu built in this repository (owner,

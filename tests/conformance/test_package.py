@@ -147,6 +147,19 @@ class PackageToolTests(unittest.TestCase):
         self.assertFalse((card/'.disc/boot/install/.service.staging').exists())
         self.assertEqual(json.loads(self.cli('result', '--card', str(card)).stdout)['result'], None)
 
+    def test_ui_packages_are_staged_under_their_names(self):
+        card = self.root/'card'
+        card.mkdir()
+        for name in ('alpha', 'beta'):
+            folder = self.folder(name=name, entry='bin/mq_ui')
+            self.describe(folder, role='ui', entry='bin/mq_ui', name=name, arch=package.ARCH)
+            staged = package.stage(folder, card, profile=PROFILE)
+            self.assertEqual(staged['path'], str(card/'.disc/boot/install/ui'/name))
+        menu = self.folder(name='menu', entry='bin/mq_ui')
+        self.describe(menu, role='menu', entry='bin/mq_ui', name='disc-menu', arch=package.ARCH)
+        self.assertEqual(package.stage(menu, card, profile=PROFILE)['path'], str(card/'.disc/boot/install/menu'))
+        self.assertEqual(sorted(p.name for p in (card/'.disc/boot/install/ui').iterdir()), ['alpha', 'beta'])
+
     # The tool and disc-boot agree, decision and message alike.
 
     def boot_verify(self, folder, role):
@@ -204,6 +217,18 @@ class PackageToolTests(unittest.TestCase):
                     change(manifest)
                     (folder/'package.json').write_text(json.dumps(manifest))
                 self.assertEqual(self.tool_verify(folder, 'ui'), self.boot_verify(folder, 'ui'))
+        menu_cases = {
+            'menu good': None, 'menu player': edit(player='bin/mq_ui'), 'menu entry': edit(entry='share/info'),
+        }
+        for label, change in menu_cases.items():
+            with self.subTest(label):
+                folder = self.folder(name=f'm-{label.replace(" ", "-")}', entry='bin/mq_ui', extra={'share/info': 'x'})
+                (folder/'share/info').chmod(0o755)
+                manifest = self.describe(folder, role='menu', entry='bin/mq_ui', name='disc-menu')
+                if change:
+                    change(manifest)
+                    (folder/'package.json').write_text(json.dumps(manifest))
+                self.assertEqual(self.tool_verify(folder, 'menu'), self.boot_verify(folder, 'menu'))
         damage_cases = {
             'hash': lambda d: (d/'bin/run').write_text(RUN.replace('0.1', '0.2')),
             'size': lambda d: (d/'lib/libx.so').write_text('xyz'),

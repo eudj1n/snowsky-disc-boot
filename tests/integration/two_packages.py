@@ -164,7 +164,7 @@ def run(server, ui, app, output):
     ui_state = ui_confirmed(ui_version)
     boot = bg.guest_json('/run/disc-boot/boot.json')
     assert boot['reason'] == 'recovery', boot
-    slot = f'{UI}/{ui_state["slot"]}'
+    slot = f'{UI}/{ui_state["name"]}/{ui_state["slot"]}'
     runs = bg.wait(lambda: diskos_runs(slot), bool, "diskOS's UI with stock's player through its launcher", 120)
     # diskOS's guard first, then the boot layer's, in stock's player's PATH.
     assert runs['playerPath'].startswith('/usr/data/diskos/bin:/opt/disc-boot/guard:'), runs
@@ -215,7 +215,8 @@ def run(server, ui, app, output):
     bg.power('off')
     with bg.card() as root:
         result = json.loads((root/'.disc/boot/result.json').read_text())
-    assert result['roles']['ui']['installed'] and result['roles']['ui']['note'].endswith('-broken'), result
+    staged = result['roles']['ui'][ui_state['name']]
+    assert staged['installed'] and staged['note'].endswith('-broken'), result
     assert 'service' not in result['roles'], result
     bg.step('broken ui update rolled back', result=result, ui=back, service=after, runs=runs)
     bg.evidence['status'] = 'passed'

@@ -296,10 +296,25 @@ int bjson_null(const bjson *j, int i) {
     return i >= 0 && i < j->n && j->t[i].type == JSMN_PRIMITIVE && j->t[i].end - j->t[i].start == 4 && !memcmp(j->js + j->t[i].start, "null", 4);
 }
 
+int package_name_ok(const char *s) {
+    size_t n = strlen(s);
+    if (n < 1 || n > 32) return 0;
+    for (; *s; s++) if (!((*s >= 'a' && *s <= 'z') || (*s >= '0' && *s <= '9') || *s == '-')) return 0;
+    return 1;
+}
+
+/* An optional choice of UI: absent or null is none; otherwise "stock" or a package's name. */
+static int ui_value(const bjson *j, const char *key, char out[33]) {
+    int v = bjson_find(j, 0, key);
+    out[0] = 0;
+    if (v == -1 || bjson_null(j, v)) return 0;
+    return v < 0 || bjson_string(j, v, out, 33) || (strcmp(out, "stock") && !package_name_ok(out)) ? -1 : 0;
+}
+
 int gstate_read(global_state *g) {
     char p[PATH_MAX], buf[SMALL_FILE];
     snprintf(g->mode, sizeof(g->mode), "platform");
-    g->unconfirmed = 0;
+    g->unconfirmed = 0; g->ui[0] = g->next[0] = 0;
     bpath(p, DATA_DIR "/state.json");
     size_t len;
     if (read_small(p, buf, sizeof(buf), &len)) return exists(p) ? -1 : 0;
@@ -309,9 +324,10 @@ int gstate_read(global_state *g) {
     int m = -1, u = -1;
     if (bjson_parse(&j, buf, len, 32)) return -1;
     int bad = (m = bjson_find(&j, 0, "default")) < 0 || bjson_string(&j, m, mode, sizeof(mode))
-        || (strcmp(mode, "platform") && strcmp(mode, "stock")) || (u = bjson_find(&j, 0, "unconfirmed")) < 0 || bjson_int(&j, u, &n) || n > 1000;
+        || (strcmp(mode, "platform") && strcmp(mode, "stock")) || (u = bjson_find(&j, 0, "unconfirmed")) < 0 || bjson_int(&j, u, &n) || n > 1000
+        || ui_value(&j, "ui", g->ui) || ui_value(&j, "next", g->next);
     bjson_free(&j);
-    if (bad) return -1;
+    if (bad) { g->ui[0] = g->next[0] = 0; return -1; }
     snprintf(g->mode, sizeof(g->mode), "%s", mode);
     g->unconfirmed = (int)n;
     return 0;
@@ -322,7 +338,11 @@ int gstate_write(const global_state *g) {
     bpath(p, DATA_DIR);
     if (mkdirs(p, 0755)) return -1;
     bpath(p, DATA_DIR "/state.json");
-    int n = snprintf(buf, sizeof(buf), "{\"schema\":1,\"default\":\"%s\",\"unconfirmed\":%d}\n", g->mode, g->unconfirmed);
+    char ui[40], next[40];
+    snprintf(ui, sizeof(ui), g->ui[0] ? "\"%s\"" : "null", g->ui);
+    snprintf(next, sizeof(next), g->next[0] ? "\"%s\"" : "null", g->next);
+    int n = snprintf(buf, sizeof(buf), "{\"schema\":1,\"default\":\"%s\",\"unconfirmed\":%d,\"ui\":%s,\"next\":%s}\n",
+                     g->mode, g->unconfirmed, ui, next);
     return write_atomic(p, buf, (size_t)n, 0644);
 }
 
@@ -334,10 +354,10 @@ static int slot_value(const bjson *j, int i, char *out) {
     return 0;
 }
 
-int rstate_read(const char *role, role_state *r) {
+int rstate_read(const char *domain, role_state *r) {
     char p[PATH_MAX], buf[SMALL_FILE];
     r->current = r->previous = 0; r->confirmed = 0; r->previous_manifest[0] = 0;
-    bpath(p, DATA_DIR "/%s/state.json", role);
+    bpath(p, DATA_DIR "/%s/state.json", domain);
     size_t len;
     if (read_small(p, buf, sizeof(buf), &len)) return exists(p) ? -1 : 0;
     bjson j;
@@ -358,11 +378,11 @@ int rstate_read(const char *role, role_state *r) {
     return 0;
 }
 
-int rstate_write(const char *role, const role_state *r) {
+int rstate_write(const char *domain, const role_state *r) {
     char p[PATH_MAX], buf[256], cur[8], prev[8], manifest[72];
-    bpath(p, DATA_DIR "/%s", role);
+    bpath(p, DATA_DIR "/%s", domain);
     if (mkdirs(p, 0755)) return -1;
-    bpath(p, DATA_DIR "/%s/state.json", role);
+    bpath(p, DATA_DIR "/%s/state.json", domain);
     snprintf(cur, sizeof(cur), r->current ? "\"%c\"" : "null", r->current);
     snprintf(prev, sizeof(prev), r->previous ? "\"%c\"" : "null", r->previous);
     if (r->previous && r->previous_manifest[0]) snprintf(manifest, sizeof(manifest), "\"%.64s\"", r->previous_manifest);

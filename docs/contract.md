@@ -179,11 +179,14 @@ the rest of the boot.
 
 ## Packages
 
-At most one package per role (several `ui` packages and a `menu` package
-once multi-boot is built: "Several UIs and the boot menu"):
+Three roles ("Several UIs and the boot menu" for the last two):
 
-- `service`: runs beside the stock UI and player (our server is one).
-- `ui`: runs instead of stock's `mq_ui`; stock's `mq_player` always stays.
+- `service`, at most one: runs beside the stock UI and player (our server
+  is one).
+- `ui`, any number with distinct names: one of them, or stock's UI, runs
+  instead of stock's `mq_ui` in each platform boot; stock's `mq_player`
+  always stays.
+- `menu`, at most one: asks at power-on which UI runs.
 
 Distributed as a zip; staged and installed as a folder with `package.json`:
 
@@ -219,8 +222,8 @@ Distributed as a zip; staged and installed as a folder with `package.json`:
   folders), a link or a special file is refused.
 - Bounds: manifest 64 KiB, 256 files, 32 MiB per package; an installation
   checks free space first and keeps 16 MiB of `/usr/data` for stock.
-- A `ui` package's entry is named `mq_ui`, because stock's watch loop finds
-  the UI by that exact process name.
+- A `ui` or `menu` package's entry is named `mq_ui`, because stock's watch
+  loop finds the UI by that exact process name (the menu runs in its place).
 - A `ui` package may name `player`, a listed `0755` file: its own launcher
   of stock's player (diskOS's sets up its card protection there and tells
   its UI so). Boot runs it as `mq_player` while that package's UI runs (not
@@ -243,12 +246,15 @@ Distributed as a zip; staged and installed as a folder with `package.json`:
 
 ```text
 /usr/data/disc-boot/
-  state.json            {"default": "platform"|"stock", "unconfirmed": n}
+  state.json            {"default": "platform"|"stock", "unconfirmed": n,
+                         "ui": "<name>"|"stock"|null, "next": "<name>"|"stock"|null}
   service/a/ service/b/ the two slots of the service role
   service/state.json    {"current": "a"|"b"|null, "confirmed": bool, "previous": "a"|"b"|null,
                          "previousManifest": "<sha256 of its package.json>"|null}
   service/request       a package's request, written atomically
-  ui/…                  the same for the ui role
+  menu/…                the same for the menu role
+  ui/<name>/…           the same for each ui package, under its name; ui/<name>/remove
+                        a removal another package asked for, done at the launcher's next start
   data/<name>/          a package's own persistent data, kept across updates
 ```
 
@@ -339,9 +345,9 @@ do the same for its player):
 
 ## Several UIs and the boot menu (multi-boot)
 
-Designed 2026-10-03 (owner's decision 6), to be built and accepted before the
-image is first written to a device; until then the sections above describe
-one `ui` package. Several `ui` packages can be installed and each boot runs
+Designed 2026-10-03 (owner's decision 6) and built the same day in the boot
+program (`tests/conformance/test_boot.py`); its guest acceptance comes before
+the image is first written to a device. Several `ui` packages can be installed and each boot runs
 one of them or stock's UI; a `menu` package, when installed, lets the
 user pick at power-on. Only the mechanism is in the image (the choice, the
 launchers, the fallbacks); the screen that asks is a package and changes
@@ -362,6 +368,8 @@ stays 1 and the single-package layout gets no migration.
   (stock's loop watches it by that name) and it has no `player`.
 - `state.json` gains `ui`, the default (a `ui` package's name or `stock`),
   and `next`, a choice for the next platform boot only, or null.
+- A `ui` package lives under its name: one installed or activated under
+  another name is refused ("the package is named …").
 
 ### The choice
 
@@ -370,12 +378,15 @@ Each platform boot runs one UI, recorded in `/run/disc-boot/ui/choice.json`
 
 1. The menu's answer for this boot (`by: menu`).
 2. `next`, which `disc-boot early` consumes (`by: next`).
-3. The default (`by: default`).
-4. Stock's UI when the chosen package is missing or its slot fails its check
-   (`by: fallback`, with the reason).
+3. The default (`by: default`); without one set, the first installed `ui`
+   package by name, and stock's UI when none is.
+4. Stock's UI when the chosen package is not installed (`by: fallback`, with
+   the reason). A package that fails its check falls back as in "The `ui`
+   role".
 
 `disc-boot early` settles 2–4; the menu can still choose before any UI
-runs. Volume Up at power-on still means stock *mode* for this boot (no
+runs. With stock's UI chosen and no menu, boot gives the launcher no
+permission: stock's UI starts from the wrapper alone, as without packages. Volume Up at power-on still means stock *mode* for this boot (no
 package runs, nor the menu) and Play still installs from the card; the
 menu's `stock` entry is stock's UI with the `service` package running.
 
@@ -383,8 +394,8 @@ menu's `stock` entry is stock's UI with the `service` package running.
 
 - In `platform` mode, with a menu installed and no choice by `next`, the
   `mq_ui` launcher starts the menu first. `/run/disc-boot/ui/choices.json`
-  lists every installed `ui` package (name, version, confirmed), `stock` and
-  the default.
+  lists every installed `ui` package (`ui`, `version`, `confirmed`), then
+  `{"ui": "stock"}`, and the `default` of this boot.
 - Meanwhile `/sbin/mq_player` starts stock's player as stock's: no
   package's `player` runs while the choice is pending.
 - The menu writes `$DISC_BOOT_RUN/choice` (`{"ui": "<name>"|"stock"}`)
@@ -416,7 +427,10 @@ menu's `stock` entry is stock's UI with the `service` package running.
   the `service` or the `menu` package removes another `ui` package (the
   server's manager); removing the default makes `stock` the default.
 - Requests about the choice apply to the next boot; a removal applies at
-  the next start of the launcher, never under the running UI.
+  the next start of the launcher, never under the running UI. Since a
+  service keeps running, `disc-boot early` and each start of the launcher
+  also take the requests about the choice (`ui-*`) that any package left,
+  before anything of a package starts.
 
 ### Failures and the boot-loop guard
 
@@ -429,20 +443,25 @@ menu's `stock` entry is stock's UI with the `service` package running.
 
 ### Recovery, environment and status
 
-- Play installs every staged folder: `.disc/boot/install/ui/<name>/` (several)
-  and `.disc/boot/install/menu/`. The first `ui` package installed
-  becomes the default when there is none.
+- Play installs every staged folder: `.disc/boot/install/ui/<name>/` (several,
+  in the order of their names; the folder's name must be the package's) and
+  `.disc/boot/install/menu/`. The first `ui` package installed becomes the
+  default when there is none. A `package.json` directly in
+  `.disc/boot/install/ui/` (the earlier layout) is refused with a note.
 - `DISC_BOOT_ROLE` may be `menu`; its `$DISC_BOOT_RUN` is
   `/run/disc-boot/menu/`.
-- `ui.json` keeps the chosen UI's status and adds `choice` and `installed`
-  (each package's name, version, slot, confirmed); `menu.json` is the
-  menu's role status.
+- `ui.json` keeps the chosen UI's status (`stock-ui` when stock's UI was
+  chosen) and adds `choice` and `installed` (each package's name, version,
+  slot, confirmed); `menu.json` is the menu's role status (`asking`,
+  `answered`, `failed`, `absent`); `disc-boot status` adds both and the
+  choice.
 
 ### Before it is built
 
 - Settled on the device (2026-10-03, "Facts this rests on"): the watchdog
   belongs to stock's player, so the pair's restart after a choice is
   stock's own; the menu may take `event0` and give it back.
+- Built and checked in the boot program's conformance tests (2026-10-03).
 - Accepted on the guest with probe packages (shell scripts): two `ui` probes
   and a menu probe; a choice by the menu, by `ui-next` and by the
   default; a menu that hangs, fails or answers a name not installed; a
@@ -469,19 +488,21 @@ service package starts with its own `PATH` and does not need it.
 
 ## Recovery from the card (Play at power-on)
 
-- Staged folders: `.disc/boot/install/service/` and `.disc/boot/install/ui/`,
-  each with `package.json` and its files. The installer or the page puts
-  them there.
+- Staged folders: `.disc/boot/install/service/`, `.disc/boot/install/menu/`
+  and `.disc/boot/install/ui/<name>/` for each ui package, each with
+  `package.json` and its files. The installer or the page puts them there
+  (`scripts/package.py stage` places each by its role and name).
 - Boot waits up to 90 s for the card mounted from its expected device (the
   card is mounted after the `S99` hooks run: stock mounts it once
   `mq_player` is up),
   verifies each staged package completely (modes do not count on the card's
   file system), copies it into the role's inactive slot, verifies the copy
   with modes, makes it the tentative current one, removes the staged folder
-  and writes `.disc/boot/result.json` (per role: installed, or why not). A
-  refused package stays on the card. A newly installed `ui` package gets the
-  launcher's permission and stock's running UI a SIGTERM, so stock's loop
-  starts the package. The packages then run as in `platform` mode.
+  and writes `.disc/boot/result.json` (per role, and per name under `ui`:
+  installed, or why not). A refused package stays on the card. With a `ui`
+  or `menu` package newly installed, boot settles this boot's choice again
+  and, when the launcher has something to start, gives it the permission and
+  stock's running UI a SIGTERM, so stock's loop starts it. The packages then run as in `platform` mode.
 - Without the gesture boot never installs or runs anything from the card.
 
 ## Environment of a package
@@ -489,7 +510,7 @@ service package starts with its own `PATH` and does not need it.
 | Variable | Meaning |
 | --- | --- |
 | `DISC_BOOT_API` | The boot layer's API version (1) |
-| `DISC_BOOT_ROLE` | `service` or `ui` |
+| `DISC_BOOT_ROLE` | `service`, `ui` or `menu` |
 | `DISC_BOOT_PROFILE` | The firmware profile (`2.57`) |
 | `DISC_BOOT_SLOT` | The running slot (read-only by contract) |
 | `DISC_BOOT_INACTIVE` | Where an update is staged |
@@ -503,9 +524,9 @@ service package starts with its own `PATH` and does not need it.
 A `service` package starts from a clean environment (these, `PATH`, `HOME`
 and `LD_LIBRARY_PATH`); its standard output and error go to
 `$DISC_BOOT_RUN/log`, capped at 64 KiB; standard input is `/dev/null`, and
-no other descriptor is open (none of the boot program's). A `ui` package keeps the environment
-stock's `fiio_init.sh` gives its UI, with these added and its `lib/` first in
-`LD_LIBRARY_PATH`.
+no other descriptor is open (none of the boot program's). A `ui` or `menu`
+package keeps the environment stock's `fiio_init.sh` gives its UI, with these
+added and its `lib/` first in `LD_LIBRARY_PATH`.
 
 A package must not write MTD devices, change FiiO's files in `/usr/data`
 (`fiio/`, `sn.txt` and the rest), signal stock processes, take stock's ports
@@ -518,19 +539,23 @@ enforce this: packages run as root, at the installer's risk.
   reason (`default`, `key`, `boot-loop`, `recovery`), the key read, the count
   of unconfirmed boots before this one, whether the state was readable, the
   card.
-- `service.json`, `ui.json`: the role's state (`starting`, `ready`,
-  `confirmed`, `restarting`, `rolled-back`, `failed`, `stopped`, `absent`,
-  `stock-mode`, `fallback`, `not-ready`), the package's name and version,
+- `service.json`, `ui.json`, `menu.json`: the role's state (`starting`,
+  `ready`, `confirmed`, `restarting`, `rolled-back`, `failed`, `stopped`,
+  `absent`, `stock-mode`, `fallback`, `not-ready`; `stock-ui` for the ui
+  role, `asking` and `answered` for the menu), the package's name and version,
   the slot, confirmed or not, failures, a note, the last request's outcome
   and `previous`: `{slot, name, version, manifest}` of the version a
   rollback returns to while its slot still holds it, else null (written
   with the rest of the status; a package compares `manifest` with
   `$DISC_BOOT_INACTIVE/package.json` to see whether it staged over it since).
-- `ui/player.json`: how stock's player last started while a `ui` package was
-  installed (`launch`: `package` or `stock`, the package, a note).
+- `ui/choice.json`: this boot's choice of UI; `ui/choices.json`: what the
+  menu was offered.
+- `ui/player.json`: how stock's player last started while the launcher ran
+  (`launch`: `package` or `stock`, the package, a note such as "the menu is
+  choosing").
 - `guard.log`: the card guard's refusals.
-- `disc-boot status` prints the first three and `player` together; the
-  server shows them in its diagnostics.
+- `disc-boot status` prints the boot, the roles, the choice and `player`
+  together; the server shows them in its diagnostics.
 
 ## USB console
 

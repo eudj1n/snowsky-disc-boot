@@ -18,13 +18,6 @@ static int fail(char *err, size_t cap, const char *fmt, ...) {
     return -1;
 }
 
-static int name_ok(const char *s) {
-    size_t n = strlen(s);
-    if (n < 1 || n > 32) return 0;
-    for (; *s; s++) if (!((*s >= 'a' && *s <= 'z') || (*s >= '0' && *s <= '9') || *s == '-')) return 0;
-    return 1;
-}
-
 static int component_char(char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || strchr("._+@-", c);
 }
@@ -71,9 +64,9 @@ int manifest_load(const char *dir, manifest *m, char *err, size_t cap) {
     int r = -1, v;
     long long n;
     if ((v = bjson_find(&j, 0, "schema")) < 0 || bjson_int(&j, v, &n) || n != 1) { fail(err, cap, "schema must be 1"); goto done; }
-    if (string_at(&j, "name", m->name, sizeof(m->name), 1) || !name_ok(m->name)) { fail(err, cap, "name must match [a-z0-9-]{1,32}"); goto done; }
+    if (string_at(&j, "name", m->name, sizeof(m->name), 1) || !package_name_ok(m->name)) { fail(err, cap, "name must match [a-z0-9-]{1,32}"); goto done; }
     if (string_at(&j, "version", m->version, sizeof(m->version), 1) || !m->version[0]) { fail(err, cap, "version must be 1-64 printable ASCII"); goto done; }
-    if (string_at(&j, "role", m->role, sizeof(m->role), 1) || (strcmp(m->role, "service") && strcmp(m->role, "ui"))) { fail(err, cap, "role must be service or ui"); goto done; }
+    if (string_at(&j, "role", m->role, sizeof(m->role), 1) || (strcmp(m->role, "service") && strcmp(m->role, "ui") && strcmp(m->role, "menu"))) { fail(err, cap, "role must be service, ui or menu"); goto done; }
     if ((v = bjson_find(&j, 0, "bootApi")) < 0 || bjson_int(&j, v, &n) || n < 1 || n > 1000) { fail(err, cap, "bootApi must be a positive integer"); goto done; }
     m->boot_api = (int)n;
     if (string_at(&j, "arch", m->arch, sizeof(m->arch), 1) || !m->arch[0]) { fail(err, cap, "arch is required"); goto done; }
@@ -118,9 +111,10 @@ int manifest_load(const char *dir, manifest *m, char *err, size_t cap) {
     int entry = -1;
     for (int f = 0; f < m->nfiles; f++) if (!strcmp(m->files[f].path, m->entry)) entry = f;
     if (entry < 0 || m->files[entry].mode != 0755) { fail(err, cap, "entry must be a listed file with mode 0755"); goto done; }
-    if (!strcmp(m->role, "ui")) {
+    /* Stock's watch loop finds the UI by its process name, and the menu runs in its place. */
+    if (strcmp(m->role, "service")) {
         const char *base = strrchr(m->entry, '/');
-        if (strcmp(base ? base + 1 : m->entry, "mq_ui")) { fail(err, cap, "a ui package's entry must be named mq_ui"); goto done; }
+        if (strcmp(base ? base + 1 : m->entry, "mq_ui")) { fail(err, cap, "a %s package's entry must be named mq_ui", m->role); goto done; }
     }
     if (m->player[0]) {
         int player = -1;

@@ -49,15 +49,20 @@ int bjson_int(const bjson *j, int i, long long *out);
 int bjson_bool(const bjson *j, int i, int *out);
 int bjson_null(const bjson *j, int i);
 
-typedef struct { char mode[9]; int unconfirmed; } global_state;
+/* ui: the default UI, a package's name or "stock" ("" when none was set: the first installed);
+   next: a choice for the next platform boot only ("" when none). */
+typedef struct { char mode[9]; int unconfirmed; char ui[33], next[33]; } global_state;
+/* A package's name: [a-z0-9-]{1,32}. */
+int package_name_ok(const char *s);
 /* previous_manifest: the SHA-256 of the previous slot's package.json when it became the
    rollback target; a slot rewritten since (an update staged there) is no rollback target. */
 typedef struct { char current, previous; int confirmed; char previous_manifest[65]; } role_state;
 int gstate_read(global_state *g);
 int gstate_write(const global_state *g);
-/* 0 with current 0 when the role has nothing installed; -1 when its state is unreadable. */
-int rstate_read(const char *role, role_state *r);
-int rstate_write(const char *role, const role_state *r);
+/* A domain is where a package lives under DATA_DIR: "service", "menu" or "ui/<name>".
+   0 with current 0 when nothing is installed there; -1 when its state is unreadable. */
+int rstate_read(const char *domain, role_state *r);
+int rstate_write(const char *domain, const role_state *r);
 int state_lock(void);
 void state_unlock(int fd);
 #endif

@@ -111,11 +111,11 @@ def run(output):
     # A service and a UI package, installed into their slots as recovery would leave them.
     package(root, '/usr/data/disc-boot/service/a', 'service', 'bin/run',
             'trap "exit 0" TERM\nenv > "$DISC_BOOT_DATA/env"\n: > "$DISC_BOOT_RUN/ready"\nwhile :; do sleep 1; done\n')
-    package(root, '/usr/data/disc-boot/ui/a', 'ui', 'bin/mq_ui',
+    package(root, '/usr/data/disc-boot/ui/probe-ui/a', 'ui', 'bin/mq_ui',
             'echo package >> /run/ui-runs\n: > "$DISC_BOOT_RUN/ready"\nsleep 200\n',
             player=('bin/player', 'echo "launcher $DISC_BOOT_ROLE" >> /run/player-runs\nexec /usr/bin/mq_player "$@"\n'))
-    for role in ('service', 'ui'):
-        (root/f'usr/data/disc-boot/{role}/state.json').write_text('{"schema":1,"current":"a","confirmed":false,"previous":null}')
+    for domain in ('service', 'ui/probe-ui'):
+        (root/f'usr/data/disc-boot/{domain}/state.json').write_text('{"schema":1,"current":"a","confirmed":false,"previous":null}')
     chroot('/bin/sh', '/etc/init.d/S22disc-boot', 'start')
     assert json.loads((root/'usr/data/disc-boot/state.json').read_text())['unconfirmed'] == 1
     assert (root/'run/disc-boot/ui-launch').exists()
