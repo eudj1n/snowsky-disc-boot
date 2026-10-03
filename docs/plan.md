@@ -136,8 +136,9 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   truncation warning in the status (`beb59b4`); stale build IDs in images
   (the Makefile now relinks on a new ID). Recorded in the contract: a
   version restored by a rollback clears the boot-loop count only after its
-  180 s again. Again on the emulator at `bfa1988` (#48 and #49 fixed) with
-  `boot-image-12d7c02`: all 11 steps passed (2026-10-03).
+  180 s again. Again with `boot-image-12d7c02` on the emulator at
+  `bfa1988` (#48 and #49 fixed) and at `d7c0d5b` (#52 fixed): all 11 steps
+  passed both times (2026-10-03).
 
 - [x] Only the standard descriptors for a package (2026-10-03, found by the
   server's soak on the guest): the supervisor kept the boot log and
@@ -226,9 +227,13 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   the run checked the process and its launcher's verdict, and its
   screenshots were empty.
 - [ ] diskOS's UI running on the guest: `two_packages.py` without the
-  emulator workarounds and requiring the UI to hold the touch panel, on the
-  emulator at `bfa1988`, stops at its first step until the emulator keeps
-  `argv[0]` (snowsky-disc-qemu #52; `work/emulator-bfa1988/`, ignored).
+  emulator workarounds and requiring the UI to hold the touch panel. At
+  `bfa1988` it stopped at its first step (the lost `argv[0]`,
+  snowsky-disc-qemu #52). At `d7c0d5b` the UI starts but cannot set up the
+  screen: the emulator serves the framebuffer and input `ioctl`s through a
+  preload shim, which a static program never loads (`FBIOGET_VSCREENINFO`
+  answers `ENOTTY`), so it gives up and exits, and boot falls back to
+  stock's UI after three starts (`work/emulator-d7c0d5b/`, ignored).
 
 ## Stage 4 — the image and the installation (separately authorized)
 

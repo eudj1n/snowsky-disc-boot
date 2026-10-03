@@ -505,8 +505,11 @@ confirmed one without touching the server. What diskOS would change to fit
   did not see it: it checked the process and the launcher's verdict, and
   its screenshots were empty. With the emulator at `bfa1988` (#48 and #49
   fixed, the test's workarounds removed) the acceptance requires the UI to
-  hold the touch panel and stops at its first step until the emulator keeps
-  `argv[0]` (snowsky-disc-qemu #52).
+  hold the touch panel and stopped at its first step (snowsky-disc-qemu
+  #52). With `argv[0]` kept (`d7c0d5b`) the UI starts but cannot set up the
+  screen: the emulator answers framebuffer and input `ioctl`s through a
+  preload shim that a static program, as a package is, never loads, so it
+  exits, and boot falls back to stock's UI after three starts.
 
 ## Open before implementation
 
