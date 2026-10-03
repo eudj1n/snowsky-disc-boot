@@ -197,7 +197,14 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   among them the busy card (stock's own player, its `PATH` starting with the
   guard: one open file and a card event, `refused rm -rf /tmp/sdcard`, the
   card whole) and the probe ui's player launcher starting stock's player
-  twice under stock's watch loop.
+  twice under stock's watch loop. The risk was then shown on the image that
+  lacks the guard: on combined-010 (snowsky-disc-web, on the owner's player)
+  with its gateway streaming a card track, stock's card event emptied the
+  card (four files of four gone, read from the backing image with the guest
+  off); the same event with nothing holding a card file open left the card
+  whole (`work/combined-010-check/`, ignored). The guarded boot image is the
+  fix; a guarded combined image for the owner's player is a separately
+  authorized stage.
 - [x] diskOS's UI as a `ui` package beside our server and player, on the
   guest (owner, 2026-10-02; done 2026-10-03). `tests/integration/
   diskos_package.py` builds diskOS's UI from a local checkout with its own
