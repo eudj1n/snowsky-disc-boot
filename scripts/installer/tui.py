@@ -1,7 +1,8 @@
 """The installer's terminal look, in the boot menu's colours (plan, stage 4).
 
-The menu's palette on a dark ground: text, muted text, the selection's pill with an
-accent dot, the accent for what moves. Truecolour where the terminal says it has it,
+The menu's palette on a dark ground that fills the window: text, muted text, the
+selection's pill with an accent dot, the accent for what moves. The content keeps a
+readable width; the ground reaches the window's edges, the answer's prompt included. Truecolour where the terminal says it has it,
 the nearest of 256 colours otherwise, plain text when the output is not a terminal
 or NO_COLOR is set. Keys: arrows to move, Space to mark, Enter to go on, q to stop.
 """
@@ -48,7 +49,8 @@ class Screen:
         return f'\x1b[38;5;{cube(fg)}m\x1b[48;5;{cube(bg)}m'
 
     def line(self, *runs, fill=GROUND):
-        """A line of runs (text, fg[, bg]), padded with the ground to the screen's width."""
+        """A line of runs (text, fg[, bg]), padded to the content's width; the ground goes on
+        to the window's edge (erased in its colour) and stays on for what follows."""
         if self.look == 'plain':
             text = ''.join(r[0] for r in runs).rstrip()
             self.out.write(text + '\n')
@@ -59,7 +61,7 @@ class Screen:
             bg = run[2] if len(run) > 2 else fill
             parts.append(self.colour(fg, bg) + text)
             used += len(text)
-        parts.append(self.colour(INK, fill) + ' ' * max(0, self.width - used) + '\x1b[0m')
+        parts.append(self.colour(INK, fill) + ' ' * max(0, self.width - used) + self.colour(INK) + '\x1b[K')
         self.out.write(' ' + ''.join(parts) + '\n')
 
     def blank(self):
@@ -111,8 +113,15 @@ class Screen:
                 self.line(('  · ', LINE), (name, LINE))
 
     def clear(self):
+        """The whole window in the ground (erased in its colour), the cursor at the top."""
         if self.look != 'plain':
-            self.out.write('\x1b[H\x1b[2J')
+            self.out.write(self.colour(INK) + '\x1b[H\x1b[2J')
+        self.out.flush()
+
+    def finish(self):
+        """Back to the terminal's colours: the last frame stays, the ground below it goes."""
+        if self.look != 'plain':
+            self.out.write('\x1b[0m\x1b[J')
         self.out.flush()
 
     def flush(self):

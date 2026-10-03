@@ -16,10 +16,12 @@ the emulator's checkout.
   up --reference DIR --image FILE --ota DIR [--publish PORT ...] [--mount NAME=DIR ...]
   run COMMAND...              in the container: /repo the emulator, /boot this repository
   stage --package FILE        a package (zip or folder) onto the card for Play, the guest off
+  put --tree DIR              a staged card's files (install.py --guest) over the card, the guest off
+  read PATH                   a file of the card, the guest off
   power on|reboot|off|cut [--unsynced]|status [--hold KEYS] [--network isolated]
                               isolated: the guest boots in its own network namespace with only
                               loopback (a player without Wi-Fi); links come with emulator.runtime.network
-  status                      the boot layer's status files and the machine
+  status                      the boot layer's status files (service, menu, ui, the choice) and the machine
   down                        removes only the recorded stack and its volume
 
 --state chooses the record (default work/guest.json), so another repository
@@ -72,23 +74,27 @@ def guest_file(state, path):
 def status(state):
     machine = inside(state, 'bash', '/repo/emulator/scripts/25_power.sh', 'status', capture=True, check=False).stdout
     out = {'machine': json.loads(machine) if machine.strip().startswith('{') else machine.strip()}
-    for name in ('boot', 'service', 'ui'):
+    for name in ('boot', 'service', 'menu', 'ui'):
         out[name] = guest_file(state, f'/run/disc-boot/{name}.json')
+    out['choice'] = guest_file(state, '/run/disc-boot/ui/choice.json')
     return out
 
 
 # The card is written from the container only while the guest is off: no two writers on one file system.
-STAGE = r'''
+CARD = r'''
 set -e
 state=$(bash /repo/emulator/scripts/25_power.sh status | python3 -c 'import json,sys; print(json.load(sys.stdin)["state"])')
-[ "$state" = off ] || { echo "power the guest off before staging ($state)" >&2; exit 1; }
+[ "$state" = off ] || { echo "power the guest off before using its card ($state)" >&2; exit 1; }
 node=/work/rootfs/dev/mmcblk0p1
 kind=$(blkid -o value -s TYPE "$node" || true)
 mkdir -p /mnt/guest-card
 mount -t "${kind:-vfat}" -o iocharset=utf8 "$node" /mnt/guest-card
 trap 'sync; umount /mnt/guest-card' EXIT
-PYTHONPATH=/boot/scripts python3 -B /boot/scripts/package.py stage --package /work/guest-stage/"$1" --card /mnt/guest-card --confirm-card-write
 '''
+STAGE = CARD + 'PYTHONPATH=/boot/scripts python3 -B /boot/scripts/package.py stage --package /work/guest-stage/"$1" --card /mnt/guest-card --confirm-card-write\n'
+# A card the installer staged (install.py --guest): its files over the guest's card, its media kept.
+PUT = CARD + 'cp -R /work/guest-tree/. /mnt/guest-card/\n'
+READ = CARD + 'cat "/mnt/guest-card/$1"\n'
 
 
 def stage(state, source):
@@ -98,8 +104,24 @@ def stage(state, source):
     inside(state, 'bash', '-c', STAGE, 'stage', source.name)
 
 
+def put(state, tree):
+    tree = Path(tree).resolve()
+    if not tree.is_dir():
+        raise SystemExit(f'{tree} is not a folder')
+    inside(state, 'sh', '-c', 'rm -rf /work/guest-tree && mkdir -p /work/guest-tree')
+    compose(state, 'cp', f'{tree}/.', 'emulator:/work/guest-tree')
+    inside(state, 'bash', '-c', PUT, 'put')
+
+
+def read(state, path):
+    if path.startswith('/') or '..' in Path(path).parts:
+        raise SystemExit(f'{path}: a path on the card, relative to its root')
+    raise SystemExit(inside(state, 'bash', '-c', READ, 'read', path, check=False).returncode)
+
+
 def up(args):
-    state_path = Path(args.state)
+    # Docker takes absolute paths only: the record's folder holds the card and the overlay.
+    state_path = Path(args.state).resolve()
     if state_path.exists():
         raise SystemExit(f'A guest is recorded in {state_path}; use status or down first')
     profile = load_profile(args.version)
@@ -171,6 +193,10 @@ def main():
                    help="At power-on: the container's network (default) or none at all")
     t = sub.add_parser('stage')
     t.add_argument('--package', type=Path, required=True)
+    t = sub.add_parser('put')
+    t.add_argument('--tree', type=Path, required=True)
+    t = sub.add_parser('read')
+    t.add_argument('path')
     sub.add_parser('status')
     sub.add_parser('down')
     args = p.parse_args()
@@ -194,6 +220,11 @@ def main():
     if args.action == 'stage':
         stage(state, args.package)
         return
+    if args.action == 'put':
+        put(state, args.tree)
+        return
+    if args.action == 'read':
+        read(state, args.path)
     # down: the guest's own cleanup is best effort when a setup never booted.
     inside(state, 'bash', '/repo/ci/cleanup.sh', check=False)
     compose(state, 'down', '--volumes', '--timeout', '5')

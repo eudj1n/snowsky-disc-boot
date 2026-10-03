@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -151,7 +152,6 @@ class InstallerTests(unittest.TestCase):
         }
         for faults, message in cases.items():
             with self.subTest(faults):
-                import shutil
                 shutil.rmtree(self.root/'run', ignore_errors=True)
                 result, report = self.simulate(*[a for f in faults for a in ('--fault', f)])
                 self.assertEqual(result.returncode, 1)
@@ -162,6 +162,105 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertEqual(report['status'], 'restored')
         self.assertEqual(report['steps'][-1]['readbackSha256'], digest(self.root/'images/stock-v257-restore-review-only.bin'))
+
+    def update(self, folder, chunks=None):
+        folder.mkdir(parents=True, exist_ok=True)
+        for k in range(load_profile()['rootfs_chunks'] if chunks is None else chunks):
+            (folder/f'rootfs.squashfs.{k:04d}.{k:064x}.enc').touch()
+        return folder
+
+    def test_the_update_is_found_from_any_of_its_folders(self):
+        sys.path.insert(0, str(ROOT/'scripts'))
+        from installer import flow
+        profile = load_profile()
+        top = self.root/'SNOWSKY DISC update'
+        ota = self.update(top/'main_os'/f'ota_v{profile["main_os_version"]}')
+        escaped = str(top).replace(' ', '\\ ')
+        for given in (top, top/'main_os', ota, f"'{top}' ", escaped):
+            with self.subTest(given):
+                self.assertEqual(flow.find_update(given, profile), ota)
+        with self.assertRaisesRegex(ValueError, 'is not FiiO'):
+            flow.find_update(self.root, profile)
+        (ota/f'rootfs.squashfs.0001.{1:064x}.enc').unlink()
+        with self.assertRaisesRegex(ValueError, 'numbered from 0000'):
+            flow.find_update(top, profile)
+
+    def guest(self, statuses, result=None):
+        """install.py --guest with scripts/guest.py replaced by a stand-in: what it was asked, in order."""
+        emulator, ota = self.root/'emulator-ref', self.root/'ota'
+        (emulator/'emulator').mkdir(parents=True, exist_ok=True)
+        self.update(ota)
+        shutil.rmtree(self.root/'run', ignore_errors=True)
+        calls, card = [], {}
+        statuses = list(statuses)
+
+        def runner(command, **kwargs):
+            if command[:2] == ['docker', 'info']:
+                return subprocess.CompletedProcess(command, 0, '', '')
+            args = command[command.index('--state') + 2:]
+            state = Path(command[command.index('--state') + 1])
+            calls.append(' '.join(args[:3]) if args[0] == 'power' else args[0])
+            out = ''
+            if args[0] == 'up':
+                state.parent.mkdir(parents=True, exist_ok=True)
+                state.write_text('{}')
+            elif args[0] == 'put':
+                tree = Path(args[2])
+                card.update({str(f.relative_to(tree)): f.read_bytes() for f in tree.rglob('*') if f.is_file()})
+            elif args[0] == 'status':
+                out = json.dumps(statuses.pop(0) if len(statuses) > 1 else statuses[0])
+            elif args[0] == 'read':
+                out = json.dumps(result or dict(schema=1, roles=dict(service=dict(installed=True, note='installed 9'),
+                                                                     menu=dict(installed=True, note='installed 9'))))
+            elif args[0] == 'down':
+                state.unlink()
+            return subprocess.CompletedProcess(command, 0, out, '')
+
+        sys.path.insert(0, str(ROOT/'scripts'))
+        import argparse
+        import io
+        from unittest import mock
+        from installer import flow, tui
+        args = argparse.Namespace(dry_run=False, yes=True, plain=True, ota=str(ota), image=str(self.image), emulator=str(emulator), card=None,
+                                  package=None, app=None, packages_from=[str(self.local)], download=False, work=str(self.root/'run'),
+                                  catalog=str(self.catalog), simulate=None, simulate_small=False, fault=None, restore=False, guest=True,
+                                  history=None, diskos=None, libusb=None)
+        installer = flow.Installer(args, tui.Screen(look='plain', stream=io.StringIO()), runner=runner)
+        with mock.patch('installer.flow.shutil.which', return_value='/usr/bin/docker'), mock.patch('installer.guest.time.sleep'):
+            code = installer.run()
+        return code, installer.report, calls, card
+
+    def test_the_guest_takes_the_card_and_is_followed_to_the_end(self):
+        code, report, calls, card = self.guest([
+            dict(service=dict(state='starting'), menu=dict(state='asking')),
+            dict(service=dict(state='ready'), menu=dict(state='answered'), choice=dict(ui='stock', by='menu')),
+            dict(service=dict(state='confirmed'), menu=dict(state='answered'), choice=dict(ui='stock', by='menu'))])
+        self.assertEqual(code, 0, report['status'])
+        self.assertEqual(calls, ['up', 'power off', 'put', 'power on --hold', 'status', 'status', 'status', 'power off', 'read', 'down'])
+        self.assertIn('.disc/boot/install/service/package.json', card)
+        self.assertIn('.disc/boot/install/menu/package.json', card)
+        self.assertEqual(card['.disc/dev/usb-console'], cards.MARKER_TEXT.encode())
+        self.assertIn('Apps/Disc Player/index.html', card)
+        boot = report['steps'][-1]
+        self.assertEqual((boot['step'], boot['status']['service']['state']), ('first boot', 'confirmed'))
+        self.assertTrue(boot['result']['roles']['menu']['installed'])
+        self.assertEqual(report['steps'][1]['ota'], str(self.root/'ota'), 'the update as given')
+
+    def test_a_guest_that_does_not_get_there_stops_the_run_and_goes(self):
+        code, report, calls, card = self.guest([dict(service=dict(state='rolled-back'), menu=dict(state='answered'))])
+        self.assertEqual(code, 1)
+        self.assertIn('did not finish: service rolled-back', report['status'])
+        self.assertEqual(calls[-1], 'down', 'the guest is removed in every case')
+        code, report, calls, card = self.guest([dict(service=dict(state='confirmed'), menu=dict(state='answered'))],
+                                               result=dict(schema=1, roles=dict(service=dict(installed=False, note='refused: checksum'))))
+        self.assertIn('service: refused: checksum', report['status'])
+
+    def test_the_guest_is_not_a_way_back_to_stock(self):
+        result = subprocess.run([sys.executable, str(ROOT/'install.py'), '--guest', '--restore'], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('a guest starts fresh from each image', result.stderr)
+        result = subprocess.run([sys.executable, str(ROOT/'install.py'), '--guest', '--simulate'], capture_output=True, text=True)
+        self.assertIn('not allowed with argument', result.stderr)
 
     def test_what_the_card_step_refuses(self):
         for path in ('/', str(Path.home())):

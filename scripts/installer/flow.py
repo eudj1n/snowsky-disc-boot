@@ -1,6 +1,7 @@
 """The installer's steps (plan, stage 4): check the computer, the firmware and its image, the
-packages and apps from the catalogs, the card. The player's USB Boot write and the first boot
-follow in the next parts; --dry-run stages into a folder of its own and writes nothing else."""
+packages and apps from the catalogs, the card, the player through USB Boot and its first boot.
+--dry-run stages into a folder of its own and writes nothing else; --simulate writes a
+simulated player; --guest runs the image in the emulator's guest instead of a player."""
 import json
 import os
 from pathlib import Path
@@ -14,6 +15,7 @@ import catalog
 from firmware_profile import load_profile
 from installer import card as cards
 from installer import device as devices
+from installer import guest as guests
 from installer import tui
 from installer import usbboot
 
@@ -32,13 +34,31 @@ def load_json_safe(path):
         return {}
 
 
+def find_update(given, profile):
+    """FiiO's update as the build takes it, main_os/ota_v<version>: given as that folder, as
+    main_os or as the update's own folder; its rootfs chunks counted against the profile."""
+    # As typed or dropped into the terminal: quoted, or with its spaces escaped.
+    given = Path(str(given).strip().strip('\'"').replace('\\ ', ' ')).expanduser()
+    name = f'ota_v{profile["main_os_version"]}'
+    for folder in (given, given/name, given/'main_os'/name):
+        chunks = sorted(folder.glob('rootfs.squashfs.[0-9][0-9][0-9][0-9].*.enc')) if folder.is_dir() else []
+        if not chunks:
+            continue
+        indices = [int(c.name.split('.')[2]) for c in chunks]
+        if len(chunks) != profile['rootfs_chunks'] or indices != list(range(len(chunks))):
+            raise ValueError(f'{folder} holds {len(chunks)} rootfs chunks; FiiO\'s {profile["version"]} update has '
+                             f'{profile["rootfs_chunks"]}, numbered from 0000')
+        return folder
+    raise ValueError(f'{given} is not FiiO\'s {profile["version"]} update: no main_os/{name} with its rootfs chunks in it')
+
+
 class Installer:
     def __init__(self, args, screen=None, runner=subprocess.run):
         self.args, self.screen, self.runner = args, screen or tui.Screen(), runner
         self.interactive = not args.yes and screen is None and sys.stdin.isatty() and self.screen.look != 'plain'
-        self.work = Path(args.work or ROOT/'work'/time.strftime('install-%Y%m%d-%H%M%S'))
-        self.report = dict(started=time.strftime('%Y-%m-%dT%H:%M:%S'), dryRun=args.dry_run, steps=[])
-        self.step = 0
+        self.work = Path(args.work or ROOT/'work'/time.strftime('install-%Y%m%d-%H%M%S')).resolve()
+        self.report = dict(started=time.strftime('%Y-%m-%dT%H:%M:%S'), dryRun=args.dry_run, guest=bool(args.guest), steps=[])
+        self.step, self.guest, self.ota = 0, None, None
 
     # The screen
 
@@ -46,7 +66,8 @@ class Installer:
         s = self.screen
         s.clear()
         s.blank()
-        s.line(('  ● ', tui.ACCENT), ('S N O W S K Y   D I S C', tui.MUTED), ('   install' + ('  ·  dry run' if self.args.dry_run else ''), tui.MUTED))
+        mode = '  ·  dry run' if self.args.dry_run else '  ·  guest' if self.args.guest else ''
+        s.line(('  ● ', tui.ACCENT), ('S N O W S K Y   D I S C', tui.MUTED), ('   install' + mode, tui.MUTED))
         s.blank()
         s.steps(STEPS, self.step)
         s.blank()
@@ -124,8 +145,14 @@ class Installer:
                 raise Stop(f'{title}: give it on the command line')
             return default
         self.say(title, [prompt + (f' [{default}]' if default else '')])
-        answer = input('  > ').strip()
+        answer = self.input().strip()
         return answer or default
+
+    def input(self):
+        try:
+            return input('  > ')
+        except EOFError:
+            raise Stop('stopped')
 
     def confirm(self, title, lines, word):
         """An irreversible step goes on only when the word is typed."""
@@ -134,7 +161,7 @@ class Installer:
                 raise Stop(f'{title}: confirm with --yes')
             return
         self.say(title, list(lines) + [f'Type {word} to go on, anything else to stop.'])
-        if input('  > ').strip() != word:
+        if self.input().strip() != word:
             raise Stop('stopped before ' + title.lower())
 
     def done(self, name, **facts):
@@ -145,20 +172,23 @@ class Installer:
 
     def check(self):
         facts = dict(python=sys.version.split()[0])
-        # Docker and the emulator's checkout build the image; an image built before needs neither.
-        facts['docker'] = bool(not self.args.image and shutil.which('docker')
-                               and subprocess.run(['docker', 'info'], capture_output=True).returncode == 0)
+        # Docker and the emulator's checkout build the image and run the guest; an image built
+        # before, without a guest, needs neither.
+        needed = not self.args.image or self.args.guest
+        facts['docker'] = bool(needed and shutil.which('docker') and self.runner(['docker', 'info'], capture_output=True).returncode == 0)
         facts['emulator'] = str(self.emulator()) if self.emulator() else None
         problems = []
         if sys.version_info < (3, 11):
             problems.append('Python 3.11 or later is needed.')
-        if not self.args.image and not facts['docker']:
-            problems.append('Docker must run to build the image (or give a built one with --image).')
-        if not self.args.image and not facts['emulator']:
-            problems.append('The emulator checkout builds the image (--emulator).')
-        found = [f'Python {facts["python"]}'] + (['An image built before: no build'] if self.args.image else
-                                                 ['Docker ' + ('runs' if facts['docker'] else 'does not run'),
-                                                  'Emulator ' + (facts['emulator'] or 'not found')])
+        if needed and not facts['docker']:
+            problems.append('Docker must run to ' + ('run the guest.' if self.args.image else 'build the image (or give a built one with --image).'))
+        missing = [n for n in ('disc-boot', 'disc-usb-console') if not (ROOT/'build/mips'/n).is_file()]
+        if not self.args.image and missing:
+            problems.append(f'The boot layer is not built ({", ".join(missing)}): bash scripts/build.sh.')
+        if needed and not facts['emulator']:
+            problems.append('The emulator checkout ' + ('runs the guest' if self.args.image else 'builds the image') + ' (--emulator).')
+        found = [f'Python {facts["python"]}'] + (['An image built before: no build'] if self.args.image else []) + (
+            ['Docker ' + ('runs' if facts['docker'] else 'does not run'), 'Emulator ' + (facts['emulator'] or 'not found')] if needed else [])
         self.say('Check this computer', found + problems)
         if problems:
             raise Stop(' '.join(problems))
@@ -174,12 +204,13 @@ class Installer:
             image = Path(self.args.image)
             if not image.is_file():
                 raise Stop(f'{image} is not a built image')
+            if self.args.guest:
+                # The guest starts from stock's update with the image's rootfs over it.
+                self.ota = self.update_folder(profile)
             self.say('Firmware and image', [f'The image {image.name}, built before.'])
-            self.done('firmware', image=str(image), profile=profile['version'])
+            self.done('firmware', image=str(image), profile=profile['version'], ota=str(self.ota) if self.ota else None)
             return image
-        ota = Path(self.ask('Firmware and image', f'The folder of FiiO\'s {profile["version"]} update (main_os/ota_v...)', self.args.ota))
-        if not ota.is_dir():
-            raise Stop(f'{ota} is not the update\'s folder')
+        ota = self.ota = self.update_folder(profile)
         out = self.work/'image'
         out.parent.mkdir(parents=True, exist_ok=True)
         self.say('Firmware and image', [f'Building the image from {ota.name} with the boot layer. This takes a few minutes.'])
@@ -194,6 +225,13 @@ class Installer:
         image = next(out.glob('disc-boot-v*-review-only.bin'))
         self.done('firmware', image=str(image), ota=str(ota), profile=profile['version'])
         return image
+
+    def update_folder(self, profile):
+        given = self.ask('Firmware and image', f'The folder of FiiO\'s {profile["version"]} update', self.args.ota)
+        try:
+            return find_update(given, profile)
+        except ValueError as error:
+            raise Stop(str(error))
 
     def packages(self):
         entries = catalog.load(self.args.catalog or catalog.CATALOG, kind='packages')['entries']
@@ -235,7 +273,7 @@ class Installer:
         return list(folders.values()), apps
 
     def card(self, folders, apps):
-        if self.args.dry_run:
+        if self.args.dry_run or self.args.guest:
             target = self.work/'card'
             target.mkdir(parents=True, exist_ok=True)
         else:
@@ -248,6 +286,7 @@ class Installer:
                                       'and the USB console\'s marker.'], 'CARD')
         profile = load_profile()['version']
         staged = cards.stage_packages(folders, target, profile)
+        self.roles = {s['role'] for s in staged}
         with tempfile.TemporaryDirectory() as temp:
             placed = cards.stage_apps(apps, target, [Path(p) for p in self.args.packages_from], self.args.download, temp)
         marker = cards.write_marker(target)
@@ -320,8 +359,24 @@ class Installer:
         self.done('player', image=str(image), written=True, simulated=False, target=target, backup=backup, write=written, read=read,
                   audits=audits, history=str(history))
 
+    def player_guest(self, image):
+        """The emulator's guest of the image in the player's place, with the staged card."""
+        title = 'The player (USB Boot)'
+        self.guest = guests.Guest(self.work, self.emulator(), image, self.ota, run=self.runner)
+        self.say(title, ['A disposable guest of the emulator stands in for the player: it starts from the image, as the player '
+                         'would after the write. Setting it up takes a minute or two.'])
+        try:
+            self.guest.up()
+            self.guest.card(self.work/'card')
+        except guests.GuestError as error:
+            raise Stop(f'{error}. The guest\'s log is {self.guest.log}.')
+        self.say(title, ['The guest is ready and has the card.'])
+        self.done('player', image=str(image), written=False, guest=str(self.guest.state))
+
     def player(self, image, restore=False):
         title = 'The player (USB Boot)'
+        if self.args.guest:
+            return self.player_guest(image)
         if self.args.history and not self.args.simulate:
             return self.player_reviewed(image, restore)
         if not self.args.simulate:
@@ -354,13 +409,46 @@ class Installer:
         self.done('player', image=str(image), written=True, simulated=True, chip=info['chip'], badBlocks=info['badBlocks'],
                   backup=backup, readbackSha256=devices.sha256_file(readback))
 
+    def first_boot_guest(self):
+        title = 'First boot'
+        roles = self.roles
+        self.say(title, ['The guest starts with Play held: the boot layer installs the packages from the card. '
+                         'Then it is followed until the menu answers and the service is confirmed (its 180 s).'])
+
+        def show(status):
+            lines = [f'{name}: {(status.get(name) or {}).get("state", "-")}' for name in ('service', 'menu', 'ui')]
+            choice = status.get('choice') or {}
+            if choice:
+                lines.append(f'chosen UI: {choice.get("ui")} (by {choice.get("by")})')
+            self.say(title, lines)
+        try:
+            self.guest.start()
+            status, done = self.guest.follow(roles, show=show)
+            result = self.guest.result()
+        except guests.GuestError as error:
+            raise Stop(f'{error}. The guest\'s log is {self.guest.log}.')
+        roles_result = result.get('roles', {})
+        installed = [k for k, v in roles_result.items() if k != 'ui' and v.get('installed')] + \
+                    [f'ui/{k}' for k, v in roles_result.get('ui', {}).items() if v.get('installed')]
+        refused = [f'{k}: {v.get("note")}' for k, v in roles_result.items() if k != 'ui' and not v.get('installed')] + \
+                  [f'ui/{k}: {v.get("note")}' for k, v in roles_result.get('ui', {}).items() if not v.get('installed')]
+        self.done('first boot', guest=True, status=status, result=result)
+        if refused or not done:
+            raise Stop('the first boot on the guest did not finish: ' + '; '.join(refused or [
+                f'{name} {(status.get(name) or {}).get("state")}' for name in ('service', 'menu') if name in roles]))
+        reached = [what for role, what in (('menu', 'the menu answered'), ('service', 'the service was confirmed')) if role in roles]
+        self.say(title, [f'Installed by Play: {", ".join(installed) or "nothing"}.'] +
+                 ([f'On the guest {" and ".join(reached)}.'] if reached else []))
+
     def first_boot(self):
+        if self.args.guest:
+            return self.first_boot_guest()
         self.say('First boot', ['Power the player on holding Play: the boot layer installs the packages from the card and '
                                 'writes .disc/boot/result.json; the player page then answers on the network.'])
         answer = None
         if getattr(self, 'read_capture', None) is not None and self.interactive:
             self.say('First boot', ['Did the player start normally? Describe what you saw (empty: not checked yet).'])
-            answer = input('  > ').strip() or None
+            answer = self.input().strip() or None
             if answer:
                 record = dict(observation='owner-confirmed-normal-first-boot', reported_at=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
                               owner_answer=answer, reported_via='install.py', write_session_id=self.sessions[0],
@@ -390,6 +478,14 @@ class Installer:
         except Stop as stop:
             self.report['status'] = f'stopped: {stop}'
             self.say('Stopped', [str(stop)], tui.ACCENT)
+        except KeyboardInterrupt:
+            # Ctrl-C at any question or wait: a stop like any other, with its report.
+            self.report['status'] = 'stopped: interrupted'
+            self.say('Stopped', ['Interrupted. Nothing was retried; the run\'s report is ' + str(self.work/'report.json') + '.'], tui.ACCENT)
         finally:
+            if self.guest is not None:
+                # Disposable: the stack goes, the report keeps what it showed.
+                self.guest.down()
             (self.work/'report.json').write_text(json.dumps(self.report, indent=2) + '\n')
+            self.screen.finish()
         return 0 if self.report['status'] in ('prepared', 'restored') else 1

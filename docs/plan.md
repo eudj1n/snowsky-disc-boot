@@ -383,7 +383,10 @@ boot menu").
     apps of the chosen server's catalog, the card after a typed
     confirmation (packages for Play, `Apps/`, the console's marker);
     `--dry-run` into its own folder, `--yes` without questions;
-    `tests/conformance/test_installer.py` (4).
+    `tests/conformance/test_installer.py` (4). FiiO's update may be given as
+    its own folder, `main_os` or `main_os/ota_v<version>` (its chunks
+    counted against the profile); the ground fills the window; Ctrl-C stops
+    like any refusal.
   - [ ] The player through USB Boot: a full backup before every write, the
     write, the independent readback and every byte compared, over the
     reviewed tools; the way back to stock; `--simulate` (a NAND file with
@@ -403,8 +406,18 @@ boot menu").
       capture's), the diskOS checkout at `646212d`. The reviewed readers
       collect the primary rootfs only: a whole-NAND backup needs the reader
       payload (`device/acquisition/`) to read every block.
-    - [ ] `--guest`: the emulator's guest as the player.
-  - [ ] The first boot with Play and `.disc/boot/result.json` read back.
+    - [x] `--guest`: the emulator's guest as the player (2026-10-03,
+      `scripts/installer/guest.py` over `scripts/guest.py`'s new `put` and
+      `read`): the card staged in the run folder and copied over the
+      guest's card, the power-on with Play, the status followed until the
+      menu answered and the service was confirmed, `result.json` read back,
+      the guest removed in every case. Accepted on the guest with image
+      b43034b, emulator 690a55c and the catalog's defaults (disc-server
+      c502ce6-debug, disc-menu b43034b, the player page): both installed by
+      Play, the menu chose stock's UI, the service confirmed (run
+      `work/install-run-guest-2`, not committed).
+  - [ ] The first boot with Play and `.disc/boot/result.json` read back on
+    the player (on the guest: `--guest` above).
 - [x] `console.py`, the player's USB console from this computer (owner,
   2026-10-03; built the same day, `tests/conformance/test_console.py` on a
   pseudo-terminal, not yet run on the player): find the ACM port, run commands and read their answers (the

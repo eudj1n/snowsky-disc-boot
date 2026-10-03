@@ -161,7 +161,7 @@ class ReviewedTests(unittest.TestCase):
             source=dict(url=None, sha256='0' * 64, size=1), verified=dict(date='2026-10-03', acceptance='test'))])))
         args = argparse.Namespace(dry_run=True, yes=True, plain=True, ota=None, image=str(self.image), emulator=None, card=None,
                                   package=None, app=None, packages_from=[], download=False, work=str(self.root/'run'),
-                                  catalog=str(catalog), simulate=None, simulate_small=False, fault=None, restore=False,
+                                  catalog=str(catalog), simulate=None, simulate_small=False, fault=None, restore=False, guest=False,
                                   history=str(self.root/'history.json'), diskos='/diskos', libusb='/libusb.dylib')
         tools = Tools(self)
         installer = flow.Installer(args, tui.Screen(look='plain', stream=io.StringIO()), runner=tools)

@@ -98,7 +98,9 @@ SHA-256 and the versions used are written into the header, docs/provenance.md).
 
 `python3 install.py` runs the guided installer in the terminal (the boot menu's colours;
 `--plain` or a non-terminal output gives plain text). This part checks the computer, builds
-the image from FiiO's update in the emulator's image (or takes one with `--image`), offers
+the image from FiiO's update in the emulator's image (or takes one with `--image`; the update
+may be given as its own folder, `main_os` or `main_os/ota_v<version>`, and its rootfs chunks are
+counted against the profile before the build), offers
 `catalog/packages.json` by role (a service and a boot menu, one at most each; any number of
 UIs) and the chosen server's `catalog/apps.json`, and puts the packages,
 the default apps (`Apps/`) and the console's marker on the card after the typed confirmation.
@@ -128,8 +130,20 @@ journals audited. An unknown writer outcome stops everything. The run writes the
 is collected with the boot capture's metadata page, as the write plan is, while the procedure's
 readback uses the write session's; and the diskOS checkout must be at the writer's pinned
 revision (`646212d`; a checkout moved elsewhere fails the tools' pin checks).
-Without either, the step says how the player is written instead. `tests/conformance/test_installer.py` runs both
-on a card folder and a 64-block simulated player.
+Without either, the step says how the player is written instead.
+
+`--guest` puts the emulator's guest in the player's place (`scripts/installer/guest.py` over
+`scripts/guest.py`, its record in the run folder): with the image (`--image`, or the one it
+builds), FiiO's update (`--ota`) and the emulator's checkout at a reviewed revision
+(`--emulator`), the card is staged in the run folder, copied over the guest's card with the guest
+off (`guest.py put`), and the guest starts with Play held. It is followed (`guest.py status`)
+until the menu answered and the service was confirmed, then `.disc/boot/result.json` is read from
+its card (`guest.py read`) into the report, and the guest is removed in every case.
+`tests/conformance/test_installer.py` runs these on a card folder, a 64-block simulated player
+and a stand-in for `guest.py`.
+
+The screen's ground fills the terminal's window; the content keeps a readable width. Ctrl-C or
+Ctrl-D at a question stops the run like any refusal, with its report.
 
 ## The player's console
 
@@ -167,6 +181,8 @@ python3 scripts/guest.py up --reference <emulator> --image work/<run>/disc-boot-
   --ota <firmware>/main_os/ota_v<version>
 python3 scripts/guest.py run -- python3 -B /boot/tests/integration/boot_guest.py --output /work/boot-guest.json
 python3 scripts/guest.py stage --package <zip>        # with the guest off: onto the card, for Play
+python3 scripts/guest.py put --tree <folder>          # with the guest off: a staged card's files over the card
+python3 scripts/guest.py read .disc/boot/result.json  # with the guest off: a file of the card
 python3 scripts/guest.py power on --hold play         # also reboot, off, cut [--unsynced], status
 python3 scripts/guest.py power on --network isolated  # a player without a network (only loopback)
 python3 scripts/guest.py status | down
