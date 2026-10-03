@@ -475,8 +475,15 @@ boot menu").
 - [x] `scripts/release.py` (build, record, check; deterministic zip and
   tar.gz), `tests/conformance/test_release.py` (4); `ci.yml`'s `mips` job
   and `release.yml` (tag `v*`, draft release; no secrets, actions pinned).
-- [ ] The first runs on GitHub (after the owner pushes): the `mips` job's
-  digests equal the local ones.
+- [x] The first runs on GitHub (2026-10-04, pushed by the owner's go-ahead
+  over SSH; run `37148254264` at `1662230`): both jobs pass, and the `mips`
+  job's artifact holds `disc-boot` `32564a80…` (build id `b43034ba1e27`),
+  `disc-usb-console` `62b28e1e…` and `disc-menu` `01cba485…`, the accepted
+  bytes. The first run found what macOS hides: dash ends a script on a
+  special built-in's failed redirection (the tests' descriptor probe), and
+  musl.cc refuses GitHub's runners (the toolchain falls back to the
+  Internet Archive's capture of the same file, same SHA-256; a toolchain
+  built that way gave the same bytes).
 - [x] `2.57.1` recorded (2026-10-03, `releases/2.57.1.json`): the image
   b43034b holding its `disc-boot` and `disc-usb-console` passed
   `boot_guest.py` (15 of 15) and `two_packages.py` (6 of 6, the debug server
