@@ -224,6 +224,8 @@ Distributed as a zip; staged and installed as a folder with `package.json`:
   checks free space first and keeps 16 MiB of `/usr/data` for stock.
 - A `ui` or `menu` package's entry is named `mq_ui`, because stock's watch
   loop finds the UI by that exact process name (the menu runs in its place).
+- `title`, optional, 1–32 printable ASCII: the name a boot menu shows for
+  the package (owner, 2026-10-03); without it the menu shows `name`.
 - A `ui` package may name `player`, a listed `0755` file: its own launcher
   of stock's player (diskOS's sets up its card protection there and tells
   its UI so). Boot runs it as `mq_player` while that package's UI runs (not
@@ -394,8 +396,9 @@ menu's `stock` entry is stock's UI with the `service` package running.
 
 - In `platform` mode, with a menu installed and no choice by `next`, the
   `mq_ui` launcher starts the menu first. `/run/disc-boot/ui/choices.json`
-  lists every installed `ui` package (`ui`, `version`, `confirmed`), then
-  `{"ui": "stock"}`, and the `default` of this boot.
+  lists every installed `ui` package (`ui`, `title` or else its name,
+  `version`, `confirmed`), then `{"ui": "stock", "version": "<firmware
+  profile>"}`, and the `default` of this boot.
 - The menu writes `$DISC_BOOT_RUN/choice` (`{"ui": "<name>"|"stock"}`)
   atomically and hands over (owner, 2026-10-03): it execs
   `$DISC_BOOT_LAUNCHER`, the UI launcher, in its own process, which checks

@@ -139,6 +139,10 @@ def load(folder):
     if player is not Missing and not path_ok(player):
         fail('player must be a listed relative path')
     m['player'] = None if player is Missing else player
+    title = root.get('title', Missing)
+    if title is not Missing and not printable(title, 32):
+        fail('title must be 1-32 printable ASCII')
+    m['title'] = None if title is Missing else title
     ready = root.get('ready', Missing)
     if ready is not Missing and not integer(ready, 1, MAX_READY):
         fail('ready must be 1-120 seconds')
@@ -251,7 +255,7 @@ def check(folder, role=None, profile=None, arch=ARCH, check_modes=True):
 
 
 def describe(folder, name, version, role, entry, args=(), ready=None, profiles=None, arch=ARCH, boot_api=BOOT_API,
-             player=None):
+             player=None, title=None):
     """package.json for a folder: every file with its size, digest and mode (0755 when executable)."""
     folder = Path(folder)
     files = {}
@@ -278,6 +282,8 @@ def describe(folder, name, version, role, entry, args=(), ready=None, profiles=N
                     ready=30 if ready is None else ready, files=files)
     if player is not None:
         manifest['player'] = player
+    if title is not None:
+        manifest['title'] = title
     text = json.dumps(manifest, indent=2) + '\n'
     if len(text.encode()) >= MANIFEST_BYTES:
         fail('package.json would exceed 64 KiB')
@@ -408,6 +414,7 @@ def main():
     d.add_argument('--role', choices=ROLES, required=True)
     d.add_argument('--entry', required=True)
     d.add_argument('--player', help="A ui package's own launcher of stock's player (it ends in /usr/bin/mq_player)")
+    d.add_argument('--title', help='The name a boot menu shows (1-32 printable ASCII; default: the name)')
     d.add_argument('--arg', action='append', default=[], help='An argument for the entry (repeat for more)')
     d.add_argument('--ready', type=int, help='Seconds to become ready (1-120, default 30)')
     d.add_argument('--profile', action='append', help='A supported firmware profile (default: the active one)')
@@ -432,7 +439,7 @@ def main():
     try:
         if args.command == 'describe':
             m = describe(args.source, args.name, args.version, args.role, args.entry, args.arg, args.ready, args.profile, args.arch,
-                         player=args.player)
+                         player=args.player, title=args.title)
             out = dict(name=m['name'], version=m['version'], role=m['role'], files=len(m['files']),
                        bytes=sum(f['size'] for f in m['files'].values()))
         elif args.command == 'check':

@@ -195,6 +195,8 @@ class PackageToolTests(unittest.TestCase):
             'entry unlisted': edit(entry='bin/other'),
             'float size': lambda m: m['files']['bin/run'].update(size=1.0),
             'service player': edit(player='bin/run'),
+            'title': edit(title='Disc Server'), 'title empty': edit(title=''), 'title long': edit(title='x' * 33),
+            'title kind': edit(title=7),
         }
         for label, change in manifest_cases.items():
             with self.subTest(label):

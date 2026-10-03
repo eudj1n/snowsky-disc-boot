@@ -19,8 +19,9 @@
 
 typedef struct { char path[201]; long long size; char sha[65]; int mode; } pkg_file;
 typedef struct {
-    /* player: a ui package's own launcher of stock's player ("" when it brings none). */
-    char name[33], version[65], role[8], arch[48], entry[201], player[201];
+    /* player: a ui package's own launcher of stock's player ("" when it brings none);
+       title: the name a menu shows ("" when none: the menu shows the name). */
+    char name[33], version[65], role[8], arch[48], entry[201], player[201], title[33];
     int boot_api, ready, nargs, nprofiles, nfiles;
     char args[MAX_ARGS][257];
     char profiles[MAX_PROFILES][17];

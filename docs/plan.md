@@ -297,20 +297,28 @@ boot menu").
     already down when it starts is ignored until released (Play at
     power-on was the recovery). The touch panel (`event1`, the UI's own) may
     choose as well.
+  - The owner's choices (2026-10-03, from three mockups): the list layout
+    (every entry at once, the selected one in a pill with an accent dot,
+    its version at the right), always in English, each package by its
+    `title` (else its name), versions shown, stock's UI as "FiiO" with the
+    firmware's version, the 5 s countdown as a ring along the panel's edge.
+    Colours from the player page's dark theme (`#181614` ground, `#ece8e3`
+    text, `#ff795a` accent, `#3a3530` selection), Inter (OFL) as the face.
   - Screen: the round 360×360 panel, mounted 180° (`/dev/fb0` XRGB8888,
     three buffers); a centred list inside the circle; each frame drawn into
     the hidden buffer and shown with `FBIOPAN_DISPLAY` (no tearing, and the
     emulator's evidence of a frame). A small renderer of its own and a font
-    rasterised at build time from an OFL font, not LVGL: a list of a few
+    rasterised at build time from Inter (OFL; Latin only, since the menu
+    is always in English and titles are ASCII), not LVGL: a list of a few
     entries needs neither its size nor its widgets.
   - Behaviour: the default highlighted with a 5 s countdown (owner,
     2026-10-03), stopped by any key or touch; it answers
     `$DISC_BOOT_RUN/choice` and execs `$DISC_BOOT_LAUNCHER`, every
     descriptor closed on exec. Its settings (remember the last choice, ask
     or not) in `$DISC_BOOT_DATA`.
-  - Shares the boot program's JSON reading and atomic writes. Package names
-    are ASCII (`[a-z0-9-]`); an optional display `title` in the manifest is
-    a contract addition to settle with it.
+  - Shares the boot program's JSON reading and atomic writes. The manifest's
+    optional `title` (printable ASCII, 1–32) and stock's firmware version
+    reach it through `choices.json` (built 2026-10-03).
   - Tests: a host build drawing into a file with scripted keys (the logic,
     and frames compared as PNG), the MIPS build under `qemu-user`, and on
     the guest the menu captured from the screen and driven by the

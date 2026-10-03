@@ -182,7 +182,7 @@ static int ui_installed(const char *name) {
     return !rstate_read(domain, &rs) && rs.current;
 }
 
-typedef struct { char name[33], version[65], slot; int confirmed; } ui_entry;
+typedef struct { char name[33], version[65], title[33], slot; int confirmed; } ui_entry;
 
 static int entry_order(const void *a, const void *b) { return strcmp(((const ui_entry *)a)->name, ((const ui_entry *)b)->name); }
 
@@ -203,8 +203,11 @@ static int list_uis(ui_entry *out, int cap) {
         if (rstate_read(domain, &rs) || !rs.current) continue;
         snprintf(out[n].name, sizeof(out[n].name), "%.32s", e->d_name);
         bpath(slot, DATA_DIR "/%s/%c", domain, rs.current);
-        out[n].version[0] = 0;
-        if (!manifest_load(slot, m, err, sizeof(err))) snprintf(out[n].version, sizeof(out[n].version), "%s", m->version);
+        out[n].version[0] = out[n].title[0] = 0;
+        if (!manifest_load(slot, m, err, sizeof(err))) {
+            snprintf(out[n].version, sizeof(out[n].version), "%s", m->version);
+            snprintf(out[n].title, sizeof(out[n].title), "%s", m->title[0] ? m->title : m->name);
+        }
         out[n].slot = rs.current;
         out[n].confirmed = rs.confirmed;
         n++;
@@ -513,18 +516,20 @@ static int decide_ui(int consume_next) {
     return c.menu || strcmp(c.ui, "stock");
 }
 
-/* What the menu offers: every installed ui package and stock's UI, with this boot's default. */
+/* What the menu offers: every installed ui package (its title, or its name) and stock's UI with
+   the firmware profile's version, with this boot's default. */
 static void write_choices(const ui_choice *c) {
-    char p[PATH_MAX], buf[SMALL_FILE], version[80];
+    char p[PATH_MAX], buf[SMALL_FILE], version[80], title[48];
     ui_entry list[MAX_UIS];
     int count = list_uis(list, MAX_UIS);
     size_t o = (size_t)snprintf(buf, sizeof(buf), "{\"schema\":1,\"default\":\"%s\",\"entries\":[", c->ui);
     for (int k = 0; k < count && o < sizeof(buf); k++) {
         json_str(version, sizeof(version), list[k].version);
-        o += (size_t)snprintf(buf + o, sizeof(buf) - o, "{\"ui\":\"%s\",\"version\":%s,\"confirmed\":%s},",
-                              list[k].name, version, list[k].confirmed ? "true" : "false");
+        json_str(title, sizeof(title), list[k].title[0] ? list[k].title : list[k].name);
+        o += (size_t)snprintf(buf + o, sizeof(buf) - o, "{\"ui\":\"%s\",\"title\":%s,\"version\":%s,\"confirmed\":%s},",
+                              list[k].name, title, version, list[k].confirmed ? "true" : "false");
     }
-    if (o < sizeof(buf)) o += (size_t)snprintf(buf + o, sizeof(buf) - o, "{\"ui\":\"stock\"}]}\n");
+    if (o < sizeof(buf)) o += (size_t)snprintf(buf + o, sizeof(buf) - o, "{\"ui\":\"stock\",\"version\":\"%s\"}]}\n", profile);
     if (o >= sizeof(buf)) return;
     bpath(p, RUN_DIR "/ui/choices.json");
     write_atomic(p, buf, o, 0644);

@@ -200,6 +200,7 @@ class BootTests(unittest.TestCase):
             'entry must be a listed file with mode 0755': lambda m: m.update(entry='bin/other'),
             'only a ui package brings a player launcher': lambda m: m.update(player='bin/run'),
             'player must be a listed relative path': lambda m: m.update(player='/bin/run'),
+            'title must be 1-32 printable ASCII': lambda m: m.update(title='x' * 33),
             "role is service, not ui": None,
         }
         for message, edit in cases.items():
@@ -690,10 +691,12 @@ exit 0
 
     def test_the_menu_hands_over_without_a_restart(self):
         self.stock_ui(); self.stock_player()
-        self.install('ui', 'a', f'echo alpha >> "{self.root}/out/ui"\n', name='alpha', confirmed=True)
+        self.install('ui', 'a', f'echo alpha >> "{self.root}/out/ui"\n', name='alpha', confirmed=True,
+                     edit=lambda m: m.update(title='Alpha UI'))
         self.ui_with_player('beta')
         self.set_global(ui='alpha')
-        self.menu('printf \'{"ui":"beta"}\' > "$DISC_BOOT_RUN/choice"\nexec "$DISC_BOOT_LAUNCHER"\n')
+        self.menu(f'cp "$DISC_BOOT_STATUS/ui/choices.json" "{self.root}/out/choices.json"\n'
+                  'printf \'{"ui":"beta"}\' > "$DISC_BOOT_RUN/choice"\nexec "$DISC_BOOT_LAUNCHER"\n')
         self.early()
         # The boot's first start of the pair: no player ran yet, so the player waits for the choice.
         player = self.launch_player()
@@ -705,6 +708,11 @@ exit 0
         # The menu answers and hands over in its own process: the chosen UI starts at once.
         self.launch().wait(timeout=10)
         self.assertEqual(self.runs(), ['menu', 'beta'])
+        # The offer: each package's title (else its name) and version, stock's UI with the firmware's.
+        offered = json.loads((self.root/'out/choices.json').read_text())['entries']
+        self.assertEqual(offered, [dict(ui='alpha', title='Alpha UI', version='1', confirmed=True),
+                                   dict(ui='beta', title='beta', version='1', confirmed=True),
+                                   dict(ui='stock', version=PROFILE)])
         player.wait(timeout=10)
         self.assertEqual(self.players(), ['launcher ui', f'stock ui {self.root}/opt/disc-boot/guard'])
         self.assertEqual({k: self.player_status()[k] for k in ('launch', 'name')}, {'launch': 'package', 'name': 'beta'})
