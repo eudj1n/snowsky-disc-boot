@@ -244,6 +244,38 @@ Distributed as a zip; staged and installed as a folder with `package.json`:
   writes a folder's `package.json`, checks it with the same rules and
   messages, zips it and stages it on a card.
 
+## Catalogs
+
+What the installer offers comes from catalogs, in a cascade (owner,
+2026-10-03): this repository's `catalog/packages.json` names the boot
+layer's packages, and a server package carries `catalog/apps.json`, the apps
+it offers for the card's `Apps/` (snowsky-disc-server, "Apps"). Apps stay on
+the card and the server's manager installs them; a catalog only names them.
+Contributed packages and apps join a catalog as entries after the same
+acceptance, never as files kept here.
+
+One form for both (`schema` 1, `kind` `packages` or `apps`, `entries`):
+
+- `name`, `version`, `license`, `default` (offered selected), `notes`
+  (optional), `verified` (at least `date` and `acceptance`; for a package
+  also the boot build, the emulator and the firmware it was accepted with).
+- `source`: the archive, `{"url": <https address or null>, "sha256", "size"}`.
+  The digest is the identity: the installer takes a local file with that
+  size and digest, or downloads the url (null until it is published) and
+  keeps it only when both match.
+- Or, for a package built on the user's computer from someone else's
+  release, a recipe: `{"recipe": "diskos-release", "archives": [...],
+  "member", "memberSha256"}`. diskOS's own release carries its UI as
+  `payload/mq_ui`; the installer takes it from either published archive,
+  checks its digest and adds the boot layer's entry (the boot choice diskOS
+  1.2.0 expects), so nothing of diskOS is redistributed from here. The
+  binary is byte for byte the one built from diskOS's sources at `0edcfba`.
+- A package entry adds `role`, `profiles`, `bootApi` and an optional
+  `title`; an app entry adds `api`, the server API it needs.
+
+`scripts/catalog.py` checks a catalog of either kind and turns an entry into
+a package folder checked as `disc-boot` checks it.
+
 ## Slots and state (`/usr/data/disc-boot/`)
 
 ```text

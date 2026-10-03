@@ -361,6 +361,15 @@ boot menu").
   2026-10-03): the OTA and the image, the packages and the console marker on
   the card, USB Boot with backup, write and readback, the first boot with
   Play, and stock restored by the same path; desktop or WebUSB later.
+- [x] The catalogs (owner, 2026-10-03): a cascade in one form, this
+  repository's `catalog/packages.json` (disc-server, disc-menu by default;
+  diskOS as a recipe from its own release, whose `payload/mq_ui` is byte for
+  byte our build from `0edcfba`) and the server package's
+  `catalog/apps.json` (the player page). `scripts/catalog.py` checks both
+  and fetches an entry as a checked package folder, from a local file with
+  its digest or its published url. `tests/conformance/test_catalog.py` (5).
+- [ ] `install.py`, the guided installer (owner, 2026-10-03), drawn in the
+  boot menu's style and colours.
 - [ ] The owner's player: the image, then the two packages (separately
   authorized), after stage 3b.
 - [ ] Open facts for the device: what "Reset all" removes in `/usr/data`;

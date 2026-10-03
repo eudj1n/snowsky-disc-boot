@@ -27,15 +27,11 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]/'scripts'))
+import catalog  # noqa: E402
 import package  # noqa: E402
 
-ENTRY = '''#!/bin/sh
-# diskOS's UI as the boot layer's ui package, built locally and never passed on.
-# diskOS's own image records its S96 hook's choice of UI; boot made that choice here.
-printf 'diskos\\n' > /tmp/.diskos_boot_select
-: > "$DISC_BOOT_RUN/ready"
-exec -a mq_ui "$DISC_BOOT_SLOT/diskos/mq_ui" "$@"
-'''
+# The same entry the installer's recipe uses (scripts/catalog.py).
+ENTRY = catalog.DISKOS_ENTRY
 
 
 def static_mips(path):

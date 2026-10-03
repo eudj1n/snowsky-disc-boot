@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "kind": "packages",
+  "description": "The packages the installer offers (docs/contract.md, \"Catalogs\"): each accepted on the guest with this boot layer; a package is identified by its archive's SHA-256, fetched from its url once published or taken from a local file with that digest.",
+  "entries": [
+    {
+      "name": "disc-server",
+      "role": "service",
+      "version": "2026.10.03-181c5a8-debug",
+      "source": {"url": null, "sha256": "03fe7224a351beabd191570e6252d397d4d13fb227f5079db8a8be9a412f2202", "size": 2519010},
+      "profiles": ["2.57"],
+      "bootApi": 1,
+      "license": "MIT",
+      "default": true,
+      "notes": "snowsky-disc-server's debug build; its catalog/apps.json names the apps it offers",
+      "verified": {"date": "2026-10-03", "boot": "be681e3", "emulator": "690a55c", "firmware": "2.57", "acceptance": "two_packages.py"}
+    },
+    {
+      "name": "disc-menu",
+      "role": "menu",
+      "version": "2026.10.03-b43034b",
+      "source": {"url": null, "sha256": "bf39ff42445099e32f1d43df2c15d9edb7525686939445242a047ede5a7ce07f", "size": 148604},
+      "profiles": ["2.57"],
+      "bootApi": 1,
+      "license": "MIT; Inter (SIL OFL 1.1) as rasterised masks",
+      "default": true,
+      "verified": {"date": "2026-10-03", "boot": "b43034b", "emulator": "690a55c", "firmware": "2.57", "acceptance": "menu_guest.py"}
+    },
+    {
+      "name": "diskos",
+      "role": "ui",
+      "version": "1.2.0",
+      "title": "diskOS",
+      "source": {
+        "recipe": "diskos-release",
+        "archives": [
+          {"url": "https://github.com/b0hemia/diskos/releases/download/v1.2.0/diskos-installer-macos-arm64.tar.gz",
+           "sha256": "ad310120fdf2bac7577bee1362b6f6d65bd1f7f6f63c04ecfa0417e8c879e6ab", "size": 57793208},
+          {"url": "https://github.com/b0hemia/diskos/releases/download/v1.2.0/diskos-installer-linux-x86_64.tar.gz",
+           "sha256": "cb1c37f91d3b9d9cf906be3ecd4e8b1fe5d563b1beb870560abf9a29c9b98dc7", "size": 59094317}
+        ],
+        "member": "diskos-installer/payload/mq_ui",
+        "memberSha256": "3bd951ce21228e33a5521edfe5228acf9df584a38ff0955c249b97e36756c6c8"
+      },
+      "profiles": ["2.57"],
+      "bootApi": 1,
+      "license": "MIT; its UI under ui/ GPL-3.0, taken from the upstream release on the user's computer and never redistributed",
+      "default": false,
+      "notes": "The package is assembled on the user's computer: diskOS's own UI binary from its release, and an entry of ours that records the boot choice diskOS 1.2.0 expects",
+      "verified": {"date": "2026-10-03", "boot": "be681e3", "emulator": "690a55c", "firmware": "2.57", "acceptance": "two_packages.py (the same binary, built locally from 0edcfba)"}
+    }
+  ]
+}
