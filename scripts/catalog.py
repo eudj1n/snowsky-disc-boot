@@ -47,6 +47,10 @@ class CatalogError(ValueError):
     pass
 
 
+class NotLocal(CatalogError):
+    """No local file is the archive and it may not be downloaded: a place to look in would do."""
+
+
 def fail(message):
     raise CatalogError(message)
 
@@ -178,7 +182,7 @@ def obtain(archive, places, folder, allow_download):
         return found
     if allow_download:
         return download(archive, folder)
-    fail(f'no local file with sha256 {archive["sha256"][:12]}… (allow the download, or give its folder)')
+    raise NotLocal(f'no local file with sha256 {archive["sha256"][:12]}… (allow the download, or give its folder)')
 
 
 def diskos_release(entry, archive_path, output):

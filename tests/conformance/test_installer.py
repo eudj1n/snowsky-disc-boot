@@ -102,7 +102,38 @@ class InstallerTests(unittest.TestCase):
         (self.local/'disc-menu.zip').unlink()
         result, report = self.install('--dry-run', '--yes')
         self.assertEqual(result.returncode, 1)
-        self.assertIn('disc-menu: no local file with sha256', report['status'])
+        self.assertIn('disc-menu 9: no local file with sha256', report['status'])
+
+    def test_an_archive_not_found_is_asked_for(self):
+        """Asked where a missing archive is: a wrong answer asks again, a dropped folder (escaped
+        spaces) is looked in, and the run goes on; without questions it stops as before."""
+        import argparse
+        import builtins
+        import io
+        from unittest import mock
+        from installer import flow, tui
+        elsewhere = self.root/'my archives'
+        elsewhere.mkdir()
+        (self.local/'disc-menu.zip').rename(elsewhere/'disc-menu.zip')
+        args = argparse.Namespace(dry_run=True, yes=False, plain=True, ota=None, image=str(self.image), emulator=None, card=None,
+                                  package=None, app=None, packages_from=[str(self.local)], download=False, work=str(self.root/'run'),
+                                  catalog=str(self.catalog), simulate=None, simulate_small=False, fault=None, restore=False, guest=False,
+                                  history=None, diskos=None, libusb=None)
+        screen = io.StringIO()
+        installer = flow.Installer(args, tui.Screen(look='plain', stream=screen))
+        installer.interactive = True
+        answers = [str(self.root/'nowhere'), str(elsewhere).replace(' ', '\\ ') + ' ']
+        with mock.patch.object(tui, 'read_key', return_value='enter'), mock.patch.object(builtins, 'input', side_effect=answers):
+            self.assertEqual(installer.run(), 0, installer.report['status'])
+        self.assertIn('nowhere does not exist.', ' '.join(screen.getvalue().split()))
+        self.assertIn(elsewhere, installer.places, 'the next archives are looked for there too')
+        self.assertTrue((self.root/'run/card/.disc/boot/install/menu/package.json').is_file())
+        installer = flow.Installer(args, tui.Screen(look='plain', stream=io.StringIO()))
+        installer.interactive = True
+        with mock.patch.object(tui, 'read_key', return_value='enter'), mock.patch.object(builtins, 'input', side_effect=['']):
+            installer.places = [self.local]
+            self.assertEqual(installer.run(), 1)
+        self.assertIn('disc-menu 9: no local file with sha256', installer.report['status'])
 
     def test_packages_are_chosen_by_role(self):
         data = json.loads(self.catalog.read_text())

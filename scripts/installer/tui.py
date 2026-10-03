@@ -12,6 +12,9 @@ import sys
 
 GROUND, INK, MUTED, LINE, SELECTED, ACCENT = (0x18, 0x16, 0x14), (0xec, 0xe8, 0xe3), (0xa5, 0x9e, 0x96), (0x33, 0x30, 0x2c), \
     (0x3a, 0x35, 0x30), (0xff, 0x79, 0x5a)
+# Text that is there but not yet in play (the steps ahead, a group's rule): quieter than MUTED,
+# still readable on the ground (about 4:1), where LINE is only for drawn lines.
+FAINT = (0x80, 0x79, 0x72)
 WIDTH = 72
 
 
@@ -72,7 +75,7 @@ class Screen:
 
     def group(self, title, note=''):
         """A group's heading within a list: its name, and what may be chosen in it."""
-        self.line(('  ' + title, INK), (('   ' + note) if note else '', LINE if self.look != 'plain' else INK))
+        self.line(('  ' + title, INK), (('   ' + note) if note else '', FAINT))
 
     def text(self, text, fg=INK):
         for chunk in wrap(text, self.width - 4):
@@ -114,7 +117,7 @@ class Screen:
             elif k == current:
                 self.line(('  ● ', ACCENT), (name, INK))
             else:
-                self.line(('  · ', LINE), (name, LINE))
+                self.line(('  · ', FAINT), (name, FAINT))
 
     def clear(self):
         """The whole window in the ground (erased in its colour), the cursor at the top."""

@@ -105,7 +105,8 @@ counted against the profile before the build), offers
 UIs) and the chosen server's `catalog/apps.json`, and puts the packages,
 the default apps (`Apps/`) and the console's marker on the card after the typed confirmation.
 Archives come from local files with their catalog digest (`--from`) or, once published,
-`--download`. `--dry-run` stages into the run's own folder (`work/install-*/card`) and writes
+`--download`; asked, the installer takes the file or a folder to look in (dropped into the
+terminal) when none is found, before the card. `--dry-run` stages into the run's own folder (`work/install-*/card`) and writes
 nothing else; `--yes` answers nothing and takes the defaults and the options given. The run's
 report is `work/install-*/report.json`.
 

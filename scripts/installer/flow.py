@@ -34,11 +34,15 @@ def load_json_safe(path):
         return {}
 
 
+def typed_path(text):
+    """A path as typed or dropped into the terminal: quoted, or with its spaces escaped."""
+    return Path(str(text).strip().strip('\'"').replace('\\ ', ' ')).expanduser()
+
+
 def find_update(given, profile):
     """FiiO's update as the build takes it, main_os/ota_v<version>: given as that folder, as
     main_os or as the update's own folder; its rootfs chunks counted against the profile."""
-    # As typed or dropped into the terminal: quoted, or with its spaces escaped.
-    given = Path(str(given).strip().strip('\'"').replace('\\ ', ' ')).expanduser()
+    given = typed_path(given)
     name = f'ota_v{profile["main_os_version"]}'
     for folder in (given, given/name, given/'main_os'/name):
         chunks = sorted(folder.glob('rootfs.squashfs.[0-9][0-9][0-9][0-9].*.enc')) if folder.is_dir() else []
@@ -59,6 +63,8 @@ class Installer:
         self.work = Path(args.work or ROOT/'work'/time.strftime('install-%Y%m%d-%H%M%S')).resolve()
         self.report = dict(started=time.strftime('%Y-%m-%dT%H:%M:%S'), dryRun=args.dry_run, guest=bool(args.guest), steps=[])
         self.step, self.guest, self.ota = 0, None, None
+        # Where archives are looked for by their digest: --from, and the places given on the way.
+        self.places = [Path(p) for p in args.packages_from]
 
     # The screen
 
@@ -233,9 +239,29 @@ class Installer:
         except ValueError as error:
             raise Stop(str(error))
 
+    def obtained(self, what, attempt):
+        """attempt(places) until its archive is found; asked, a file or a folder to look in is
+        added to the places (the next archives are looked for there too)."""
+        note = ''
+        while True:
+            try:
+                return attempt(self.places)
+            except catalog.NotLocal as error:
+                if not self.interactive:
+                    raise Stop(f'{what}: {error}')
+                answer = self.ask('Packages', f'{note}{what}: no file here has its digest. Where is it? A file, or a folder to '
+                                  'look in (drop it here; empty stops).', '')
+                if not answer:
+                    raise Stop(f'{what}: {error}')
+                place = typed_path(answer)
+                note = f'Not in {place}. ' if place.exists() else f'{place} does not exist. '
+                if place.exists():
+                    self.places.append(place)
+            except catalog.CatalogError as error:
+                raise Stop(f'{what}: {error}')
+
     def packages(self):
         entries = catalog.load(self.args.catalog or catalog.CATALOG, kind='packages')['entries']
-        places = [Path(p) for p in self.args.packages_from]
         wanted = set(self.args.package or [])
         unknown = wanted - {e['name'] for e in entries}
         if unknown:
@@ -257,10 +283,8 @@ class Installer:
         folders = {}
         for k, entry in enumerate(chosen):
             self.frame(lambda: self.screen.label('Packages'), lambda: self.screen.progress(f'{entry["name"]} {entry["version"]}', k / len(chosen)))
-            try:
-                folders[entry['name']] = catalog.fetch(entry, self.work/'packages'/entry['name'], places, self.args.download)
-            except catalog.CatalogError as error:
-                raise Stop(f'{entry["name"]}: {error}')
+            folders[entry['name']] = self.obtained(f'{entry["name"]} {entry["version"]}', lambda places: catalog.fetch(
+                entry, self.work/'packages'/entry['name'], places, self.args.download))
         apps, offered = [], cards.app_entries(folders['disc-server']) if 'disc-server' in folders else []
         if 'disc-server' in folders and not offered:
             self.say('Apps of the server', ['This server package offers no apps (it carries no catalog/apps.json).'], tui.MUTED)
@@ -269,6 +293,11 @@ class Installer:
             app_marks = [a['name'] in wanted_apps if wanted_apps else a['default'] for a in offered]
             app_marks = self.choose('Apps of the server', [(a['name'], a['version']) for a in offered], app_marks)
             apps = [a for a, on in zip(offered, app_marks) if on]
+        # Each app's archive found now, before the card: its file joins the places the card step uses.
+        (self.work/'downloads').mkdir(parents=True, exist_ok=True)
+        for app in apps:
+            self.places.append(self.obtained(f'{app["name"]} {app["version"]}', lambda places: catalog.obtain(
+                app['source'], places, self.work/'downloads', self.args.download)))
         self.done('packages', packages=[dict(name=e['name'], version=e['version']) for e in chosen],
                   apps=[dict(name=a['name'], version=a['version']) for a in apps])
         return list(folders.values()), apps
@@ -289,7 +318,7 @@ class Installer:
         staged = cards.stage_packages(folders, target, profile)
         self.roles = {s['role'] for s in staged}
         with tempfile.TemporaryDirectory() as temp:
-            placed = cards.stage_apps(apps, target, [Path(p) for p in self.args.packages_from], self.args.download, temp)
+            placed = cards.stage_apps(apps, target, self.places, self.args.download, temp)
         marker = cards.write_marker(target)
         self.say('The card', [f'{s["role"]}: {s["name"]} {s["version"]}' for s in staged] +
                  [f'app: {a["name"]} {a["version"]}' for a in placed] + [f'console marker: {marker.relative_to(target)}'])
@@ -383,9 +412,9 @@ class Installer:
         if not self.args.simulate:
             self.say(title, [
                 f'The image is ready: {Path(image).name}.',
-                'Writing it into the player through USB Boot (backup, write, readback, every byte compared) is the '
-                'installer\'s next part; until then it is the reviewed operator procedure, docs/build-and-flash.md. '
-                '--simulate runs this step against a simulated player.'])
+                'The player is written through the reviewed tools with its installation history (--history), diskOS\'s '
+                'pinned checkout (--diskos) and libusb (--libusb): backup, write, readback, every byte compared. '
+                'Without a player: --simulate (a simulated NAND) or --guest (the emulator\'s guest).'])
             self.done('player', image=str(image), written=False)
             return
         player = self.device()
