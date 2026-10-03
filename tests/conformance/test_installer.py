@@ -103,6 +103,22 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn('disc-menu: no local file with sha256', report['status'])
 
+    def test_packages_are_chosen_by_role(self):
+        data = json.loads(self.catalog.read_text())
+        other = dict(data['entries'][0], name='other-server', default=False)
+        data['entries'].append(other)
+        self.catalog.write_text(json.dumps(data))
+        result, report = self.install('--dry-run', '--yes')
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn('Service   one at most', result.stdout)
+        self.assertIn('Boot menu   one at most', result.stdout)
+        self.assertEqual([p['name'] for p in report['steps'][2]['packages']], ['disc-server', 'disc-menu'])
+        result, report = self.install('--dry-run', '--yes', '--package', 'disc-server', '--package', 'other-server')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('one service at most: disc-server, other-server', report['status'])
+        result, report = self.install('--dry-run', '--yes', '--package', 'nothing-like-it')
+        self.assertIn('not in the catalog: nothing-like-it', report['status'])
+
     def test_what_the_card_step_refuses(self):
         for path in ('/', str(Path.home())):
             with self.subTest(path), self.assertRaises(cards.CardError):

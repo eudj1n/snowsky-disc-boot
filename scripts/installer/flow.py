@@ -75,6 +75,40 @@ class Installer:
             elif key == 'quit':
                 raise Stop('stopped')
 
+    def choose_groups(self, title, groups, hint='Space to mark  ·  Enter to go on'):
+        """Lists under their groups' headings (the menu's look). In a group of one at most, a mark
+        clears the group's other mark; it may also be left empty. Returns each group's marks."""
+        flat = [(g, k) for g, group in enumerate(groups) for k in range(len(group['rows']))]
+        cursor = 0
+        while True:
+            def body():
+                self.screen.label(title)
+                for g, group in enumerate(groups):
+                    self.screen.blank()
+                    self.screen.group(group['label'], 'one at most' if group['single'] else 'any number')
+                    for k, (name, detail) in enumerate(group['rows']):
+                        self.screen.row(name, detail, on=flat[cursor] == (g, k), mark=group['marks'][k])
+                self.screen.blank()
+                self.screen.text(hint, tui.MUTED)
+            self.frame(body)
+            if not self.interactive:
+                return [group['marks'] for group in groups]
+            key = tui.read_key()
+            if key == 'up':
+                cursor = max(0, cursor - 1)
+            elif key == 'down':
+                cursor = min(len(flat) - 1, cursor + 1)
+            elif key == 'space':
+                g, k = flat[cursor]
+                marks, on = groups[g]['marks'], not groups[g]['marks'][k]
+                if groups[g]['single'] and on:
+                    marks[:] = [False] * len(marks)
+                marks[k] = on
+            elif key == 'enter':
+                return [group['marks'] for group in groups]
+            elif key == 'quit':
+                raise Stop('stopped')
+
     def ask(self, title, prompt, default=None):
         if not self.interactive:
             if default is None:
@@ -156,10 +190,22 @@ class Installer:
         entries = catalog.load(self.args.catalog or catalog.CATALOG, kind='packages')['entries']
         places = [Path(p) for p in self.args.packages_from]
         wanted = set(self.args.package or [])
-        marks = [e['name'] in wanted if wanted else e['default'] for e in entries]
-        rows = [(e.get('title') or e['name'], f'{e["role"]}  {e["version"]}') for e in entries]
-        marks = self.choose('Packages', rows, marks)
-        chosen = [e for e, on in zip(entries, marks) if on]
+        unknown = wanted - {e['name'] for e in entries}
+        if unknown:
+            raise Stop(f'not in the catalog: {", ".join(sorted(unknown))}')
+        # By role, as the boot layer takes them: one service and one menu at most, any number of UIs.
+        groups = []
+        for role, label, single in (('service', 'Service', True), ('menu', 'Boot menu', True), ('ui', 'UIs', False)):
+            members = [e for e in entries if e['role'] == role]
+            if not members:
+                continue
+            marks = [e['name'] in wanted if wanted else e['default'] for e in members]
+            if single and sum(marks) > 1:
+                raise Stop(f'one {label.lower()} at most: {", ".join(e["name"] for e, on in zip(members, marks) if on)}')
+            groups.append(dict(label=label, single=single, entries=members, marks=marks,
+                               rows=[(e.get('title') or e['name'], e['version']) for e in members]))
+        self.choose_groups('Packages', groups)
+        chosen = [e for group in groups for e, on in zip(group['entries'], group['marks']) if on]
         folders = {}
         for k, entry in enumerate(chosen):
             self.frame(lambda: self.screen.label('Packages'), lambda: self.screen.progress(f'{entry["name"]} {entry["version"]}', k / len(chosen)))

@@ -68,6 +68,10 @@ class Screen:
     def label(self, text):
         self.line(('  ' + ' '.join(text.upper()), MUTED))
 
+    def group(self, title, note=''):
+        """A group's heading within a list: its name, and what may be chosen in it."""
+        self.line(('  ' + title, INK), (('   ' + note) if note else '', LINE if self.look != 'plain' else INK))
+
     def text(self, text, fg=INK):
         for chunk in wrap(text, self.width - 4):
             self.line(('  ' + chunk, fg))

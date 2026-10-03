@@ -98,7 +98,8 @@ SHA-256 and the versions used are written into the header, docs/provenance.md).
 `python3 install.py` runs the guided installer in the terminal (the boot menu's colours;
 `--plain` or a non-terminal output gives plain text). This part checks the computer, builds
 the image from FiiO's update in the emulator's image (or takes one with `--image`), offers
-`catalog/packages.json` and the chosen server's `catalog/apps.json`, and puts the packages,
+`catalog/packages.json` by role (a service and a boot menu, one at most each; any number of
+UIs) and the chosen server's `catalog/apps.json`, and puts the packages,
 the default apps (`Apps/`) and the console's marker on the card after the typed confirmation.
 Archives come from local files with their catalog digest (`--from`) or, once published,
 `--download`. `--dry-run` stages into the run's own folder (`work/install-*/card`) and writes
