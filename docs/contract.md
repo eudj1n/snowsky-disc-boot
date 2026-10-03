@@ -377,8 +377,11 @@ menu's `stock` entry is stock's UI with the `service` package running.
   without it. Its exits are never counted against a `ui` package; a valid
   answer confirms a tentative menu version (it does not run 180 s), and
   a failing tentative version gives way to the previous one.
-- It reads the keys itself (`/dev/mem`, as boot does) or the touch panel
-  (`event1`); stock's player keeps `event0`.
+- The keys drive it: it takes `event0` for itself (`EVIOCGRAB`) while it
+  runs, since stock's player beside it reads the same keys there and would
+  otherwise change the volume or start playback; the grab ends when it
+  exits. A key already down when it starts counts only after its release.
+  The touch panel (`event1`) is the UI's own and may choose as well.
 
 ### Requests
 
