@@ -2,9 +2,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mode="${1:-host}"
-# The source commit the boot status reports ("+changes" when the tree differs).
-build_id="$(git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
-git diff --quiet HEAD -- device 2>/dev/null || build_id="$build_id+changes"
+# The boot status reports the last commit that changed what the binaries are built from
+# ("+changes" when those files differ): commits elsewhere (documentation, scripts, tests, the
+# toolchain's pinned recipe) leave their bytes as they were, so a release built later from the
+# same sources is the build the guest accepted.
+sources=(device/src device/menu device/vendor device/Makefile)
+build_id="$(git log -1 --format=%H -- "${sources[@]}" 2>/dev/null | cut -c1-12)"
+build_id="${build_id:-unknown}"
+git diff --quiet HEAD -- "${sources[@]}" 2>/dev/null || build_id="$build_id+changes"
 case "$mode" in
   host)
     make -C device OUT=../build/host DISC_BUILD="$build_id" all test

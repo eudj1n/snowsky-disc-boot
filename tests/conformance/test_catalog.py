@@ -40,12 +40,29 @@ class CatalogTests(unittest.TestCase):
     def test_this_repositorys_catalog_is_valid(self):
         data = catalog.load()
         entries = {e['name']: e for e in data['entries']}
-        self.assertEqual(sorted(entries), ['disc-menu', 'disc-server', 'diskos'])
-        self.assertEqual({n: e['role'] for n, e in entries.items()}, {'disc-server': 'service', 'disc-menu': 'menu', 'diskos': 'ui'})
-        self.assertEqual([n for n, e in entries.items() if e['default']], ['disc-server', 'disc-menu'])
+        self.assertEqual(sorted(entries), ['disc-menu', 'diskos'])
+        self.assertEqual({n: e['role'] for n, e in entries.items()}, {'disc-menu': 'menu', 'diskos': 'ui'})
+        self.assertEqual([n for n, e in entries.items() if e['default']], ['disc-menu'])
         # diskOS is built from its own published release on the user's computer, never from here.
         self.assertEqual(entries['diskos']['source']['recipe'], 'diskos-release')
         self.assertTrue(all(PROFILE in e['profiles'] for e in entries.values()))
+
+    def test_this_repositorys_packages_are_releases(self):
+        """Debug builds stay local; our own packages are release files, named by the release's
+        address and the digests its record keeps (scripts/release.py)."""
+        import release
+        for entry in catalog.load()['entries']:
+            with self.subTest(entry['name']):
+                self.assertNotIn('debug', entry['version'])
+                if 'recipe' in entry['source']:
+                    continue
+                self.assertEqual(release.firmware_of(entry['version']), PROFILE)
+                name = f'{entry["name"]}-{entry["version"]}.zip'
+                self.assertEqual(entry['source']['url'], release.url(entry['version'], name))
+                record = ROOT/'releases'/f'{entry["version"]}.json'
+                self.assertTrue(record.is_file(), 'a release is recorded before the catalog names it')
+                files = json.loads(record.read_text())['files']
+                self.assertEqual((entry['source']['sha256'], entry['source']['size']), (files[name]['sha256'], files[name]['bytes']))
 
     def test_entries_are_checked(self):
         good = catalog.load()

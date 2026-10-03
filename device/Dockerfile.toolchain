@@ -1,6 +1,7 @@
 # Adapted from diskOS ui/Dockerfile (MIT; see licenses/diskos-tooling.MIT).
 # Native companion cross-toolchain; asset embedding runs on the host.
-FROM --platform=linux/amd64 debian:12-slim
+# The base pinned by its digest (debian:12-slim, 2026-10-03); the compiler below by its SHA-256.
+FROM --platform=linux/amd64 debian:12-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl ca-certificates make \

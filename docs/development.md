@@ -40,7 +40,11 @@ bash scripts/build.sh mips     # the console, static and soft-float
 bash scripts/build.sh reader   # the NAND reader's MIPS tests and freestanding core
 ```
 
-`DISC_TOOLCHAIN_IMAGE=<image>` selects a reviewed copy of the toolchain image.
+`DISC_TOOLCHAIN_IMAGE=<image>` selects a reviewed copy of the toolchain image. Its recipe
+pins the Debian base by digest and the musl.cc compiler by SHA-256, and `disc-boot` carries
+as its build id the last commit that changed its sources (`device/src`, `device/menu`,
+`device/vendor`, `device/Makefile`), so the same sources give the same bytes in any later
+commit and on GitHub's runners.
 
 The host build also makes `disc-boot-fixture` (`-DDISC_BOOT_FIXTURE`): it
 reads `DISC_BOOT_FIXTURE_ROOT` (every absolute path is taken under it, the
@@ -213,6 +217,31 @@ python3 scripts/guest.py run -- python3 -B /boot/tests/integration/two_packages.
 
 The server's package comes from snowsky-disc-server (`scripts/build_package.py
 --debug`), the page's release zip from snowsky-disc-player.
+
+## Releases
+
+A release is named after the FiiO firmware it is for and our number for it: `2.57.1` is the
+first for FiiO's 2.57, tagged `v2.57.1` (owner, 2026-10-03). Its files are built from
+`build/mips` by `scripts/release.py`: the boot menu's package `disc-menu-<version>.zip`,
+`disc-boot-<version>-mips.tar.gz` (`disc-boot` and `disc-usb-console` for the image
+`install.py` builds from FiiO's update) and `SHA256SUMS`. The image is never a release file,
+and debug builds stay local.
+
+```sh
+bash scripts/build.sh mips
+python3 scripts/release.py build --version 2.57.1 --output work/release-2.57.1/dist
+# the guest accepts these files (menu_guest.py, install.py --guest), then:
+python3 scripts/release.py record --version 2.57.1 --dist work/release-2.57.1/dist --accepted "<what ran>"
+```
+
+`record` writes `releases/<version>.json` once; the catalog's entries for the release name its
+download address (`https://github.com/eudj1n/snowsky-disc-boot/releases/download/v<version>/<file>`)
+with the same digests. Pushing the tag `v<version>` runs `.github/workflows/release.yml`: the
+synthetic tests, the toolchain from its recipe, the MIPS build, `release.py build` and `check`
+(the files must be the recorded ones and the catalog must agree), then a draft release with
+the files and notes; the owner publishes it. `.github/workflows/ci.yml` builds the same files on
+every push as a 14-day artifact (`<firmware>.0-ci.<commit>`, never a release). The workflows
+use no secrets; their actions are pinned by commit.
 
 ## Related repositories
 

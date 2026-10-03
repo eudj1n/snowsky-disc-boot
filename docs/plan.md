@@ -429,7 +429,19 @@ boot menu").
   serial number, the MAC or tokens.
 - [ ] The owner's player: the image, then the two packages (separately
   authorized), after stage 3b. The server as its debug package (owner,
-  2026-10-03).
+  2026-10-03). Prepared offline (2026-10-03): the image b43034b
+  (`6410b080…`) accepted on the guest (stage 5); the player's history
+  (`work/player-history.json`: combined-010's review, image, write
+  `7bdf470c` and readback `06cd95a6`, the boot and stock captures); diskOS's
+  writer files at `646212d` (`work/diskos-646212d`, every pin matching); the
+  backup's metadata page is the write capture's (the boot capture's page is
+  byte for byte combined-010's write page); combined-010's first-boot
+  confirmation time set by the owner to their message's time in the chat
+  log (14:43:06Z, between the write and the readback; first recorded as the
+  write's end); the installation package (write plan `fcfb053b…`, read plan
+  `45d3a174…`, the proposal changing only the admission and the review pin
+  `0fbc7b1f…`). The card: the debug server c502ce6, the menu 2.57.1, the
+  page, the console's marker (`work/first-write/packages.json`).
 - [ ] Open facts for the device: what "Reset all" removes in `/usr/data`;
   its free space; memory and priority limits. The keys' pins and level are
   settled offline (2026-10-03, [kernel review](nand-kernel-review.md#keys))
@@ -447,6 +459,36 @@ boot menu").
   all" removes in `/usr/data`; memory and priority limits (idle baseline
   read 2026-10-03: 71 of 117 MiB available, no swap, `mq_ui` 16 MiB and
   `mq_player` 9 MiB resident; not yet during playback).
+
+## Stage 5 — GitHub, CI and releases (owner, 2026-10-03)
+
+- [x] Versions after FiiO's firmware: `<firmware>.<number>` (`2.57.1`, tag
+  `v2.57.1`), numbered in each repository on its own; debug builds stay
+  local; a release is a draft the owner publishes; the CI rebuilds and must
+  find the digests of the guest-accepted files; the server's signed
+  `.update` is made on the owner's computer (owner, 2026-10-03).
+- [x] Reproducible builds (2026-10-03): the build id is the last commit of
+  the binaries' sources, the toolchain's Debian base is pinned by digest.
+  Shown locally: a toolchain image built without cache from the pinned
+  recipe and a clean worktree gave `disc-boot` `32564a80…`, `disc-menu`
+  `01cba485…` and `disc-usb-console` `62b28e1e…`, the accepted image's.
+- [x] `scripts/release.py` (build, record, check; deterministic zip and
+  tar.gz), `tests/conformance/test_release.py` (4); `ci.yml`'s `mips` job
+  and `release.yml` (tag `v*`, draft release; no secrets, actions pinned).
+- [ ] The first runs on GitHub (after the owner pushes): the `mips` job's
+  digests equal the local ones.
+- [x] `2.57.1` recorded (2026-10-03, `releases/2.57.1.json`): the image
+  b43034b holding its `disc-boot` and `disc-usb-console` passed
+  `boot_guest.py` (15 of 15) and `two_packages.py` (6 of 6, the debug server
+  c502ce6, diskOS 1.2.0 from its release, the page), its `disc-menu`
+  package `menu_guest.py` and `install.py --guest` (installed by Play beside
+  the server, the menu answered, the service confirmed); emulator 690a55c.
+  The catalog names the menu by the release's address; the debug server
+  left it for the first write's local catalog (`work/first-write/`).
+- [ ] The tag `v2.57.1`, the draft, the owner's publication (after the
+  first write, which carries these binaries).
+- [ ] `install.py` takes `disc-boot` and `disc-usb-console` from the boot
+  release by their digests; `build/mips` only for development.
 
 ## Later
 

@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "version": "2.57.1",
+  "firmware": "2.57",
+  "tag": "v2.57.1",
+  "buildId": "b43034ba1e27",
+  "files": {
+    "disc-menu-2.57.1.zip": {
+      "bytes": 151501,
+      "sha256": "2ab9040936c977367e73b0d9728b2ab52c342c9bad4e0befdbafdc9f9b985e9e"
+    },
+    "disc-boot-2.57.1-mips.tar.gz": {
+      "bytes": 300826,
+      "sha256": "d1d7e3ecde23392dc4c5a4649ac90e371ff4f88f4cfb2978d10c940fbd3797b9"
+    }
+  },
+  "accepted": "on the emulator's guest at 690a55c with FiiO 2.57, 2026-10-03: image b43034b holding this disc-boot and disc-usb-console, boot_guest.py 15 of 15 and two_packages.py 6 of 6; this disc-menu package, menu_guest.py and install.py --guest (installed by Play beside the server, the menu answered, the service confirmed)",
+  "urls": {
+    "disc-menu-2.57.1.zip": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.1/disc-menu-2.57.1.zip",
+    "disc-boot-2.57.1-mips.tar.gz": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.1/disc-boot-2.57.1-mips.tar.gz"
+  }
+}

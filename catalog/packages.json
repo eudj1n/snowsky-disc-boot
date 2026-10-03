@@ -1,40 +1,16 @@
 {
   "schema": 1,
   "kind": "packages",
-  "description": "The packages the installer offers (docs/contract.md, \"Catalogs\"): each accepted on the guest with this boot layer; a package is identified by its archive's SHA-256, fetched from its url once published or taken from a local file with that digest.",
+  "description": "The packages the installer offers (docs/contract.md, \"Catalogs\"): release files only, each accepted on the guest with this boot layer; a package is identified by its archive's SHA-256, fetched from its url once published or taken from a local file with that digest. Debug builds stay local.",
   "entries": [
-    {
-      "name": "disc-server",
-      "role": "service",
-      "version": "2026.10.03-c502ce6-debug",
-      "source": {
-        "url": null,
-        "sha256": "65ab13efc597f9efe5e6df01a13da33293f5645ef796f5b1b4783e63a58e9698",
-        "size": 2519715
-      },
-      "profiles": [
-        "2.57"
-      ],
-      "bootApi": 1,
-      "license": "MIT",
-      "default": true,
-      "notes": "snowsky-disc-server's debug build; its catalog/apps.json offers the player page by default",
-      "verified": {
-        "date": "2026-10-03",
-        "boot": "b43034b",
-        "emulator": "690a55c",
-        "firmware": "2.57",
-        "acceptance": "install_guest.py (the installer's card, Play, the page served at /); the gateway binary as two_packages.py accepted at 181c5a8"
-      }
-    },
     {
       "name": "disc-menu",
       "role": "menu",
-      "version": "2026.10.03-b43034b",
+      "version": "2.57.1",
       "source": {
-        "url": null,
-        "sha256": "bf39ff42445099e32f1d43df2c15d9edb7525686939445242a047ede5a7ce07f",
-        "size": 148604
+        "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.1/disc-menu-2.57.1.zip",
+        "sha256": "2ab9040936c977367e73b0d9728b2ab52c342c9bad4e0befdbafdc9f9b985e9e",
+        "size": 151501
       },
       "profiles": [
         "2.57"
@@ -47,7 +23,7 @@
         "boot": "b43034b",
         "emulator": "690a55c",
         "firmware": "2.57",
-        "acceptance": "menu_guest.py"
+        "acceptance": "menu_guest.py; install.py --guest (installed by Play, the menu answered); release 2.57.1"
       }
     },
     {

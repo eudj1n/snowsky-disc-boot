@@ -1,0 +1,38 @@
+name: Release draft
+# A tag v<firmware>.<number> (v2.57.1) builds the release files again from the pinned toolchain,
+# requires them to be the recorded, guest-accepted ones (releases/<version>.json) and the
+# catalog's entries for them to match, and leaves a draft release; the owner publishes it.
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  draft:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # Reviewed reference CI pin
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: The synthetic conformance
+        run: bash scripts/test.sh
+      - name: The pinned cross toolchain
+        run: docker build --platform linux/amd64 -t disc-native-toolchain -f device/Dockerfile.toolchain .
+      - name: The MIPS build
+        run: bash scripts/build.sh mips
+      - name: The release files, checked against their record and the catalog
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          python3 scripts/release.py build --version "$version" --output dist
+          python3 scripts/release.py check --version "$version" --dist dist --notes notes.md
+      - name: The draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md
