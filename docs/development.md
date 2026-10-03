@@ -65,10 +65,11 @@ python3 scripts/package.py result --card /Volumes/PLAY        # the last recover
 
 A zip holds `package.json` and the files at its root with their modes, in a
 fixed order with fixed times. `stage` checks the package for the player
-(`mips32el-linux-static`, the active firmware profile), writes it beside
-`.disc/boot/install/<role>/`, checks the copy (sizes and digests; a card keeps
-no modes), then swaps it in; a refused package stages nothing and leaves what
-was staged.
+(`mips32el-linux-static`, the active firmware profile), writes it beside its
+place (`.disc/boot/install/service/`, `.disc/boot/install/menu/`, or
+`.disc/boot/install/ui/<name>/` for each ui package), checks the copy (sizes
+and digests; a card keeps no modes), then swaps it in; a refused package
+stages nothing and leaves what was staged.
 
 ## The image and its guest
 
