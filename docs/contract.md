@@ -41,7 +41,7 @@ Boot has no network, no HTTP, no downloads and no required signature of ours.
 6. Several UIs with a choice at power-on (multi-boot) are built into the
    image before its first write to a device (2026-10-03): the mechanism in
    the image, the screen that asks as a package ("Several UIs and the
-   chooser").
+   boot menu").
 
 Closed with this draft: **updates of the whole image from the card are not
 viable.** The second MTD pair is FiiO's recovery system, not a second main
@@ -158,8 +158,8 @@ the rest of the boot.
 
 ## Packages
 
-At most one package per role (several `ui` packages and a `chooser` once
-multi-boot is built: "Several UIs and the chooser"):
+At most one package per role (several `ui` packages and a `menu` package
+once multi-boot is built: "Several UIs and the boot menu"):
 
 - `service`: runs beside the stock UI and player (our server is one).
 - `ui`: runs instead of stock's `mq_ui`; stock's `mq_player` always stays.
@@ -314,12 +314,12 @@ do the same for its player):
   Every crash of the player restarts the UI too, so the UI's own count of
   starts bounds a launcher that fails.
 
-## Several UIs and the chooser (multi-boot)
+## Several UIs and the boot menu (multi-boot)
 
 Designed 2026-10-03 (owner's decision 6), to be built and accepted before the
 image is first written to a device; until then the sections above describe
 one `ui` package. Several `ui` packages can be installed and each boot runs
-one of them or stock's UI; a `chooser` package, when installed, lets the
+one of them or stock's UI; a `menu` package, when installed, lets the
 user pick at power-on. Only the mechanism is in the image (the choice, the
 launchers, the fallbacks); the screen that asks is a package and changes
 without USB Boot. Nothing has been released, so the API stays 1 and the
@@ -331,7 +331,7 @@ single-package layout gets no migration.
   bounds (an installation still keeps 16 MiB for stock). Each has its own
   slots, state and requests: `ui/<name>/a/`, `ui/<name>/b/`,
   `ui/<name>/state.json`, `ui/<name>/request`; `data/<name>/` as today.
-- `chooser`: at most one, in `chooser/a/` and `chooser/b/`, verified,
+- `menu`: at most one, in `menu/a/` and `menu/b/`, verified,
   installed and rolled back like a `ui` package; its entry is named `mq_ui`
   (stock's loop watches it by that name) and it has no `player`.
 - `state.json` gains `ui`, the default (a `ui` package's name or `stock`),
@@ -342,34 +342,34 @@ single-package layout gets no migration.
 Each platform boot runs one UI, recorded in `/run/disc-boot/ui/choice.json`
 (`ui`: a name or `stock`; `by`; a note), taken from the first of:
 
-1. The chooser's answer for this boot (`by: chooser`).
+1. The menu's answer for this boot (`by: menu`).
 2. `next`, which `disc-boot early` consumes (`by: next`).
 3. The default (`by: default`).
 4. Stock's UI when the chosen package is missing or its slot fails its check
    (`by: fallback`, with the reason).
 
-`disc-boot early` settles 2–4; the chooser can still choose before any UI
+`disc-boot early` settles 2–4; the menu can still choose before any UI
 runs. Volume Up at power-on still means stock *mode* for this boot (no
-package runs, nor the chooser) and Play still installs from the card; the
-chooser's `stock` entry is stock's UI with the `service` package running.
+package runs, nor the menu) and Play still installs from the card; the
+menu's `stock` entry is stock's UI with the `service` package running.
 
-### The chooser's turn
+### The menu's turn
 
-- In `platform` mode, with a chooser installed and no choice by `next`, the
-  `mq_ui` launcher starts the chooser first. `/run/disc-boot/ui/choices.json`
+- In `platform` mode, with a menu installed and no choice by `next`, the
+  `mq_ui` launcher starts the menu first. `/run/disc-boot/ui/choices.json`
   lists every installed `ui` package (name, version, confirmed), `stock` and
   the default.
 - Meanwhile `/sbin/mq_player` starts stock's player as stock's: no
   package's `player` runs while the choice is pending.
-- The chooser writes `$DISC_BOOT_RUN/choice` (`{"ui": "<name>"|"stock"}`)
+- The menu writes `$DISC_BOOT_RUN/choice` (`{"ui": "<name>"|"stock"}`)
   atomically and exits 0. Boot checks and records it; stock's watch loop
   restarts the pair (2.5–3 s on the guest) and the launchers start the
   chosen UI and its `player`.
 - It may answer at once (a remembered choice, a timeout of its own). Boot
   stops it after 60 s and takes the default; an exit without a valid answer
-  counts as a chooser failure, and after 2 in one boot the default runs
+  counts as a menu failure, and after 2 in one boot the default runs
   without it. Its exits are never counted against a `ui` package; a valid
-  answer confirms a tentative chooser version (it does not run 180 s), and
+  answer confirms a tentative menu version (it does not run 180 s), and
   a failing tentative version gives way to the previous one.
 - It reads the keys itself (`/dev/mem`, as boot does) or the touch panel
   (`event1`); stock's player keeps `event0`.
@@ -381,7 +381,7 @@ chooser's `stock` entry is stock's UI with the `service` package running.
   installed is refused. Our server's page can offer both.
 - `{"action": "remove", "purge": bool}` keeps its meaning for the package
   that asks. `{"action": "ui-remove", "ui": "<name>", "purge": bool}` from
-  the `service` or the `chooser` package removes another `ui` package (the
+  the `service` or the `menu` package removes another `ui` package (the
   server's manager); removing the default makes `stock` the default.
 - Requests about the choice apply to the next boot; a removal applies at
   the next start of the launcher, never under the running UI.
@@ -393,18 +393,18 @@ chooser's `stock` entry is stock's UI with the `service` package running.
   one, otherwise stock's UI runs for the rest of the boot (never another
   package).
 - The boot-loop count clears once the `service` package and the chosen UI
-  are confirmed; the chooser's answer is part of the boot, not a condition.
+  are confirmed; the menu's answer is part of the boot, not a condition.
 
 ### Recovery, environment and status
 
 - Play installs every staged folder: `.disc/boot/install/ui/<name>/` (several)
-  and `.disc/boot/install/chooser/`. The first `ui` package installed
+  and `.disc/boot/install/menu/`. The first `ui` package installed
   becomes the default when there is none.
-- `DISC_BOOT_ROLE` may be `chooser`; its `$DISC_BOOT_RUN` is
-  `/run/disc-boot/chooser/`.
+- `DISC_BOOT_ROLE` may be `menu`; its `$DISC_BOOT_RUN` is
+  `/run/disc-boot/menu/`.
 - `ui.json` keeps the chosen UI's status and adds `choice` and `installed`
-  (each package's name, version, slot, confirmed); `chooser.json` is the
-  chooser's role status.
+  (each package's name, version, slot, confirmed); `menu.json` is the
+  menu's role status.
 
 ### Before it is built
 
@@ -412,11 +412,11 @@ chooser's `stock` entry is stock's UI with the `service` package running.
   `/dev/jz_watchdog`, so that the pair's restart after a choice is as safe
   as stock's own restarts.
 - Accepted on the guest with probe packages (shell scripts): two `ui` probes
-  and a chooser probe; a choice by the chooser, by `ui-next` and by the
-  default; a chooser that hangs, fails or answers a name not installed; a
+  and a menu probe; a choice by the menu, by `ui-next` and by the
+  default; a menu that hangs, fails or answers a name not installed; a
   chosen UI that fails; Volume Up and Play unchanged; the boot-loop guard.
   `boot_guest.py` and `two_packages.py` again on the new layout.
-- A chooser with a screen needs the emulator to serve static programs' screen
+- A menu with a screen needs the emulator to serve static programs' screen
   and input (snowsky-disc-qemu #54); it proves the API before the image
   fixes it.
 
