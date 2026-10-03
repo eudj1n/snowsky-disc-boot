@@ -506,7 +506,7 @@ confirmed one without touching the server. What diskOS would change to fit
   its screenshots were empty. With the emulator at `bfa1988` (#48 and #49
   fixed, the test's workarounds removed) the acceptance requires the UI to
   hold the touch panel and stops at its first step until the emulator keeps
-  `argv[0]`.
+  `argv[0]` (snowsky-disc-qemu #52).
 
 ## Open before implementation
 

@@ -228,7 +228,7 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
 - [ ] diskOS's UI running on the guest: `two_packages.py` without the
   emulator workarounds and requiring the UI to hold the touch panel, on the
   emulator at `bfa1988`, stops at its first step until the emulator keeps
-  `argv[0]` (`work/emulator-bfa1988/`, ignored).
+  `argv[0]` (snowsky-disc-qemu #52; `work/emulator-bfa1988/`, ignored).
 
 ## Stage 4 — the image and the installation (separately authorized)
 
