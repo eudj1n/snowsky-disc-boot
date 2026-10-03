@@ -42,6 +42,9 @@ Boot has no network, no HTTP, no downloads and no required signature of ours.
    image before its first write to a device (2026-10-03): the mechanism in
    the image, the screen that asks as a package ("Several UIs and the
    boot menu").
+7. That package is ours, `disc-menu`, built and released with this
+   repository, and not part of the image (decision 3 holds): the installer
+   stages it by default and the user may leave it out (2026-10-03).
 
 Closed with this draft: **updates of the whole image from the card are not
 viable.** The second MTD pair is FiiO's recovery system, not a second main
@@ -322,8 +325,11 @@ one `ui` package. Several `ui` packages can be installed and each boot runs
 one of them or stock's UI; a `menu` package, when installed, lets the
 user pick at power-on. Only the mechanism is in the image (the choice, the
 launchers, the fallbacks); the screen that asks is a package and changes
-without USB Boot. Nothing has been released, so the API stays 1 and the
-single-package layout gets no migration.
+without USB Boot. That package is ours, `disc-menu`, built and released with
+this repository and staged by the installer by default (owner's decision 7);
+any `menu` package fits the same contract. Boot works without one: the
+default or a `ui-next` choice runs. Nothing has been released, so the API
+stays 1 and the single-package layout gets no migration.
 
 ### Packages and storage
 
@@ -416,9 +422,9 @@ menu's `stock` entry is stock's UI with the `service` package running.
   default; a menu that hangs, fails or answers a name not installed; a
   chosen UI that fails; Volume Up and Play unchanged; the boot-loop guard.
   `boot_guest.py` and `two_packages.py` again on the new layout.
-- A menu with a screen needs the emulator to serve static programs' screen
-  and input (snowsky-disc-qemu #54); it proves the API before the image
-  fixes it.
+- `disc-menu` with its screen needs the emulator to serve static programs'
+  screen and input (snowsky-disc-qemu #54); it proves the API before the
+  image fixes it.
 
 ## The card guard
 
@@ -523,8 +529,9 @@ back (Volume Up for stock, USB Boot for the stock image).
 1. The user's own FiiO V2.57 OTA file; the installer builds the image with
    the boot layer (no package inside) and verifies it.
 2. USB Boot (Volume Down with USB): write and verify, as today's procedure.
-3. The installer copies the chosen packages (our server; the player into
-   `Apps/`) into `.disc/boot/install/`, and the console marker.
+3. The installer copies the chosen packages (our server; `disc-menu`, chosen
+   by default; the player into `Apps/`) into `.disc/boot/install/`, and the
+   console marker.
 4. The user powers on holding Play; boot installs and starts the packages and
    writes the result to the card; the page then shows the server's status.
 

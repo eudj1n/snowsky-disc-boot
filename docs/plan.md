@@ -255,7 +255,10 @@ boot menu").
   `disc-boot verify` with the `menu` role. Conformance tests with it.
 - [ ] Guest acceptance with probe packages (contract, "Before it is
   built"), then `boot_guest.py` and `two_packages.py` on the new layout.
-- [ ] A menu with a screen on the guest once snowsky-disc-qemu #54 is
+- [ ] `disc-menu`, the boot menu built in this repository (owner,
+  2026-10-03): a static program with its screen and keys as the `menu`
+  package, released with the boot layer, staged by the installer by default
+  and never part of the image. On the guest once snowsky-disc-qemu #54 is
   fixed, proving the API before the image fixes it.
 
 ## Stage 4 — the image and the installation (separately authorized)
