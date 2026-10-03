@@ -172,7 +172,7 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   with Play and run on a stock-init guest with an update confirmed and
   rolled back (snowsky-disc-server `0734ee0`, `b070557`, `bc629db`; its
   plan, stage 1, steps 3 and 4).
-- [ ] The card guard and a `ui` package's player launcher (owner,
+- [x] The card guard and a `ui` package's player launcher (owner,
   2026-10-03, found while preparing diskOS's package): stock's player runs
   `umount` and then `rm -rf` on the card's mount point without checking the
   unmount, which empties a card held busy (read in the V2.57 `mq_player`;
@@ -188,10 +188,31 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   and `disc-boot` agree on seven more packages), `test_deployment` (the
   image's additions, both wrappers, the guard refusing nine spellings of the
   mount point and its parents and passing what lies on the card, under
-  `sh` on macOS and `dash`), and the guard under the guest's BusyBox.
-  Open: the packed tree and the guest acceptance on a new image.
-- [ ] diskOS's UI as a `ui` package beside our server and player, on the
-  guest (owner, 2026-10-02).
+  `sh` on macOS and `dash`), and the guard under the guest's BusyBox. On
+  `boot-image-12d7c02` (disc-boot 378,828 bytes `8cb1bf50…`, packed
+  80,908,288 bytes, review image `e6a7f6c7…`): the packed tree's test found
+  `mq_player` through stock's `PATH` at `/sbin/mq_player` with the guard
+  first, kept a busy mount through stock's "umount, then rm -rf", and ran a
+  ui package's player launcher; the guest acceptance passed all eleven steps,
+  among them the busy card (stock's own player, its `PATH` starting with the
+  guard: one open file and a card event, `refused rm -rf /tmp/sdcard`, the
+  card whole) and the probe ui's player launcher starting stock's player
+  twice under stock's watch loop.
+- [x] diskOS's UI as a `ui` package beside our server and player, on the
+  guest (owner, 2026-10-02; done 2026-10-03). `tests/integration/
+  diskos_package.py` builds diskOS's UI from a local checkout with its own
+  toolchain image (1.2.0, `0edcfba`, GCC 11.2 musl, FP64/NaN2008, static,
+  3,945,212 bytes) into a package of ours kept in `work/` and never passed
+  on: an entry `mq_ui` that writes diskOS's boot record and runs the binary
+  as `mq_ui`, and the binary as the package's `player`. `two_packages.py`
+  on `boot-image-12d7c02` with the server's debug package
+  (`2026.10.03-181c5a8-debug`) and the page's release (`2026.10.02-05a1422`):
+  six steps passed (contract, "Acceptance: two independent packages", which
+  also lists what diskOS would change to fit). Found on the way: on the
+  guest a restart of stock's player in stock mode ran `rm -rf` on the
+  mounted card after an unmount that failed (the mount kept its id); the
+  guard refused it, twice. The emulator's gaps are snowsky-disc-qemu #48 and
+  #49.
 
 ## Stage 4 — the image and the installation (separately authorized)
 

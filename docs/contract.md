@@ -461,19 +461,43 @@ What diskOS's image adds today and how each part maps:
 | --- | --- |
 | Its `mq_ui` in `/opt/diskos`, copied to `/usr/data` and checked against a baked manifest by `S97diskos_install` | The `ui` package's entry; boot verifies and installs it |
 | A patch of `fiio_init.sh` that runs `/usr/data/mq_ui` and `/usr/data/mq_player` (a link to its UI binary, which as `mq_player` sets up its card guard, tells its UI and execs stock's player) | Boot's `/sbin/mq_ui` launcher, and `/sbin/mq_player` running the package's `player` (the same binary); stock's player itself untouched |
-| `/tmp/.diskos_boot_select`, written by its `S96` hook, without which its UI runs stock's | Written by the package's own `mq_ui` entry before it starts the UI: boot already chose (open: a release that takes boot's mode) |
+| `/tmp/.diskos_boot_select`, written by its `S96` hook, without which its UI runs stock's | Written by the package's own `mq_ui` entry, which then runs diskOS's binary as `mq_ui` (`exec -a`): boot already chose (open: a release that takes boot's mode) |
 | Its own Volume Up check and "Default UI" file | Boot's modes; diskOS's check becomes redundant (harmless: with the key held boot already runs stock's UI) |
 | Dropbear and `diskos-debug.sh` under `/usr/project` | Listed files of the package, found through `$DISC_BOOT_SLOT` |
 | Dev variant's always-on USB serial shell | Boot's console (one gadget owner) |
 
-Already known: stock's control ports 12100 and 12103 belong to `mq_player`
-(observed on the guest), so the server's bridge does not depend on the UI
-process. The experiment checks the rest: which process scans the card and
-keeps `song.db` (if it is stock's UI, a replaced UI must keep the database
-or the server's library goes stale), both packages under stock's watch loop,
-one package's rollback without touching the other, and the modes with both
-installed. Whatever diskOS needs changed to fit becomes either a contract fix
-here or a small, upstreamable change on its side.
+Stock's control ports 12100 and 12103 belong to `mq_player` (observed on
+the guest), so the server's bridge does not depend on the UI process, and
+`song.db` stays open in stock's player under diskOS's UI.
+
+Accepted on the guest (2026-10-03, plan, stage 3; `tests/integration/
+two_packages.py` with diskOS 1.2.0 built locally by `diskos_package.py`):
+both installed with Play and confirmed, stock's player started by diskOS's
+own launcher (its verdict `guard=1 local=1`, its guard and then boot's first
+in the player's `PATH`), the server answering and serving the player page
+it installed, a busy card kept through stock's card event, the pair killed
+and brought back by stock's loop with the server's process untouched, stock
+mode with both installed, and a broken diskOS update giving way to the
+confirmed one without touching the server. What diskOS would change to fit
+(upstreamable; none blocks the package):
+
+- Its UI insists on its own `S96` record; a release could take boot's
+  choice (the record, or `DISC_BOOT_ROLE=ui`) instead.
+- It has no readiness signal: the entry declares `ready` when it starts the
+  UI, so boot's confirmation means "running for 180 s", not "drawn".
+- Its launcher sets stock's `SYSCONFIG.WORK_MODE` to 0 (local playback) at
+  every start of the player, a change of FiiO's settings that the rule
+  above ("must not change FiiO's files") does not allow a package; it resets
+  a work mode the user chose. A package's own risk today; the open question
+  is whether boot's contract should name it or diskOS ask first.
+- It keeps its files in `/usr/data` directly (`diskos.conf`, `diskos/`, its
+  logs) rather than `$DISC_BOOT_DATA`, and finds its helpers at fixed
+  `/opt/diskos/bin/` paths (the artwork decoder, its updates' keys), absent
+  in a package: those features are off as a package.
+- The emulator needed two workarounds (snowsky-disc-qemu #48: a package's
+  UI never counts as ready, so the test mounts the card after stock's player
+  starts and lets the keys go; #49: the guest's uptime is the host's, so
+  diskOS's cold-boot mount of the card does not run).
 
 ## Open before implementation
 

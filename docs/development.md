@@ -104,6 +104,24 @@ python3 scripts/guest.py status | down
 since a version is confirmed after 180 s of running. The server repository
 drives the same wrapper with a record of its own (`--state`).
 
+The two-package acceptance (plan, stage 3) runs our server beside diskOS's
+UI. diskOS is built locally from a checkout with its own toolchain image
+(`ui/Dockerfile` at the same revision; built natively, `--platform
+linux/arm64` on Apple silicon, it takes about ten minutes); the package stays
+in ignored `work/` and is never passed on:
+
+```sh
+docker build --platform linux/arm64 -t diskos-ui-builder:<rev> <diskos-export>/ui
+python3 tests/integration/diskos_package.py --source <diskos checkout> --revision <rev> \
+  --builder diskos-ui-builder:<rev> --output work/<run>/diskos
+python3 scripts/guest.py run -- python3 -B /boot/tests/integration/two_packages.py \
+  --server /boot/work/<run>/server.zip --ui /boot/work/<run>/diskos --app /boot/work/<run>/page.zip \
+  --output /work/two-packages.json
+```
+
+The server's package comes from snowsky-disc-server (`scripts/build_package.py
+--debug`), the page's release zip from snowsky-disc-player.
+
 ## Related repositories
 
 - snowsky-disc-server: the gateway (the `service` package), its catalogs
