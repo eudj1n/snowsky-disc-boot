@@ -247,8 +247,10 @@ boot menu").
   restarts the pair; the choice by the menu, `next` or the default, with
   stock's UI as the fallback; `ui-default`, `ui-next` and `ui-remove`
   requests; Volume Up and Play unchanged.
-- [ ] Device fact, read-only over the console: which process holds
-  `/dev/jz_watchdog`.
+- [ ] Device facts, read-only over the console: which process holds
+  `/dev/jz_watchdog`; whether stock's player tolerates another process
+  taking `event0` (`EVIOCGRAB`) for a while and gets its keys back after;
+  whether the backlight is on while the menu runs (stock's player sets it).
 - [ ] The boot program: storage per `ui` package, the choice and
   `choice.json`, the `menu` role and its turn, the requests, recovery of
   several staged packages, the status; `scripts/package.py` and
@@ -256,10 +258,34 @@ boot menu").
 - [ ] Guest acceptance with probe packages (contract, "Before it is
   built"), then `boot_guest.py` and `two_packages.py` on the new layout.
 - [ ] `disc-menu`, the boot menu built in this repository (owner,
-  2026-10-03): a static program with its screen and keys as the `menu`
-  package, released with the boot layer, staged by the installer by default
-  and never part of the image. On the guest once snowsky-disc-qemu #54 is
-  fixed, proving the API before the image fixes it.
+  2026-10-03): a static program as the `menu` package, released with the
+  boot layer, staged by the installer by default and never part of the
+  image. On the guest once snowsky-disc-qemu #54 is fixed, proving the API
+  before the image fixes it.
+  - Input by the keys (owner, 2026-10-03): Volume + and − move, Play
+    chooses. Stock's player reads the same keys as events on `event0`
+    (firmware codes: `0xfb`/`0xfc` a volume click, `0x10c` Play) and runs
+    beside the menu, so the menu takes `event0` for itself (`EVIOCGRAB`)
+    while it runs and neither volume nor playback changes under it. A key
+    already down when it starts is ignored until released (Play at
+    power-on was the recovery). The touch panel (`event1`, the UI's own) may
+    choose as well.
+  - Screen: the round 360×360 panel, mounted 180° (`/dev/fb0` XRGB8888,
+    three buffers); a centred list inside the circle; each frame drawn into
+    the hidden buffer and shown with `FBIOPAN_DISPLAY` (no tearing, and the
+    emulator's evidence of a frame). A small renderer of its own and a font
+    rasterised at build time from an OFL font, not LVGL: a list of a few
+    entries needs neither its size nor its widgets.
+  - Behaviour: the default highlighted with a 3 s countdown, stopped by any
+    key or touch; it answers `$DISC_BOOT_RUN/choice` and exits. Its settings
+    (remember the last choice, ask or not) in `$DISC_BOOT_DATA`.
+  - Shares the boot program's JSON reading and atomic writes. Package names
+    are ASCII (`[a-z0-9-]`); an optional display `title` in the manifest is
+    a contract addition to settle with it.
+  - Tests: a host build drawing into a file with scripted keys (the logic,
+    and frames compared as PNG), the MIPS build under `qemu-user`, and on
+    the guest the menu captured from the screen and driven by the
+    emulator's key injection to start diskOS.
 
 ## Stage 4 — the image and the installation (separately authorized)
 
