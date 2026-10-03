@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import struct
@@ -27,6 +28,9 @@ VARIANT = 'boot'
 BOOT = 'opt/disc-boot/disc-boot'
 LAUNCHER = 'opt/disc-boot/mq_ui'  # a link to disc-boot, which acts as the launcher by this name
 UI_WRAPPER = 'sbin/mq_ui'          # ahead of /usr/bin in the PATH stock's fiio_init.sh runs with
+PLAYER_LAUNCHER = 'opt/disc-boot/mq_player'  # the same program as a ui package's player launcher
+PLAYER_WRAPPER = 'sbin/mq_player'  # stock starts its player by name too
+GUARD = 'opt/disc-boot/guard/rm'   # first in the PATH of stock's player and UI
 EARLY_HOOK = 'etc/init.d/S22disc-boot'
 START_HOOK = 'etc/init.d/S99disc-boot'
 CONSOLE = 'opt/disc-boot/disc-usb-console'
@@ -193,13 +197,36 @@ exit 0
 '''
 
 
+def card_guard(usb):
+    """The card guard with the profile's mount point (docs/contract.md, "The card guard")."""
+    if not re.fullmatch('(/[a-zA-Z0-9_-]+)+', usb['sd_mount']):
+        raise ValueError('The card guard needs a plain absolute mount point')
+    source = Path(__file__).resolve().parents[2]/'device/deployment/card-guard.sh'
+    return source.read_text().replace('@SD@', usb['sd_mount'])
+
+
 def ui_wrapper():
     return f'''#!/bin/sh
 # Stock's UI unless the boot layer chose a ui package for this boot (docs/contract.md).
 # Without that choice (stock mode, Volume Up, no package, a failure of the boot program)
-# stock's own program starts and the boot program stays out of its way.
+# stock's own program starts and the boot program stays out of its way. Either way the
+# card guard comes first in its PATH.
+PATH=/{GUARD.rsplit('/', 1)[0]}:$PATH; export PATH
 [ -f /run/disc-boot/ui-launch ] && [ -x /{LAUNCHER} ] && exec /{LAUNCHER} "$@"
 exec /usr/bin/mq_ui "$@"
+'''
+
+
+def player_wrapper():
+    return f'''#!/bin/sh
+# Stock's player with the card guard first in its PATH (docs/contract.md, "The card guard"):
+# stock removes the card's mount point with rm -rf after an unmount it never checks, which
+# empties a card that is still mounted. While a ui package runs (not after its fallback to
+# stock's UI) the boot program starts the player launcher that package brings, if any;
+# that launcher ends in stock's player, and stock's player starts at once otherwise.
+PATH=/{GUARD.rsplit('/', 1)[0]}:$PATH; export PATH
+[ -f /run/disc-boot/ui-launch ] && [ ! -f /run/disc-boot/ui/fallback ] && [ -x /{PLAYER_LAUNCHER} ] && exec /{PLAYER_LAUNCHER} "$@"
+exec /usr/bin/mq_player "$@"
 '''
 
 
@@ -209,6 +236,9 @@ def payload(profile, usb, console, boot):
         BOOT: (boot.read_bytes(), 0o755),
         LAUNCHER: ('link', 'disc-boot'),
         UI_WRAPPER: (ui_wrapper().encode(), 0o755),
+        PLAYER_LAUNCHER: ('link', 'disc-boot'),
+        PLAYER_WRAPPER: (player_wrapper().encode(), 0o755),
+        GUARD: (card_guard(usb).encode(), 0o755),
         EARLY_HOOK: (early_hook(profile, usb).encode(), 0o755),
         START_HOOK: (start_hook().encode(), 0o755),
         CONSOLE: (console.read_bytes(), 0o755),
@@ -272,7 +302,9 @@ def build(ota, console, boot, out, profile, writer):
                   writerFormatBytes=capacity,added=sorted(additions),variant=VARIANT,
                   stockEntriesPreserved=len(before),fullRoundTrip=True,packages=[],
                   boot=dict(native=boot_native,api=1,launcher=f'/{LAUNCHER}',wrapper=f'/{UI_WRAPPER}',
-                            hooksSha256={name:digest(tree/name) for name in (EARLY_HOOK,START_HOOK,UI_WRAPPER)}),
+                            playerLauncher=f'/{PLAYER_LAUNCHER}',playerWrapper=f'/{PLAYER_WRAPPER}',guard=f'/{GUARD}',
+                            hooksSha256={name:digest(tree/name) for name in (EARLY_HOOK,START_HOOK,UI_WRAPPER,
+                                                                              PLAYER_WRAPPER,GUARD)}),
                   artifacts={p.name:dict(bytes=p.stat().st_size,sha256=digest(p)) for p in (candidate,recovery)},
                   usbDiagnostic=dict(profileSha256=fingerprint(usb),native=console_native,
                                      marker='.disc/dev/usb-console',optInRequired=True,

@@ -78,6 +78,7 @@ int manifest_load(const char *dir, manifest *m, char *err, size_t cap) {
     m->boot_api = (int)n;
     if (string_at(&j, "arch", m->arch, sizeof(m->arch), 1) || !m->arch[0]) { fail(err, cap, "arch is required"); goto done; }
     if (string_at(&j, "entry", m->entry, sizeof(m->entry), 1) || !path_ok(m->entry)) { fail(err, cap, "entry must be a listed relative path"); goto done; }
+    if ((v = string_at(&j, "player", m->player, sizeof(m->player), 0)) < 0 || (v == 0 && !path_ok(m->player))) { fail(err, cap, "player must be a listed relative path"); goto done; }
     m->ready = 30;
     if ((v = bjson_find(&j, 0, "ready")) != -1) {
         if (v < 0 || bjson_int(&j, v, &n) || n < 1 || n > MAX_READY) { fail(err, cap, "ready must be 1-120 seconds"); goto done; }
@@ -120,6 +121,12 @@ int manifest_load(const char *dir, manifest *m, char *err, size_t cap) {
     if (!strcmp(m->role, "ui")) {
         const char *base = strrchr(m->entry, '/');
         if (strcmp(base ? base + 1 : m->entry, "mq_ui")) { fail(err, cap, "a ui package's entry must be named mq_ui"); goto done; }
+    }
+    if (m->player[0]) {
+        int player = -1;
+        for (int f = 0; f < m->nfiles; f++) if (!strcmp(m->files[f].path, m->player)) player = f;
+        if (strcmp(m->role, "ui")) { fail(err, cap, "only a ui package brings a player launcher"); goto done; }
+        if (player < 0 || m->files[player].mode != 0755) { fail(err, cap, "player must be a listed file with mode 0755"); goto done; }
     }
     r = 0;
 done:

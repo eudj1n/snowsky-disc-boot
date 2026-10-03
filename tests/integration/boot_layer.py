@@ -1,9 +1,11 @@
 """The packed image's boot layer on its own stock BusyBox, in private namespaces.
 
-Runs the generated hooks and the /sbin/mq_ui wrapper inside the verified tree with
-the production disc-boot and its real timings (confirmation after 180 s). Keys are
-unreadable here (no /dev/mem), so the default mode applies. Stock's UI is replaced
-by a marker script; no kernel, driver, key, card or USB acceptance is claimed.
+Runs the generated hooks, the /sbin/mq_ui and /sbin/mq_player wrappers and the card
+guard inside the verified tree with the production disc-boot and its real timings
+(confirmation after 180 s). Keys are unreadable here (no /dev/mem), so the default
+mode applies. Stock's UI and player are replaced by marker scripts; the player's
+marker repeats stock's unchecked "umount, then rm -rf" of the card's mount point
+while the mount is busy. No kernel, driver, key, card or USB acceptance is claimed.
 """
 import argparse
 import hashlib
@@ -22,15 +24,19 @@ from firmware_profile import load_profile  # noqa: E402
 PROFILE = load_profile()['version']
 
 
-def package(root, directory, role, entry, script):
+def package(root, directory, role, entry, script, player=None):
     target = root/directory.lstrip('/')
     (target/'bin').mkdir(parents=True)
-    data = ('#!/bin/sh\n' + script).encode()
-    (target/entry).write_bytes(data)
-    (target/entry).chmod(0o755)
+    files = {}
+    for path, text in ((entry, script), *([player] if player else [])):
+        data = ('#!/bin/sh\n' + text).encode()
+        (target/path).write_bytes(data)
+        (target/path).chmod(0o755)
+        files[path] = dict(size=len(data), sha256=hashlib.sha256(data).hexdigest(), mode='0755')
     manifest = dict(schema=1, name='probe-' + role, version='1', role=role, bootApi=1, arch='mips32el-linux-static',
-                    profiles=[PROFILE], entry=entry, ready=30,
-                    files={entry: dict(size=len(data), sha256=hashlib.sha256(data).hexdigest(), mode='0755')})
+                    profiles=[PROFILE], entry=entry, ready=30, files=files)
+    if player:
+        manifest['player'] = player[0]
     (target/'package.json').write_text(json.dumps(manifest))
 
 
@@ -64,6 +70,13 @@ def run(output):
     marker.write_text('#!/bin/sh\necho stock >> /run/ui-runs\n')
     marker.chmod(0o755)
     subprocess.run(['mount', '--bind', str(marker), str(root/'usr/bin/mq_ui')], check=True)
+    # Stock's player becomes a marker that does what stock does to the card (mount_storage_dev.c):
+    # unmount the mount point, then remove it with rm -rf whatever the unmount answered.
+    player = root/'run/stock-player'
+    player.write_text('#!/bin/sh\necho "player $(command -v rm)" >> /run/player-runs\n'
+                      'umount /tmp/sdcard 2>/dev/null; rm -rf /tmp/sdcard\n')
+    player.chmod(0o755)
+    subprocess.run(['mount', '--bind', str(player), str(root/'usr/bin/mq_player')], check=True)
 
     def chroot(*command, timeout=30):
         return subprocess.run(['chroot', str(root), *command], check=True, timeout=timeout, capture_output=True, text=True)
@@ -80,12 +93,27 @@ def run(output):
     chroot('/usr/bin/env', '-i', 'PATH=' + path, '/bin/sh', '-c', 'mq_ui')
     assert (root/'run/ui-runs').read_text().split() == ['stock']
     assert not (root/'run/disc-boot/ui.json').exists(), 'no package: the boot program never ran for the UI'
+    # Stock's player through stock's PATH lookup, the card guard first: a busy card stays whole.
+    card = root/'tmp/sdcard'
+    card.mkdir(parents=True, exist_ok=True)
+    subprocess.run(['mount', '-t', 'tmpfs', 'card', str(card)], check=True)
+    (card/'Music').mkdir()
+    (card/'Music/track.flac').write_text('audio')
+    holder = subprocess.Popen(['sleep', '120'], cwd=card/'Music')
+    chroot('/usr/bin/env', '-i', 'PATH=' + path, '/bin/sh', '-c', 'mq_player')
+    assert (root/'run/player-runs').read_text().split('\n')[0] == 'player /opt/disc-boot/guard/rm'
+    assert (card/'Music/track.flac').read_text() == 'audio', 'the busy card was emptied'
+    assert 'refused rm -rf /tmp/sdcard' in (root/'run/disc-boot/guard.log').read_text()
+    assert not (root/'run/disc-boot/ui/player.json').exists(), 'no package: the boot program never ran for the player'
+    holder.kill()
+    holder.wait()
 
     # A service and a UI package, installed into their slots as recovery would leave them.
     package(root, '/usr/data/disc-boot/service/a', 'service', 'bin/run',
             'trap "exit 0" TERM\nenv > "$DISC_BOOT_DATA/env"\n: > "$DISC_BOOT_RUN/ready"\nwhile :; do sleep 1; done\n')
     package(root, '/usr/data/disc-boot/ui/a', 'ui', 'bin/mq_ui',
-            'echo package >> /run/ui-runs\n: > "$DISC_BOOT_RUN/ready"\nsleep 200\n')
+            'echo package >> /run/ui-runs\n: > "$DISC_BOOT_RUN/ready"\nsleep 200\n',
+            player=('bin/player', 'echo "launcher $DISC_BOOT_ROLE" >> /run/player-runs\nexec /usr/bin/mq_player "$@"\n'))
     for role in ('service', 'ui'):
         (root/f'usr/data/disc-boot/{role}/state.json').write_text('{"schema":1,"current":"a","confirmed":false,"previous":null}')
     chroot('/bin/sh', '/etc/init.d/S22disc-boot', 'start')
@@ -94,6 +122,12 @@ def run(output):
     started = time.monotonic()
     chroot('/bin/sh', '/etc/init.d/S99disc-boot', 'start')
     ui = subprocess.Popen(['chroot', str(root), '/usr/bin/env', '-i', 'PATH=' + path, 'LD_LIBRARY_PATH=/usr/lib', '/bin/sh', '-c', 'mq_ui'])
+    # The ui package's player launcher, then stock's player with the guard still first.
+    time.sleep(2)
+    chroot('/usr/bin/env', '-i', 'PATH=' + path, 'LD_LIBRARY_PATH=/usr/lib', '/bin/sh', '-c', 'mq_player')
+    assert (root/'run/player-runs').read_text().splitlines()[1:] == ['launcher ui', 'player /opt/disc-boot/guard/rm']
+    launched = json.loads((root/'run/disc-boot/ui/player.json').read_text())
+    assert (launched['launch'], launched['name']) == ('package', 'probe-ui'), launched
     service = wait(root/'run/disc-boot/service.json', lambda s: s['state'] == 'confirmed', 260)
     ui_status = wait(root/'run/disc-boot/ui.json', lambda s: s['state'] == 'confirmed', 60)
     confirmed_after = round(time.monotonic() - started, 1)
@@ -111,7 +145,8 @@ def run(output):
     assert not (root/'run/disc-boot/supervisor.pid').exists()
     ui.terminate()
     result = dict(status='passed', stockBusyBox=True, productionBinary=True, stockPathLookup=path,
-                  stockUiWithoutPackage=True, serviceConfirmed=True, uiConfirmed=True,
+                  stockUiWithoutPackage=True, stockPlayerGuarded=True, busyCardKept=True,
+                  packagePlayerLauncher=True, serviceConfirmed=True, uiConfirmed=True,
                   confirmedAfterSeconds=confirmed_after, bootLoopCountCleared=True, stopped=True,
                   scope='Packed tree in private namespaces; keys unreadable, no kernel/driver/card/USB acceptance')
     (output/'boot-layer-test.json').write_text(json.dumps(result, indent=2) + '\n')

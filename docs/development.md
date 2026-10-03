@@ -12,6 +12,7 @@
 | `device/src/usb_console.c` | The USB ACM engineering console |
 | `device/acquisition/` | The NAND reader and SFC identity payloads for USB Boot sessions |
 | `device/deployment/boot-report.sh` | The boot report written to the card |
+| `device/deployment/card-guard.sh` | The card guard, `rm` first in the `PATH` of stock's player and UI |
 | `scripts/package.py` | Packages: describe a folder, check it as `disc-boot` does, zip it, stage it on a card |
 | `scripts/deployment/build_candidate.py` | The image builder (variant `boot`): stock plus the boot layer, verified offline |
 | `scripts/deployment/` | Reviews, transports, readback and audits of a USB Boot installation |

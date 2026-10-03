@@ -1,7 +1,9 @@
 """Offline image invariants, using synthetic bytes; no firmware or devices."""
 import importlib.util
+import os
 from pathlib import Path
 import struct
+import subprocess
 import tempfile
 import unittest
 
@@ -73,8 +75,11 @@ class DeploymentTests(unittest.TestCase):
         files = self.payload()
         self.assertEqual(sorted(files), ['etc/init.d/S22disc-boot', 'etc/init.d/S99disc-boot', 'etc/init.d/S99disc-usb',
                                          'opt/disc-boot/boot-report.sh', 'opt/disc-boot/disc-boot',
-                                         'opt/disc-boot/disc-usb-console', 'opt/disc-boot/mq_ui', 'sbin/mq_ui'])
+                                         'opt/disc-boot/disc-usb-console', 'opt/disc-boot/guard/rm',
+                                         'opt/disc-boot/mq_player', 'opt/disc-boot/mq_ui', 'sbin/mq_player', 'sbin/mq_ui'])
         self.assertEqual(files['opt/disc-boot/mq_ui'], ('link', 'disc-boot'))
+        self.assertEqual(files['opt/disc-boot/mq_player'], ('link', 'disc-boot'))
+        self.assertIn("card='/selected/card'", files['opt/disc-boot/guard/rm'][0].decode())
         self.assertTrue(all(mode == 0o755 for data, mode in files.values() if data != 'link'))
         for gone in ('disc-service', 'S99disc-web', 'disc-web/', 'image.json', '/app', '/catalog'):
             self.assertFalse(any(gone in name for name in files), gone)
@@ -86,7 +91,8 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn('start) /opt/disc-boot/disc-boot start', start)
         self.assertIn('stop) /opt/disc-boot/disc-boot stop', start)
         import subprocess
-        for name in ('etc/init.d/S22disc-boot', 'etc/init.d/S99disc-boot', 'etc/init.d/S99disc-usb', 'sbin/mq_ui', 'opt/disc-boot/boot-report.sh'):
+        for name in ('etc/init.d/S22disc-boot', 'etc/init.d/S99disc-boot', 'etc/init.d/S99disc-usb', 'sbin/mq_ui',
+                     'sbin/mq_player', 'opt/disc-boot/guard/rm', 'opt/disc-boot/boot-report.sh'):
             with self.subTest(name=name):
                 checked = subprocess.run(['sh', '-n'], input=files[name][0], capture_output=True)
                 self.assertEqual(checked.returncode, 0, checked.stderr)
@@ -94,8 +100,68 @@ class DeploymentTests(unittest.TestCase):
     def test_the_ui_wrapper_leaves_stock_unless_the_boot_layer_chose_a_package(self):
         wrapper = candidate.ui_wrapper()
         lines = [line for line in wrapper.splitlines() if line and not line.startswith('#')]
-        self.assertEqual(lines, ['[ -f /run/disc-boot/ui-launch ] && [ -x /opt/disc-boot/mq_ui ] && exec /opt/disc-boot/mq_ui "$@"',
+        self.assertEqual(lines, ['PATH=/opt/disc-boot/guard:$PATH; export PATH',
+                                 '[ -f /run/disc-boot/ui-launch ] && [ -x /opt/disc-boot/mq_ui ] && exec /opt/disc-boot/mq_ui "$@"',
                                  'exec /usr/bin/mq_ui "$@"'])
+
+    def test_the_player_wrapper_puts_the_guard_first_and_ends_in_stock_player(self):
+        wrapper = candidate.player_wrapper()
+        lines = [line for line in wrapper.splitlines() if line and not line.startswith('#')]
+        self.assertEqual(lines, ['PATH=/opt/disc-boot/guard:$PATH; export PATH',
+                                 '[ -f /run/disc-boot/ui-launch ] && [ ! -f /run/disc-boot/ui/fallback ] && '
+                                 '[ -x /opt/disc-boot/mq_player ] && exec /opt/disc-boot/mq_player "$@"',
+                                 'exec /usr/bin/mq_player "$@"'])
+        self.assertEqual(candidate.GUARD.rsplit('/', 1), ['opt/disc-boot/guard', 'rm'])
+
+    def test_the_card_guard_needs_a_plain_mount_point(self):
+        for mount in ('/tmp/sdcard/', '/tmp//sdcard', 'tmp/sdcard', '/'):
+            with self.subTest(mount), self.assertRaises(ValueError):
+                candidate.card_guard({'sd_mount': mount})
+
+    def guard(self, command, cwd=None):
+        """A command through sh with the rendered guard first in PATH, as stock's player runs it."""
+        guard = self.root/'guard'
+        guard.mkdir(exist_ok=True)
+        (guard/'rm').write_text(candidate.card_guard({'sd_mount': str(self.card)}))
+        (guard/'rm').chmod(0o755)
+        env = dict(os.environ, PATH=f'{guard}:{os.environ["PATH"]}')
+        return subprocess.run(['sh', '-c', command], env=env, cwd=cwd or self.root, capture_output=True, timeout=30)
+
+    def card_tree(self):
+        return sorted(str(p.relative_to(self.card)) for p in self.card.rglob('*')) if self.card.exists() else None
+
+    def test_the_card_guard_refuses_the_mount_point_and_passes_the_rest(self):
+        # The real path: macOS's temporary folder is reached through a link.
+        self.root = self.root.resolve()
+        self.card = self.root/'mnt/card'
+        full = ['a', 'folder', 'folder/b']
+        def fill():
+            (self.card/'folder').mkdir(parents=True, exist_ok=True)
+            (self.card/'a').write_text('a'); (self.card/'folder/b').write_text('b')
+        fill()
+        (self.root/'alias').symlink_to(self.card)
+        refused = [f'rm -rf {self.card}', f'rm -rf {self.card}/', f'rm -rf {self.root}/mnt//card', f'rm -rf -- {self.card}',
+                   f'rm -rf {self.card}/folder/..', f'rm -rf {self.root}/mnt', 'rm -rf card', f'rm -rf {self.root}/alias',
+                   f'rm -r -f {self.card} {self.root}/elsewhere']
+        for command in refused:
+            with self.subTest(command):
+                result = self.guard(command, cwd=self.root/'mnt')
+                self.assertEqual((result.returncode, self.card_tree()), (0, full), result.stderr)
+        # What lies on the card, and anything elsewhere, goes to the real rm.
+        (self.root/'elsewhere').mkdir()
+        self.assertEqual(self.guard(f'rm -rf {self.root}/elsewhere').returncode, 0)
+        self.assertFalse((self.root/'elsewhere').exists())
+        self.assertEqual(self.guard(f'rm -rf {self.card}/folder').returncode, 0)
+        self.assertEqual(self.card_tree(), ['a'])
+        self.assertEqual(self.guard(f'rm {self.card}/a').returncode, 0)
+        self.assertNotEqual(self.guard(f'rm {self.card}/missing').returncode, 0, 'the real rm answers')
+        # An empty mount point (the card unmounted) goes, as stock meant; a non-empty one stays.
+        fill()
+        self.assertEqual(self.guard(f'rm -rf {self.card}').returncode, 0)
+        self.assertEqual(self.card_tree(), full)
+        subprocess.run(['/bin/rm', '-rf', str(self.card/'a'), str(self.card/'folder')], check=True)
+        self.assertEqual(self.guard(f'rm -rf {self.card}').returncode, 0)
+        self.assertFalse(self.card.exists())
 
     def test_the_fixture_build_of_the_boot_program_cannot_be_packaged(self):
         path=self.elf();candidate.check_boot_binary(path)
@@ -107,7 +173,7 @@ class DeploymentTests(unittest.TestCase):
         before = {'usr/bin/mq_ui':{'sha256':'original'}, 'opt':{}, 'etc':{}, 'etc/init.d':{}}
         additions = candidate.additions_of(files, before)
         # Folders stock lacks are additions too; existing ones are not.
-        self.assertEqual(additions, set(files) | {'opt/disc-boot', 'sbin'})
+        self.assertEqual(additions, set(files) | {'opt/disc-boot', 'opt/disc-boot/guard', 'sbin'})
         after = {**before, **{key:{} for key in additions}}
         candidate.check_delta(before, after, additions)
         for corrupted in (dict(after,extra={}), {k:v for k,v in after.items() if k!='usr/bin/mq_ui'},

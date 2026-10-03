@@ -65,8 +65,9 @@ boundary.
 
 The boot layer's image is stock plus the boot layer's own objects; it
 carries no package ([contract](contract.md), "What changes against today"):
-the boot program with its hooks and the `/sbin/mq_ui` wrapper, the USB
-console with its hook, and the boot report. The disposable stack is snowsky-disc-web's emulator wrapper
+the boot program with its hooks, the `/sbin/mq_ui` and `/sbin/mq_player`
+wrappers and the card guard, the USB console with its hook, and the boot
+report. The disposable stack is snowsky-disc-web's emulator wrapper
 (its `scripts/emulator.py up`), whose container mounts that repository at
 `/platform`; this repository's sources are copied into the container's
 `/work` for the build. An existing stack is pinned to its own

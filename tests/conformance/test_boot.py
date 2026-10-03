@@ -201,6 +201,8 @@ class BootTests(unittest.TestCase):
             'exceeds 32 MiB': lambda m: m['files'].update({'big': dict(size=33*1024*1024, sha256='0'*64, mode='0644')}),
             'mode 0755 or 0644': lambda m: m['files']['bin/run'].update(mode='0777'),
             'entry must be a listed file with mode 0755': lambda m: m.update(entry='bin/other'),
+            'only a ui package brings a player launcher': lambda m: m.update(player='bin/run'),
+            'player must be a listed relative path': lambda m: m.update(player='/bin/run'),
             "role is service, not ui": None,
         }
         for message, edit in cases.items():
@@ -212,6 +214,8 @@ class BootTests(unittest.TestCase):
                 self.assertEqual(code, 1, result)
                 self.assertIn(message, result['error'])
         directory = self.root/'ui'
+        self.package(directory, GOOD, role='ui', edit=lambda m: m.update(player='bin/player'))
+        self.assertIn('player must be a listed file with mode 0755', self.verify(directory, 'ui')[1]['error'])
         self.package(directory, GOOD, role='ui', entry='bin/launch')
         self.assertIn('named mq_ui', self.verify(directory, 'ui')[1]['error'])
         # A repeated key is refused rather than one of them believed.
@@ -554,6 +558,78 @@ exit 0
         self.launch().wait(timeout=10)
         self.assertEqual(self.runs(), ['package', 'stock'])
         self.assertFalse((self.data/'ui/a').exists())
+
+    # Stock's player and a ui package's player launcher
+
+    def launch_player(self):
+        """Stock's start of its player: the image's /sbin/mq_player wrapper, with the fixture's paths."""
+        launcher = self.root/'opt/disc-boot/mq_player'
+        if not launcher.exists():
+            launcher.parent.mkdir(parents=True, exist_ok=True)
+            launcher.symlink_to(BINARY)
+        wrapper = self.root/'sbin/mq_player'
+        text = BUILDER.player_wrapper()
+        for path in ('/run/disc-boot/ui-launch', '/run/disc-boot/ui/fallback', '/opt/disc-boot/', '/usr/bin/mq_player'):
+            text = text.replace(path, str(self.root) + path)
+        wrapper.write_text(text)
+        wrapper.chmod(0o755)
+        return subprocess.Popen(['/bin/sh', str(wrapper)], env=self.env, start_new_session=True)
+
+    def stock_player(self):
+        stock = self.root/'usr/bin/mq_player'
+        stock.write_text(f'#!/bin/sh\necho "stock ${{DISC_BOOT_ROLE:-none}} ${{PATH%%:*}}" >> "{self.root}/out/player"\n')
+        stock.chmod(0o755)
+
+    def players(self):
+        path = self.root/'out/player'
+        return path.read_text().splitlines() if path.exists() else []
+
+    def player_status(self):
+        return json.loads((self.run_dir/'ui/player.json').read_text())
+
+    def install_with_player(self, player=True):
+        extra = {'bin/player': (f'#!/bin/sh\necho "launcher $DISC_BOOT_ROLE" >> "{self.root}/out/player"\n'
+                                f'exec "{self.root}/usr/bin/mq_player" "$@"\n', 0o755)}
+        return self.install('ui', 'a', f'echo package >> "{self.root}/out/ui"\n: > "$DISC_BOOT_RUN/ready"\nsleep 2.5\n',
+                            name='other-ui', extra=extra, edit=(lambda m: m.update(player='bin/player')) if player else None)
+
+    def test_the_player_starts_through_the_ui_package_launcher_with_the_guard_first(self):
+        guard = f'{self.root}/opt/disc-boot/guard'
+        self.stock_ui(); self.stock_player()
+        self.install_with_player()
+        self.early()
+        self.launch_player().wait(timeout=10)
+        self.assertEqual(self.players(), ['launcher ui', f'stock ui {guard}'])
+        self.assertEqual({k: self.player_status()[k] for k in ('launch', 'name')}, {'launch': 'package', 'name': 'other-ui'})
+        # By the name stock's watch loop looks for: a link named mq_player to the package's launcher.
+        self.assertEqual(os.readlink(self.run_dir/'ui/mq_player'), str(self.data/'ui/a/bin/player'))
+        status = json.loads(self.boot('status', check=True).stdout)
+        self.assertEqual(status['player']['launch'], 'package')
+        # After the UI's fallback to stock, stock's player starts from the wrapper alone.
+        (self.run_dir/'ui').mkdir(exist_ok=True)
+        (self.run_dir/'ui/fallback').write_text('\n')
+        self.launch_player().wait(timeout=10)
+        self.assertEqual(self.players()[2:], [f'stock none {guard}'])
+        # Stock mode: the wrapper starts stock's player, the guard still first.
+        (self.run_dir/'ui/fallback').unlink()
+        self.early('volume-up')
+        self.launch_player().wait(timeout=10)
+        self.assertEqual(self.players()[3:], [f'stock none {guard}'])
+
+    def test_stock_player_starts_when_the_ui_package_brings_no_launcher_or_fails_its_check(self):
+        self.stock_ui(); self.stock_player()
+        self.install_with_player(player=False)
+        self.early()
+        self.launch_player().wait(timeout=10)
+        self.assertEqual(self.players(), [f'stock none {self.root}/opt/disc-boot/guard'])
+        self.assertEqual(self.player_status()['note'], 'the ui package brings no player launcher')
+        self.install_with_player()
+        (self.data/'ui/a/bin/player').write_text('#!/bin/sh\necho tampered\n')
+        self.launch_player().wait(timeout=10)
+        self.assertEqual(len(self.players()), 2)
+        self.assertTrue(self.players()[1].startswith('stock none'))
+        self.assertIn('bin/player', self.player_status()['note'])
+        self.assertEqual(self.player_status()['launch'], 'stock')
 
     def test_status_gathers_the_parts(self):
         self.early()

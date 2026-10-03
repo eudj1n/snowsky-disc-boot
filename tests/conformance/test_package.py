@@ -79,6 +79,18 @@ class PackageToolTests(unittest.TestCase):
         with self.assertRaisesRegex(package.PackageError, 'bin/other is not in the folder'):
             self.describe(folder, entry='bin/other')
 
+    def test_describe_names_a_ui_package_player_launcher(self):
+        folder = self.folder(entry='bin/mq_ui', extra={'share/info': 'x'})
+        manifest = self.describe(folder, role='ui', entry='bin/mq_ui', player='bin/mq_ui')
+        self.assertEqual(manifest['player'], 'bin/mq_ui')
+        self.assertEqual(package.check(folder, arch='fixture')['player'], 'bin/mq_ui')
+        self.assertNotIn('player', self.describe(folder, role='ui', entry='bin/mq_ui'))
+        for player in ('share/info', 'bin/other'):
+            with self.subTest(player), self.assertRaisesRegex(package.PackageError, 'not an executable file'):
+                self.describe(folder, role='ui', entry='bin/mq_ui', player=player)
+        with self.assertRaisesRegex(package.PackageError, 'only a ui package'):
+            self.describe(self.folder(name='service'), player='bin/run')
+
     def test_a_zip_is_deterministic_and_checks_like_its_folder(self):
         folder = self.folder(extra={'lib/libx.so': 'x'})
         self.describe(folder)
@@ -169,6 +181,7 @@ class PackageToolTests(unittest.TestCase):
             'too big': lambda m: m['files'].update({'big': dict(size=33 * 1024 * 1024, sha256='0' * 64, mode='0644')}),
             'entry unlisted': edit(entry='bin/other'),
             'float size': lambda m: m['files']['bin/run'].update(size=1.0),
+            'service player': edit(player='bin/run'),
         }
         for label, change in manifest_cases.items():
             with self.subTest(label):
@@ -178,6 +191,19 @@ class PackageToolTests(unittest.TestCase):
                     change(manifest)
                     (folder/'package.json').write_text(json.dumps(manifest))
                 self.assertEqual(self.tool_verify(folder, 'service'), self.boot_verify(folder, 'service'))
+        ui_cases = {
+            'ui good': None, 'ui player': edit(player='bin/mq_ui'), 'ui player unlisted': edit(player='bin/other'),
+            'ui player path': edit(player='../bin/mq_ui'), 'ui player kind': edit(player=1),
+            'ui player empty': edit(player=''), 'ui player mode': edit(player='share/info'),
+        }
+        for label, change in ui_cases.items():
+            with self.subTest(label):
+                folder = self.folder(name=f'm-{label.replace(" ", "-")}', entry='bin/mq_ui', extra={'share/info': 'x'})
+                manifest = self.describe(folder, role='ui', entry='bin/mq_ui')
+                if change:
+                    change(manifest)
+                    (folder/'package.json').write_text(json.dumps(manifest))
+                self.assertEqual(self.tool_verify(folder, 'ui'), self.boot_verify(folder, 'ui'))
         damage_cases = {
             'hash': lambda d: (d/'bin/run').write_text(RUN.replace('0.1', '0.2')),
             'size': lambda d: (d/'lib/libx.so').write_text('xyz'),

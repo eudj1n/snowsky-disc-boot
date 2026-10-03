@@ -11,6 +11,11 @@ that behave as their package says (healthy, exit before ready, exit after
 ready); a job left on the card makes the running probe stage the next version
 into its inactive slot and ask boot to activate it, or ask for a rollback.
 Real timings: a version is confirmed after 180 s of running.
+
+Stock's card event is also sent while a file on the mounted card is open (as a
+server streaming it holds one): stock's player then unmounts, fails and removes
+the mount point with rm -rf. The emulator's own card controls refuse to send it
+while the card is busy, so the test uses its uevent sender directly.
 """
 import argparse
 from contextlib import contextmanager
@@ -24,8 +29,11 @@ import tempfile
 import time
 
 sys.path.insert(0, '/boot/scripts')
+sys.path.insert(0, '/repo')
 import package  # noqa: E402
 from firmware_profile import load_profile  # noqa: E402
+from emulator.runtime.keys import Device  # noqa: E402
+from emulator.runtime.peripherals import Peripherals  # noqa: E402
 
 PROFILE = load_profile()['version']
 ROOTFS = Path('/work/rootfs')
@@ -72,6 +80,12 @@ read version < "$DISC_BOOT_SLOT/version"
 echo "$(date +%s) $version ui" >> "$DISC_BOOT_DATA/probe.log"
 : > "$DISC_BOOT_RUN/ready"
 exec /usr/bin/mq_ui "$@"
+'''
+PLAYER = r'''#!/bin/sh
+# A probe player launcher: records its start, then becomes stock's player.
+read version < "$DISC_BOOT_SLOT/version"
+echo "$(date +%s) $version player" >> "$DISC_BOOT_DATA/probe.log"
+exec /usr/bin/mq_player "$@"
 '''
 evidence = {'profile': PROFILE, 'steps': []}
 
@@ -156,11 +170,14 @@ def probe(folder, version, behavior='healthy', role='service'):
     (folder/'bin').mkdir(parents=True)
     files = {entry: (SERVICE if role == 'service' else UI, 0o755), 'version': (version + '\n', 0o644),
              'behavior': (behavior + '\n', 0o644)}
+    if role == 'ui':
+        files['bin/player'] = (PLAYER, 0o755)
     files['modes'] = (''.join(f'{path} {mode:04o}\n' for path, (_, mode) in files.items()) + 'modes 0644\n', 0o644)
     for path, (text, mode) in files.items():
         (folder/path).write_text(text)
         (folder/path).chmod(mode)
-    package.describe(folder, NAME if role == 'service' else UI_NAME, version, role, entry, ready=30, profiles=[PROFILE])
+    package.describe(folder, NAME if role == 'service' else UI_NAME, version, role, entry, ready=30, profiles=[PROFILE],
+                     player='bin/player' if role == 'ui' else None)
     return folder
 
 
@@ -176,14 +193,60 @@ def job(work, action, version=None, behavior='healthy'):
     return ident
 
 
-def stop(name):
-    """SIGTERM to the guest's processes of that name, from the container (the guest has no pkill)."""
+def guest_pids(name):
+    """The guest's processes of that name, seen from the container."""
+    pids = []
     for process in Path('/proc').iterdir():
         try:
             if process.name.isdecimal() and (process/'root').resolve() == ROOTFS and (process/'comm').read_text().strip() == name:
-                os.kill(int(process.name), 15)
+                pids.append(int(process.name))
         except OSError:
             continue
+    return pids
+
+
+def stop(name):
+    """SIGTERM to the guest's processes of that name, from the container (the guest has no pkill)."""
+    for pid in guest_pids(name):
+        try:
+            os.kill(pid, 15)
+        except OSError:
+            continue
+
+
+def guarded_player():
+    """Stock's player runs with the card guard first in its PATH."""
+    paths = []
+    for pid in guest_pids('mq_player'):
+        environ = Path(f'/proc/{pid}/environ').read_bytes().split(b'\0')
+        paths += [entry.decode() for entry in environ if entry.startswith(b'PATH=')]
+    assert paths and all(p.startswith('PATH=/opt/disc-boot/guard:') for p in paths), paths
+    return paths[0]
+
+
+def listener_ready():
+    try:
+        Peripherals(Device(ROOTFS))._listener()
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def busy_card_event(mount):
+    """Stock's card event while a file on the mounted card is open: the card must stay whole."""
+    card_root = ROOTFS/mount.lstrip('/')
+    wait(lambda: subprocess.run(['mountpoint', '-q', str(card_root)]).returncode == 0 or None, bool, 'card mounted', 120)
+    before = sorted(str(p.relative_to(card_root)) for p in card_root.rglob('*'))
+    held = next(p for p in card_root.rglob('*') if p.is_file())
+    with held.open('rb'):
+        # The player's uevent socket comes up a little after the card's first mount.
+        wait(lambda: listener_ready() or None, bool, 'stock player listening for card events', 60)
+        Peripherals(Device(ROOTFS))._event('add')
+        time.sleep(10)
+    after = sorted(str(p.relative_to(card_root)) for p in card_root.rglob('*'))
+    refusals = [line for line in guest('cat /run/disc-boot/guard.log 2>/dev/null').splitlines() if f'rm -rf {mount}' in line]
+    assert after == before and refusals, (before, after, refusals)
+    return dict(files=len(before), refusals=refusals)
 
 
 def stock_ui_runs():
@@ -200,6 +263,9 @@ def run(output):
     assert wait(lambda: stock_ui_runs() or None, bool, 'stock UI', 120)
     assert not guest('ls /run/disc-boot/ui-launch 2>/dev/null').strip()
     step('nothing installed', boot=boot, service=guest_json('/run/disc-boot/service.json'))
+    # Stock's player, started by stock's PATH lookup, has the card guard first: a busy card stays whole.
+    path = guarded_player()
+    step('busy card kept', path=path, **busy_card_event(boot['card']))
     power('off')
     # 2. Volume Up held: stock mode.
     power('on', hold='volume_up')
@@ -299,7 +365,11 @@ def run(output):
                   lambda count: int(count.strip() or 0) >= 2, 'ui package started again', 120)
     ui = wait(lambda: guest_json('/run/disc-boot/ui.json'), lambda u: u['state'] == 'confirmed', 'ui confirmed', 420)
     assert stock_ui_runs()
-    step('ui package', ui=ui, starts=int(starts.strip()))
+    # The package's player launcher started stock's player each time, the guard still first.
+    player = guest_json('/run/disc-boot/ui/player.json')
+    launches = int(guest(f'grep -c " player" /usr/data/disc-boot/data/{UI_NAME}/probe.log').strip() or 0)
+    assert player['launch'] == 'package' and launches >= 2, (player, launches)
+    step('ui package', ui=ui, starts=int(starts.strip()), player=player, playerLaunches=launches, path=guarded_player())
     power('off')
     evidence['status'] = 'passed'
     Path(output).write_text(json.dumps(evidence, indent=2) + '\n')

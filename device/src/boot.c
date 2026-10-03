@@ -652,6 +652,7 @@ static int cmd_status(void) {
     fputs("{\"boot\":", stdout); print_file("boot.json");
     fputs(",\"service\":", stdout); print_file("service.json");
     fputs(",\"ui\":", stdout); print_file("ui.json");
+    fputs(",\"player\":", stdout); print_file("ui/player.json");
     fputs("}\n", stdout);
     return 0;
 }
@@ -795,10 +796,71 @@ static int launcher(int argc, char **argv) {
     return 127;
 }
 
+static void exec_stock_player(char **argv) {
+    char stock[PATH_MAX];
+    bpath(stock, "/usr/bin/mq_player");
+    argv[0] = "mq_player";
+    execv(stock, argv);
+    _exit(127);
+}
+
+static void player_status(const char *launch, const manifest *m, const char *note) {
+    char p[PATH_MAX], buf[600], name[80], version[80], noted[300];
+    bpath(p, RUN_DIR "/ui");
+    mkdirs(p, 0755);
+    bpath(p, RUN_DIR "/ui/player.json");
+    json_str(name, sizeof(name), m ? m->name : "");
+    json_str(version, sizeof(version), m ? m->version : "");
+    json_str(noted, sizeof(noted), note);
+    int n = snprintf(buf, sizeof(buf), "{\"schema\":1,\"launch\":\"%s\",\"name\":%s,\"version\":%s,\"note\":%s}\n",
+                     launch, m ? name : "null", m ? version : "null", noted);
+    if (n > 0 && n < (int)sizeof(buf)) write_atomic(p, buf, (size_t)n, 0644);
+}
+
+/* Stock's player, through the launcher a ui package brings while that package's UI runs
+   (contract, "The ui role"); the launcher ends in stock's player. Everything else, and every
+   failure here, starts stock's player at once: the player never waits for a package. */
+static int player_launcher(int argc, char **argv) {
+    (void)argc;
+    char fallback[PATH_MAX], err[200], entry[PATH_MAX];
+    fixture_init(argv[0]);
+    bpath(fallback, RUN_DIR "/ui/fallback");
+    role_state rs;
+    manifest *m = malloc(sizeof(*m));
+    if (!m || read_boot() || strcmp(mode, "platform") || exists(fallback) || rstate_read("ui", &rs) || !rs.current) {
+        player_status("stock", NULL, m ? "no ui package runs" : "out of memory");
+        exec_stock_player(argv);
+    }
+    if (slot_check("ui", rs.current, m, err, sizeof(err))) { player_status("stock", NULL, err); exec_stock_player(argv); }
+    if (!m->player[0]) { player_status("stock", m, "the ui package brings no player launcher"); exec_stock_player(argv); }
+    /* Stock's watch loop finds the player by its process name, which the kernel takes from the
+       path executed: the launcher runs through a link named mq_player, as diskOS's image does. */
+    char named[PATH_MAX], fresh[PATH_MAX];
+    bpath(entry, DATA_DIR "/ui/%c/%s", rs.current, m->player);
+    bpath(named, RUN_DIR "/ui/mq_player");
+    bpath(fresh, RUN_DIR "/ui");
+    mkdirs(fresh, 0755);
+    bpath(fresh, RUN_DIR "/ui/.mq_player.%ld", (long)getpid());
+    unlink(fresh);
+    if (symlink(entry, fresh) || rename(fresh, named)) {
+        unlink(fresh);
+        player_status("stock", m, "cannot name the player launcher");
+        exec_stock_player(argv);
+    }
+    char **envp = package_env("ui", m, rs.current, 1);
+    player_status("package", m, "");
+    argv[0] = "mq_player";
+    execve(named, argv, envp);
+    player_status("stock", m, "the player launcher did not start");
+    exec_stock_player(argv);
+    return 127;
+}
+
 int main(int argc, char **argv) {
     const char *base = strrchr(argv[0], '/');
     base = base ? base + 1 : argv[0];
     if (!strcmp(base, "mq_ui")) return launcher(argc, argv);
+    if (!strcmp(base, "mq_player")) return player_launcher(argc, argv);
     fixture_init(argv[0]);
     if (argc < 2) { fprintf(stderr, "usage: disc-boot early|start|stop|status|verify ROLE DIR [options]\n"); return 2; }
     if (!strcmp(argv[1], "early")) { options(argc, argv, 2); return cmd_early(); }

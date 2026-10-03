@@ -172,6 +172,24 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   with Play and run on a stock-init guest with an update confirmed and
   rolled back (snowsky-disc-server `0734ee0`, `b070557`, `bc629db`; its
   plan, stage 1, steps 3 and 4).
+- [ ] The card guard and a `ui` package's player launcher (owner,
+  2026-10-03, found while preparing diskOS's package): stock's player runs
+  `umount` and then `rm -rf` on the card's mount point without checking the
+  unmount, which empties a card held busy (read in the V2.57 `mq_player`;
+  one open file and a card event emptied the guest's card). The image adds
+  `/sbin/mq_player` and `/opt/disc-boot/guard/rm`: both wrappers put the
+  guard first in the `PATH` of stock's player and UI in every mode, and it
+  refuses an `rm` of the mount point or a folder above it (the mount point
+  itself only goes when empty). A `ui` package may name `player`, its own
+  launcher of stock's player, which boot runs as `mq_player` while that
+  package's UI runs; stock's player starts at once otherwise. Host evidence:
+  `test_boot` (the launcher, its status, the fallback, stock mode, a slot
+  that fails its check, the manifest's refusals), `test_package` (the tool
+  and `disc-boot` agree on seven more packages), `test_deployment` (the
+  image's additions, both wrappers, the guard refusing nine spellings of the
+  mount point and its parents and passing what lies on the card, under
+  `sh` on macOS and `dash`), and the guard under the guest's BusyBox.
+  Open: the packed tree and the guest acceptance on a new image.
 - [ ] diskOS's UI as a `ui` package beside our server and player, on the
   guest (owner, 2026-10-02).
 

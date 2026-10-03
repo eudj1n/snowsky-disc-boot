@@ -86,6 +86,20 @@ only through USB Boot; everything above it becomes files.
   (plan, stage 4). Port B also carries the charger, card and power-detect
   pins (GPB0, GPB6, GPB20), so its whole word varies (`0xF6EFE127` is a
   V2.40 read); boot reads bits 13 and 15 only.
+- Stock's player can delete the mounted card (read in the V2.57 `mq_player`
+  and run on the guest, 2026-10-03; diskOS 1.1.3 found the same on V2.09,
+  V2.28 and V2.40). Its mount routine (`util/src/mount_storage_dev.c`,
+  `0x4c42b8`) runs `umount /tmp/sdcard`, ignores the answer and runs
+  `rm -rf /tmp/sdcard` (`0x4c4390`–`0x4c43f4`); it is called from
+  `on_sdcard_event` (card events) and from `loop_mode_handle_thread` (mode
+  changes). While anything holds a file on the card open (a server
+  streaming a track, say) the unmount fails and the removal empties the
+  mounted card: on the guest one open file and a card event took a card
+  from three files to none. Stock's UI is built with the same routine.
+  Stock starts both programs by name through `PATH` (`fiio_init.sh`, its
+  first start and its watch loop), and BusyBox 1.31.1's `sh` finds `rm`
+  through `PATH` (checked on the guest), so a guard first in their `PATH`
+  takes the removal (below, "The card guard").
 - The emulator (snowsky-disc-qemu `d7f1b9b`) runs stock's `rcS`,
   `fiio_init.sh` and its watch loop, models the port B word in `/dev/mem`
   with keys held from power-on, and power events (reboot and off through
@@ -179,6 +193,12 @@ Distributed as a zip; staged and installed as a folder with `package.json`:
   checks free space first and keeps 16 MiB of `/usr/data` for stock.
 - A `ui` package's entry is named `mq_ui`, because stock's watch loop finds
   the UI by that exact process name.
+- A `ui` package may name `player`, a listed `0755` file: its own launcher
+  of stock's player (diskOS's sets up its card protection there and tells
+  its UI so). Boot runs it as `mq_player` while that package's UI runs (not
+  after a fallback to stock's UI), with the package's environment; it must
+  end in `exec /usr/bin/mq_player` and never keep the player from starting.
+  A `service` package with `player` is refused.
 - A package may carry its own shared libraries in `lib/`; boot puts that
   folder ahead of stock's `LD_LIBRARY_PATH`. Helper programs (diskOS's SSH
   tooling, say) are ordinary listed files of the package, found through
@@ -254,7 +274,8 @@ next start (stock restarts the UI, and with it the player, when it exits).
 
 ## The `ui` role
 
-Three pieces keep stock's UI independent of the boot program:
+Three pieces keep stock's UI independent of the boot program (and two more
+do the same for its player):
 
 - `/sbin/mq_ui`, a shell script ahead of `/usr/bin` in the `PATH`
   `fiio_init.sh` runs with (its first start and every restart from its watch
@@ -273,6 +294,33 @@ Three pieces keep stock's UI independent of the boot program:
   the launcher falls back to stock's UI for the rest of the boot
   (`/run/disc-boot/ui/fallback`), since every crash also restarts
   `mq_player`.
+- `/sbin/mq_player`, the same kind of script for stock's player: with
+  `ui-launch` and no fallback it starts `/opt/disc-boot/mq_player`, another
+  link to `disc-boot`, and stock's `/usr/bin/mq_player` otherwise. By that
+  name the boot program checks the `ui` slot and execs the package's
+  `player` launcher as `mq_player`, through the link
+  `/run/disc-boot/ui/mq_player` (stock's watch loop finds the player by its
+  process name, which the kernel takes from the path executed: tested on the
+  guest, BusyBox's `pgrep -x` matches that name); without one, or when anything fails
+  (stock mode, an unreadable state, a slot that fails its check), it execs
+  stock's player at once and says why in `/run/disc-boot/ui/player.json`.
+  Every crash of the player restarts the UI too, so the UI's own count of
+  starts bounds a launcher that fails.
+
+## The card guard
+
+`/opt/disc-boot/guard/rm` is first in the `PATH` of stock's player and UI
+(both wrappers put it there, in every mode, and a `ui` package and its
+player launcher inherit it). It refuses an `rm` that names the card's mount
+point (from the firmware profile) or a folder above it, in any spelling
+(trailing or repeated slashes, `.` and `..`, a relative path, a link); the
+mount point itself is removed only when it is an empty folder (`rmdir`,
+which a mounted card refuses), which is what stock meant. Everything else,
+files and folders on the card included (stock's own file manager deletes
+them with `rm -rf`), goes to the real `rm` unchanged. A refusal answers 0, as
+stock ignores the answer, and is logged to `/run/disc-boot/guard.log`
+(capped at 64 KiB). It guards this removal, not every way to lose data; a
+service package starts with its own `PATH` and does not need it.
 
 ## Recovery from the card (Play at power-on)
 
@@ -333,8 +381,11 @@ enforce this: packages run as root, at the installer's risk.
   rollback returns to while its slot still holds it, else null (written
   with the rest of the status; a package compares `manifest` with
   `$DISC_BOOT_INACTIVE/package.json` to see whether it staged over it since).
-- `disc-boot status` prints the three together; the server shows them in its
-  diagnostics.
+- `ui/player.json`: how stock's player last started while a `ui` package was
+  installed (`launch`: `package` or `stock`, the package, a note).
+- `guard.log`: the card guard's refusals.
+- `disc-boot status` prints the first three and `player` together; the
+  server shows them in its diagnostics.
 
 ## USB console
 
@@ -372,8 +423,9 @@ back (Volume Up for stock, USB Boot for the stock image).
   is replaced by the default mode); the console's marker stays.
 - The image builder's invariant stays: stock objects unchanged, only listed
   additions. The boot image adds `/opt/disc-boot/` (`disc-boot`, the
-  `mq_ui` link to it, the console `disc-usb-console`, `boot-report.sh`),
-  `/sbin/mq_ui`, and the hooks `S22disc-boot`, `S99disc-boot` and
+  `mq_ui` and `mq_player` links to it, the card guard `guard/rm`, the
+  console `disc-usb-console`, `boot-report.sh`), `/sbin/mq_ui`,
+  `/sbin/mq_player`, and the hooks `S22disc-boot`, `S99disc-boot` and
   `S99disc-usb`. The console and the report moved from `/opt/disc-web/` with
   stage 1; the console's hook name, gadget and marker stay.
 
@@ -386,8 +438,9 @@ back (Volume Up for stock, USB Boot for the stock image).
   lifecycle, requests, recovery and the launcher behind the real wrapper. The
   same tests run on Linux against the MIPS build under `qemu-user`.
 - Packed tree (`tests/integration/boot_layer.py`): the image's hooks and
-  wrapper on its own stock BusyBox with the production build and its real
-  timings, stock's `PATH` lookup of `mq_ui` included.
+  wrappers on its own stock BusyBox with the production build and its real
+  timings, stock's `PATH` lookup of `mq_ui` and `mq_player` included, and
+  stock's "umount, then rm -rf" on a busy mount through the guard.
 - Guest (V2.57), once the emulator runs stock's init: power loss between
   steps (kill and reboot), `stock` and `platform` boots, a `ui` package under
   stock's watch loop.
@@ -399,15 +452,16 @@ back (Volume Up for stock, USB Boot for the stock image).
 The contract holds when projects that know nothing of each other run side by
 side through it: **diskOS's UI as the `ui` package and our server as the
 `service` package, with the player on the card**, first on the guest, then on
-the device. diskOS (MIT) is built from its own sources; nothing of it enters
-this repository.
+the device. diskOS (MIT; its UI under `ui/` is GPL-3.0) is built from its
+own sources, locally; nothing of it enters this repository or is passed on.
 
 What diskOS's image adds today and how each part maps:
 
 | diskOS image today | As a package |
 | --- | --- |
 | Its `mq_ui` in `/opt/diskos`, copied to `/usr/data` and checked against a baked manifest by `S97diskos_install` | The `ui` package's entry; boot verifies and installs it |
-| A patch of `fiio_init.sh` that runs `/usr/data/mq_ui` and `/usr/data/mq_player` (a link to stock's player) | Boot's `/sbin/mq_ui` launcher; stock's player untouched |
+| A patch of `fiio_init.sh` that runs `/usr/data/mq_ui` and `/usr/data/mq_player` (a link to its UI binary, which as `mq_player` sets up its card guard, tells its UI and execs stock's player) | Boot's `/sbin/mq_ui` launcher, and `/sbin/mq_player` running the package's `player` (the same binary); stock's player itself untouched |
+| `/tmp/.diskos_boot_select`, written by its `S96` hook, without which its UI runs stock's | Written by the package's own `mq_ui` entry before it starts the UI: boot already chose (open: a release that takes boot's mode) |
 | Its own Volume Up check and "Default UI" file | Boot's modes; diskOS's check becomes redundant (harmless: with the key held boot already runs stock's UI) |
 | Dropbear and `diskos-debug.sh` under `/usr/project` | Listed files of the package, found through `$DISC_BOOT_SLOT` |
 | Dev variant's always-on USB serial shell | Boot's console (one gadget owner) |

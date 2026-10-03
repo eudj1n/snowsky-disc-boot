@@ -134,6 +134,10 @@ def load(folder):
     m['entry'] = root.get('entry')
     if not path_ok(m['entry']):
         fail('entry must be a listed relative path')
+    player = root.get('player', Missing)
+    if player is not Missing and not path_ok(player):
+        fail('player must be a listed relative path')
+    m['player'] = None if player is Missing else player
     ready = root.get('ready', Missing)
     if ready is not Missing and not integer(ready, 1, MAX_READY):
         fail('ready must be 1-120 seconds')
@@ -173,6 +177,10 @@ def load(folder):
         fail('entry must be a listed file with mode 0755')
     if m['role'] == 'ui' and m['entry'].rsplit('/', 1)[-1] != 'mq_ui':
         fail("a ui package's entry must be named mq_ui")
+    if m['player'] is not None and m['role'] != 'ui':
+        fail('only a ui package brings a player launcher')
+    if m['player'] is not None and m['files'].get(m['player'], {}).get('mode') != '0755':
+        fail('player must be a listed file with mode 0755')
     m['bytes'] = total
     return m
 
@@ -240,7 +248,8 @@ def check(folder, role=None, profile=None, arch=ARCH, check_modes=True):
     return m
 
 
-def describe(folder, name, version, role, entry, args=(), ready=None, profiles=None, arch=ARCH, boot_api=BOOT_API):
+def describe(folder, name, version, role, entry, args=(), ready=None, profiles=None, arch=ARCH, boot_api=BOOT_API,
+             player=None):
     """package.json for a folder: every file with its size, digest and mode (0755 when executable)."""
     folder = Path(folder)
     files = {}
@@ -260,9 +269,13 @@ def describe(folder, name, version, role, entry, args=(), ready=None, profiles=N
         fail(f'the entry {entry} is not in the folder')
     if files[entry]['mode'] != '0755':
         fail(f'the entry {entry} is not executable')
+    if player is not None and files.get(player, {}).get('mode') != '0755':
+        fail(f'the player launcher {player} is not an executable file of the folder')
     manifest = dict(schema=1, name=name, version=version, role=role, bootApi=boot_api, arch=arch,
                     profiles=list(profiles or [load_profile()['version']]), entry=entry, args=list(args),
                     ready=30 if ready is None else ready, files=files)
+    if player is not None:
+        manifest['player'] = player
     text = json.dumps(manifest, indent=2) + '\n'
     if len(text.encode()) >= MANIFEST_BYTES:
         fail('package.json would exceed 64 KiB')
@@ -390,6 +403,7 @@ def main():
     d.add_argument('--version', required=True)
     d.add_argument('--role', choices=ROLES, required=True)
     d.add_argument('--entry', required=True)
+    d.add_argument('--player', help="A ui package's own launcher of stock's player (it ends in /usr/bin/mq_player)")
     d.add_argument('--arg', action='append', default=[], help='An argument for the entry (repeat for more)')
     d.add_argument('--ready', type=int, help='Seconds to become ready (1-120, default 30)')
     d.add_argument('--profile', action='append', help='A supported firmware profile (default: the active one)')
@@ -413,7 +427,8 @@ def main():
     args = p.parse_args()
     try:
         if args.command == 'describe':
-            m = describe(args.source, args.name, args.version, args.role, args.entry, args.arg, args.ready, args.profile, args.arch)
+            m = describe(args.source, args.name, args.version, args.role, args.entry, args.arg, args.ready, args.profile, args.arch,
+                         player=args.player)
             out = dict(name=m['name'], version=m['version'], role=m['role'], files=len(m['files']),
                        bytes=sum(f['size'] for f in m['files'].values()))
         elif args.command == 'check':
