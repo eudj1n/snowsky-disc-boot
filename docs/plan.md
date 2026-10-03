@@ -398,8 +398,9 @@ boot menu").
       reader payload (`device/acquisition/`) to read every block.
     - [ ] `--guest`: the emulator's guest as the player.
   - [ ] The first boot with Play and `.disc/boot/result.json` read back.
-- [ ] `console.py`, the player's USB console from this computer (owner,
-  2026-10-03): find the ACM port, run commands and read their answers (the
+- [x] `console.py`, the player's USB console from this computer (owner,
+  2026-10-03; built the same day, `tests/conformance/test_console.py` on a
+  pseudo-terminal, not yet run on the player): find the ACM port, run commands and read their answers (the
   shell wants `\n` line endings), send a file to `/tmp` and check its
   SHA-256 (the way `keygrab` went over), and the read-only facts this
   session took by hand (keys, watchdog, input devices, memory), never the

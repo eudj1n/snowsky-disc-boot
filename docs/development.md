@@ -11,6 +11,7 @@
 | `device/vendor/jsmn/` | The JSON tokenizer (MIT, pinned) |
 | `device/menu/` | `disc-menu`, the boot menu package: the screen (`draw.c`), the list, keys and touch, the hand-over (`menu.c`) and its font (`font.h`, generated) |
 | `scripts/menu_font.py` | Rasterises Inter into `device/menu/font.h` (the toolchain has no font rasteriser) |
+| `console.py` | The player's USB console: commands, a shell, a file to `/tmp`, a read-only summary |
 | `install.py`, `scripts/installer/` | The guided installer: the terminal look in the menu's colours (`tui.py`), the card (`card.py`), the steps (`flow.py`) |
 | `catalog/packages.json`, `scripts/catalog.py` | The packages the installer offers, and their checks and fetching |
 | `device/src/usb_console.c` | The USB ACM engineering console |
@@ -116,6 +117,17 @@ beside the image the same way (`RESTORE`). `--fault no-device`, `bad-blocks=N,M`
 and nothing retried. Without `--simulate` the step says that the write into a player is the next
 part (the reviewed tools in `scripts/deployment/`). `tests/conformance/test_installer.py` runs both
 on a card folder and a 64-block simulated player.
+
+## The player's console
+
+`python3 console.py` works the player's USB console (the card's `.disc/dev/usb-console` marker,
+the cable to this computer): `find` lists the ports, `run` gives each command's output and exit
+status (its end found by a marker of that call), `shell` is interactive (Ctrl-] leaves), `send`
+puts a file into `/tmp` gzipped in base64 lines and checks its SHA-256 there, and `facts` reads
+a summary (firmware, boot status, the keys' word, the watchdog's holder, the input devices,
+memory, `/usr/data`, the partitions). It refuses any command that names the serial number, a
+MAC address, a token or a raw partition. `tests/conformance/test_console.py` runs it against a
+pseudo-terminal whose other end is a shell.
 
 ## The image and its guest
 
