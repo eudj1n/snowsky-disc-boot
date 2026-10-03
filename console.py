@@ -120,9 +120,10 @@ class Console:
             raise ConsoleError(f'the copy on the player does not match: {out.strip()[:80]}')
         return dict(remote=remote, bytes=len(data), sha256=digest)
 
-    def shell(self):
-        """Keys to the player and its answers back, until Ctrl-]."""
-        stdin = sys.stdin.fileno()
+    def shell(self, echo=True):
+        """Keys to the player and its answers back, until Ctrl-]. The player's shell does not echo
+        what it is sent, so the keys are shown here (Backspace rubs out, Enter starts a line)."""
+        stdin, stdout = sys.stdin.fileno(), sys.stdout.fileno()
         saved = termios.tcgetattr(stdin)
         try:
             tty.setraw(stdin)
@@ -131,14 +132,18 @@ class Console:
                 ready, _, _ = select.select([stdin, self.fd], [], [])
                 if self.fd in ready:
                     try:
-                        os.write(sys.stdout.fileno(), os.read(self.fd, 65536))
+                        os.write(stdout, os.read(self.fd, 65536).replace(b'\r\n', b'\n').replace(b'\n', b'\r\n'))
                     except BlockingIOError:
                         pass
                 if stdin in ready:
                     key = os.read(stdin, 1024)
                     if b'\x1d' in key:
+                        os.write(stdout, b'\r\n')
                         return
-                    self.write(key.replace(b'\r', b'\n').decode(errors='replace'))
+                    if echo:
+                        shown = key.replace(b'\r', b'\r\n').replace(b'\x7f', b'\b \b')
+                        os.write(stdout, shown)
+                    self.write(key.replace(b'\r', b'\n').replace(b'\x7f', b'\b').decode(errors='replace'))
         finally:
             termios.tcsetattr(stdin, termios.TCSADRAIN, saved)
 
@@ -147,10 +152,10 @@ class Console:
 FACTS = {
     'kernel': 'uname -r',
     'uptime': 'cut -d" " -f1 /proc/uptime',
-    'firmware': 'grep -E "^(VERSION|MAIN_OS_VERSION|BUILD_TYPE)=" /etc/product_version/version.in 2>/dev/null',
+    'firmware': 'grep -E "^[A-Z_]*VERSION[A-Z_]*=|^BUILD_TYPE=" /etc/product_version/version.in 2>/dev/null | tr -d "\\r"',
     'boot': '[ -x /opt/disc-boot/disc-boot ] && /opt/disc-boot/disc-boot status || echo none',
     'keys': 'devmem 0x10010100 32 2>/dev/null',
-    'watchdog': 'for p in /proc/[0-9]*; do for f in $p/fd/*; do case "$(readlink $f 2>/dev/null)" in *watchdog*) echo "${p#/proc/} $(cat $p/comm)";; esac; done; done; true',
+    'watchdog': 'w=$(for p in /proc/[0-9]*; do for f in $p/fd/*; do case "$(readlink $f 2>/dev/null)" in *watchdog*) echo "${p#/proc/} $(cat $p/comm)";; esac; done; done); echo "${w:-nobody holds it open (stock\'s player runs cmd_watchdog per call)}"',
     'input': 'for p in /proc/[0-9]*; do for f in $p/fd/*; do t=$(readlink $f 2>/dev/null); case "$t" in */input/event*) echo "$(cat $p/comm) $t";; esac; done; done; true',
     'memory': 'grep -E "^(MemTotal|MemAvailable):" /proc/meminfo',
     'userdata': 'df -k /usr/data | tail -1',
@@ -179,7 +184,8 @@ def main():
     r = sub.add_parser('run', help='Run commands and print their output')
     r.add_argument('commands', nargs='+')
     r.add_argument('--timeout', type=float, default=30)
-    sub.add_parser('shell', help='An interactive shell (Ctrl-] leaves)')
+    sh = sub.add_parser('shell', help='An interactive shell (Ctrl-] leaves)')
+    sh.add_argument('--no-echo', action='store_true', help='Do not show the keys here (for a shell that echoes them)')
     s = sub.add_parser('send', help='Send a file into the player\'s /tmp, checked by SHA-256')
     s.add_argument('local')
     s.add_argument('remote')
@@ -206,7 +212,7 @@ def main():
                         print(f'(exit {status})', file=sys.stderr)
                 return status
             if args.command == 'shell':
-                console.shell()
+                console.shell(echo=not args.no_echo)
                 return 0
             if args.command == 'send':
                 print(json.dumps(console.send(args.local, args.remote), indent=2))
