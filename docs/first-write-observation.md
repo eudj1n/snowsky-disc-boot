@@ -69,8 +69,19 @@ stock's pair watched for 45 s after four boots, `two_packages.py` 6 of 6, `menu_
 | Write | session `46444d85`, 08:35:54–09:01:36Z, `writer-completion-observed`, 768 blocks, bad blocks 383 and 716, no retries; admission closed |
 
 The first start looped as the first write's had: logo, stock's UI, again about every 5 s.
-Taking the card out changed nothing. The player was left to run down (about 12 h); the way
-back is the restore of the same package (`install.py --restore --run`).
+Taking the card out changed nothing. The player was left to run down, then Volume Down with the
+cable reached USB Boot, and `install.py --restore --run work/install-20261005-122816` took it
+back to stock with the same package (run `install-20261005-180404`):
+
+| Step (2026-10-05) | Observed |
+| --- | --- |
+| Write, straight away (no readback of the failed image) | session `37846365`, 13:04:13–13:30:10Z, `writer-completion-observed`, 768 blocks, bad blocks 383 and 716, no retries; admission closed |
+| The owner's look | stock started, the interface steady, volume, playback and the power key working (13:31:28Z) |
+| Readback, a fresh entry | session `8e4fd642`, 13:32:21–14:10:26Z, all 50,816 records `saved-logical-readback-matches` against stock (`e75d85bd…`) |
+| Audits | `saved-restore-write-trace-matches`, `saved-postwrite-trace-matches` |
+
+The installer profile keeps that package's review pin (`0e1f262a…`); the player's history for
+the next installation is this restore (`work/install-20261005-122816/usb/history.json`).
 
 ## The cause
 

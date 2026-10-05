@@ -545,8 +545,11 @@ name ([observation](first-write-observation.md)).
   `early exit 0`, `start exit 0`, the wrappers' starts with their uptime);
   `boot_guest.py` checks it at its first boot since. On the guest the boot id
   is the Docker VM's and repeats; the uptime starts again at each boot.
-- [ ] Back to stock after the second write (the package's restore,
-  `install.py --restore --run`).
+- [x] Back to stock after the second write (2026-10-05, the package's
+  restore, `install.py --restore --run`): write `37846365` straight away,
+  the owner's look (stock steady), readback `8e4fd642` matching stock in all
+  50,816 records, both journals audited; the installer profile pins that
+  package's review (`0e1f262a…`).
 - [x] Logs that survive a reset (owner, 2026-10-05), before the next write
   of the boot layer: everything the layer wrote went to `/run` (a tmpfs, gone
   at each reset) and the card's boot report waits 45 s. The boot log is
