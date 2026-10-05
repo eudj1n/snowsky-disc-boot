@@ -163,7 +163,11 @@ FACTS = {
     'boot': '[ -x /opt/disc-boot/disc-boot ] && /opt/disc-boot/disc-boot status || echo none',
     # The early hook's output and exit status (the owner's player, 2026-10-05: no run folder, no way to see why).
     'early': 'tail -n 8 /run/disc-boot-early.log 2>/dev/null || echo none; ls -d /run/disc-boot 2>/dev/null || echo "no run folder"',
-    'pair': 'for p in /proc/[0-9]*; do c=$(cat $p/comm 2>/dev/null); case "$c" in mq_ui|mq_player) echo "$c ${p#/proc/}";; esac; done; tail -n 3 /usr/data/fiio/log/process_failed.txt 2>/dev/null; true',
+    # The pair as stock's watch loop sees it: pgrep -x matches argv[0] before the name (2026-10-05).
+    'pair': 'for p in /proc/[0-9]*; do c=$(cat $p/comm 2>/dev/null); case "$c" in mq_ui|mq_player) echo "$c ${p#/proc/} argv0 $(tr "\\0" " " <$p/cmdline | cut -d" " -f1)";; esac; done; '
+            'echo "pgrep -x: mq_ui $(pgrep -x mq_ui | wc -l), mq_player $(pgrep -x mq_player | wc -l)"; tail -n 3 /usr/data/fiio/log/process_failed.txt 2>/dev/null; true',
+    # The boot log that survives a reset: each boot's section, the decision, each start of the pair.
+    'bootlog': 'tail -n 24 /usr/data/disc-boot/boot.log 2>/dev/null || echo none',
     'keys': 'devmem 0x10010100 32 2>/dev/null',
     'watchdog': 'w=$(for p in /proc/[0-9]*; do for f in $p/fd/*; do case "$(readlink $f 2>/dev/null)" in *watchdog*) echo "${p#/proc/} $(cat $p/comm)";; esac; done; done); echo "${w:-nobody holds it open (stock\'s player runs cmd_watchdog per call)}"',
     'input': 'for p in /proc/[0-9]*; do for f in $p/fd/*; do t=$(readlink $f 2>/dev/null); case "$t" in */input/event*) echo "$(cat $p/comm) $t";; esac; done; done; true',

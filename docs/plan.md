@@ -462,14 +462,18 @@ boot menu").
 
 ## Stage 4b — after the first write (2026-10-04/05)
 
-The first write of image b43034b ended in stock's UI restarting without end
-on the owner's player: the player's wrapper did not fail open and the boot
-program made no run folder there
-([observation](first-write-observation.md)).
+The first two writes (images b43034b and fc47ae4) ended in stock's UI
+restarting without end on the owner's player. The cause (found 2026-10-05):
+the image's wrappers started stock's UI and player by their paths, and
+BusyBox's `pgrep -x`, with which stock's watch loop looks for them, matches
+`argv[0]` first; the loop never found them and restarted the pair every few
+seconds. The guest hid it: under qemu-user `pgrep` falls back to the process
+name ([observation](first-write-observation.md)).
 
 - [x] Reconstructed and reproduced on the guest (2026-10-04): no stock
   player, stock's watch loop restarting the UI every 7–8 s, the power key
-  and USB Boot out of reach without a reset.
+  and USB Boot out of reach without a reset. (A real defect, not the cause;
+  see the cause below.)
 - [x] Both wrappers fail open (2026-10-05):
   `tests/conformance/test_wrappers.py` under dash, BusyBox ash and bash in
   POSIX mode; the old line fails it.
@@ -501,19 +505,59 @@ program made no run folder there
 - [ ] The fixed image written in steps: no package first (the console's marker only), checked
   on the player through the console (stock, the power key, the boot
   program's log and why it made no run folder), then the packages.
-- [ ] Why `disc-boot early` made no run folder on the device.
-- [ ] The second write (image fc47ae4, 2026-10-05: write `46444d85` exact,
+- [x] The second write (image fc47ae4, 2026-10-05: write `46444d85` exact,
   the read by digest agreeing with the full backup and with stock) restarted
-  without end too: the fail-open wrappers were not the whole cause.
-- [ ] Logs that survive a reset (owner, 2026-10-05), before the next write
+  without end too, card or no card: the fail-open wrappers were not the cause.
+- [x] The cause found and reproduced (2026-10-05): BusyBox 1.31.1's `pgrep`
+  tries `argv[0]` first and the process name only when the pattern is
+  nowhere in it; `exec /usr/bin/mq_ui` made `argv[0]` the path, so
+  `pgrep -x mq_ui` found nothing. On a native kernel with `busybox:1.31.1`, a
+  loop like stock's over compiled stand-ins restarted the pair at every check
+  through fc47ae4's wrappers and left it alone through the new ones. Whether
+  `disc-boot early` made its run folder on the player is no longer needed to
+  explain the loop; the boot log will say.
+- [x] The wrappers start the launcher or stock's program from its own path
+  with `exec -a` and the bare name (BusyBox ash has it; a shell without it
+  starts by path); the contract's "Process names" asks the same of packages
+  (a `ui` package's `player` ends in `exec -a mq_player /usr/bin/mq_player`).
+  `test_wrappers.py` checks `argv[0]` with compiled stand-ins under dash,
+  BusyBox 1.31.1 ash and bash in POSIX mode (fc47ae4's wrappers fail it);
+  `boot_guest.py` checks the pair as the player's `pgrep` sees it (`argv[0]`
+  from `cmdline`) and refuses fc47ae4 on the guest. Folders of links named as
+  stock's programs, tried first, changed the path the emulator finds stock's
+  player by (the guest's card events failed); `exec -a` keeps it.
+- [x] The image builder keeps stock exactly (2026-10-05): both written
+  images had lost 453 of stock's modes and owners (setuid of `/bin/busybox`
+  and D-Bus's launch helper, 449 group-writable bits, two owners), built on a
+  macOS share mounted into Docker and checked against the same damaged tree.
+  It now works in a scratch folder of the container's own file system,
+  refuses a file system that changes stock's tree on extraction and compares
+  the packed image's listing with stock's (`stock-listing.txt`,
+  `candidate-listing.txt`): built on the same share, 0 stock entries differ.
+- [x] The fixed image accepted on the guest (2026-10-05, image `f683f082…`,
+  the boot binaries of build `a16c806ab4ac`, emulator 690a55c): `boot_guest.py`
+  16 of 16, the player's `pgrep` finding the pair after every steady boot, with
+  a ui package and after the menu's hand-over; `two_packages.py` 6 of 6;
+  `menu_guest.py` 3 of 3 with the menu 2.57.1; `boot_report.py` and
+  `boot_layer.py` on the packed tree; `install.py --guest` with the first
+  write's catalog (installed by Play, the menu answered, the service
+  confirmed). Two more boots showed the boot log's sections (the decision,
+  `early exit 0`, `start exit 0`, the wrappers' starts with their uptime);
+  `boot_guest.py` checks it at its first boot since. On the guest the boot id
+  is the Docker VM's and repeats; the uptime starts again at each boot.
+- [ ] Back to stock after the second write (the package's restore,
+  `install.py --restore --run`).
+- [x] Logs that survive a reset (owner, 2026-10-05), before the next write
   of the boot layer: everything the layer wrote went to `/run` (a tmpfs, gone
-  at each reset) and the card's boot report waits 45 s. A boot log in
-  `/usr/data/disc-boot/boot-log` (UBIFS, mounted by S21 before S22; a ring of
-  about 20 boots): the early program's first line before anything else, its
-  decision, what each wrapper started, the late hooks' results, every write a
-  plain redirection whose failure is ignored. Not the card: it is mounted
-  later by stock's player, which remounts it at start, and a FAT written
-  through resets is at risk.
+  at each reset) and the card's boot report waits 45 s. The boot log is
+  `/usr/data/disc-boot/boot.log` (UBIFS, mounted by S21 before S22): the
+  early hook opens each boot's section (boot id, uptime) before the boot
+  program runs, then adds its output, exit status and `boot.json`; each start
+  of the pair by the wrappers adds the uptime, the name and whether the boot
+  layer chose a package; the start hook its status. Plain commands whose
+  failure is ignored; 256 KiB, then `boot.log.1` (the early hook rotates
+  it). Not the card: it is mounted later by stock's player, which remounts
+  it at start, and a FAT written through resets is at risk.
 - [ ] The userdata partition read through USB Boot: the reader's raw pages
   of `userdata`, its UBIFS taken apart offline (the boot log and stock's own
   `/usr/data/fiio/log/process_failed.txt` from a system that never stays

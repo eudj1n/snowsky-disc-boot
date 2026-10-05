@@ -194,6 +194,18 @@ docker run --rm --network none -e PYTHONPATH=/repo -v <emulator>:/repo:ro -v <fi
   --boot /src/build/mips/disc-boot --output /out/build
 ```
 
+The builder unpacks, changes and packs stock's tree in a scratch folder of
+the container's own file system (`DISC_IMAGE_SCRATCH` names another): a
+share from macOS keeps neither owners nor every mode bit, and the first two
+images written to the owner's player lost 453 of stock's (setuid of
+`/bin/busybox` among them). It refuses a folder whose file system changed
+stock's tree on extraction and compares the packed image's own listing
+(`unsquashfs -lln`) with stock's: every stock entry exactly (type, every
+mode bit, owner, size, link target), nothing but the boot layer's additions.
+Both listings go to the output (`stock-listing.txt`, `candidate-listing.txt`)
+with the images, `report.json` and `verified-tree`, the packed tree for the
+integration tests.
+
 `scripts/guest.py` runs such an image on a disposable stock-init guest of the
 emulator, at a revision reviewed for the firmware (`firmware/emulator-revisions.json`,
 kept apart from the profiles: their fingerprint is pinned by other reviews).
@@ -213,7 +225,11 @@ python3 scripts/guest.py status | down
 ```
 
 `boot_guest.py` is the guest acceptance (plan, stage 2): about 40 minutes,
-since a version is confirmed after 180 s of running. The server repository
+since a version is confirmed after 180 s of running. It checks stock's pair
+the way the player's `pgrep -x` finds it, by `argv[0]` (the third field of
+`cmdline` under qemu-user): `pgrep` in the guest falls back to the process
+name and cannot show a program started by its path (contract, "Process
+names"). The server repository
 drives the same wrapper with a record of its own (`--state`).
 
 The two-package acceptance (plan, stage 3) runs our server beside diskOS's
