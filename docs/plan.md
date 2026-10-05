@@ -617,12 +617,38 @@ name ([observation](first-write-observation.md)).
   answer USB while it runs (diskOS waits the same for `my_write5`), while
   programming 768 blocks takes about a minute by the chip's timings; and
   the staging takes about 11 min of transfers (two RAM pattern passes over
-  ~100 MB and the image's upload and comparison). diskOS 1.2.0's
-  `my_write6` hashes the staged image in DRAM before writing and records
-  timing samples of every NAND command in its debug block: its review gives
-  both the check on the device and the measured writer time from which a
-  wait may be computed. A too-early look at a writer is an unknown outcome
-  for these tools, so the wait shortens only on measurements.
+  ~100 MB and the image's upload and comparison). A too-early look at a
+  writer is an unknown outcome for these tools, so the wait shortens only
+  on measurements. After the third write, as a stage of its own (owner,
+  2026-10-05): the third write keeps today's pipeline, proven exact four
+  times, so that it tests the boot layer's fix and nothing else.
+  - [x] `my_write6` reviewed (2026-10-05, diskOS 1.2.0 `0edcfba`). It is
+    `my_write5` (our pinned writer `4f23a3c9…`, unchanged in 1.2.0) plus a
+    gate before the NAND is unlocked: the staged image's SHA-256 computed in
+    DRAM against a host plan blob, and the kernel, the recovery kernel and the
+    recovery rootfs read and hashed against a catalogue. Its CP0 Count timing
+    (64-bit accumulation, CPCCR/CPAPCR kept for the conversion) is compiled
+    only into the builds that write nothing (`PROBE_ONLY`, `GATE_ONLY`), so it
+    measures no writer; diskOS waits 18 min for it instead of 15 (its hashes,
+    not measured either). `my_write5` already verifies every block by reading
+    it back against the source in DRAM, with retries. Adopting `my_write6`
+    would shorten nothing.
+  - [x] Where the write session's 26 min go (the second write's journal):
+    576 MiB over USB in 64 KiB calls, about 0.9 MB/s. The two RAM pattern
+    passes over the image's 96 MiB region (written and read back twice,
+    about 7 min), the image's upload (about 2 min), its read back for the
+    comparison (about 2 min), then the writer's fixed 15 min, while
+    programming 768 blocks takes about 1–1.5 min by the chip's timings.
+  - [ ] The staged image checked on the player: a SHA-256 of the image region
+    by a payload of ours (the digest payload's SHA-256), compared with the
+    image's, instead of reading 96 MiB back over USB (about 2 min to seconds).
+  - [ ] The RAM check on the player: the pattern passes run by a payload in
+    DRAM, only their verdict over USB, or one pass instead of two (3.5–7 min).
+  - [ ] A measured writer: our reproducible build of `my_write5` with
+    `my_write6`'s timing method in the write path (erase, program, verify
+    per block, the total), still waited 15 min; after a few writes the wait
+    comes from the measured maximum with a margin. With all three a write
+    session takes about 5–6 min instead of 26.
 - [ ] With the next write of the boot layer (owner, 2026-10-05): the exact
   check by digest (stage "Later", the faster exact check), a SHA-256 of
   every logical block computed on the player by the reviewed reader
