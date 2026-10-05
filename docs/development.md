@@ -253,8 +253,12 @@ The server's package comes from snowsky-disc-server (`scripts/build_package.py
 
 ## Releases
 
-A release is named after the FiiO firmware it is for and our number for it: `2.57.1` is the
-first for FiiO's 2.57, tagged `v2.57.1` (owner, 2026-10-03). Its files are built from
+A release is named after the FiiO firmware it is for and our number for it (owner, 2026-10-03):
+`2.57.2`, tagged `v2.57.2`, is the first for FiiO's 2.57. `2.57.1` was recorded but never
+tagged: the image its files went into looped on the owner's player
+(`docs/first-write-observation.md`), and a recorded number is never used again. A tag goes on
+only after the release files ran on the player in a system that stayed up (owner, 2026-10-05).
+Its files are built from
 `build/mips` by `scripts/release.py`: the boot menu's package `disc-menu-<version>.zip`,
 `disc-boot-<version>-mips.tar.gz` (`disc-boot` and `disc-usb-console` for the image
 `install.py` builds from FiiO's update) and `SHA256SUMS`. The image is never a release file,
@@ -262,14 +266,15 @@ and debug builds stay local.
 
 ```sh
 bash scripts/build.sh mips
-python3 scripts/release.py build --version 2.57.1 --output work/release-2.57.1/dist
+python3 scripts/release.py build --version 2.57.2 --output work/release-2.57.2/dist
 # the guest accepts these files (menu_guest.py, install.py --guest), then:
-python3 scripts/release.py record --version 2.57.1 --dist work/release-2.57.1/dist --accepted "<what ran>"
+python3 scripts/release.py record --version 2.57.2 --dist work/release-2.57.2/dist --accepted "<what ran>"
 ```
 
 `record` writes `releases/<version>.json` once; the catalog's entries for the release name its
 download address (`https://github.com/eudj1n/snowsky-disc-boot/releases/download/v<version>/<file>`)
-with the same digests. Pushing the tag `v<version>` runs `.github/workflows/release.yml`: the
+with the same digests. The catalog also names snowsky-disc-server's release (`disc-server`, its
+address on that repository and the digest its own record keeps) and diskOS's recipe. Pushing the tag `v<version>` runs `.github/workflows/release.yml`: the
 synthetic tests, the toolchain from its recipe, the MIPS build, `release.py build` and `check`
 (the files must be the recorded ones and the catalog must agree), then a draft release with
 the files and notes; the owner publishes it. `.github/workflows/ci.yml` builds the same files on

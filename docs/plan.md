@@ -731,6 +731,30 @@ name ([observation](first-write-observation.md)).
 - [ ] ~~The tag `v2.57.1`~~: not released (2026-10-05): its boot binaries
   have not run on a device (stage 4b). The next release takes the next
   number once the fixed image passed on the player.
+- [x] `2.57.2` recorded (2026-10-05, `releases/2.57.2.json`, build
+  `a16c806ab4ac`: `disc-menu-2.57.2.zip` `31dfe5cd…`,
+  `disc-boot-2.57.2-mips.tar.gz` `034aecee…`), released together with
+  snowsky-disc-server 2.57.1 (`disc-server-2.57.1.zip` `caca82e8…`, the
+  release variant) and the player page 2026.10.02-05a1422 (owner, 2026-10-05:
+  boot and server, the page with them). Accepted on the guest at emulator
+  `f1d5e33` (reviewed and listed in `firmware/emulator-revisions.json`):
+  `boot_guest.py` 16 of 16 (the pair as the player's `pgrep -x` finds it,
+  agreeing with the emulator's `boot_ready.watched()`), `two_packages.py` 6
+  of 6 with the release server and page, `menu_guest.py` 3 of 3 with this
+  menu, `boot_report.py`, `boot_layer.py`, and `install.py --guest` with the
+  release candidate's catalog, building its own image (every stock entry
+  exact). The catalog names the menu and the server by their releases'
+  addresses; the server is a default beside the menu. The page's zip is the
+  one its release workflow packs (Node 24): the 2026-10-02 local build held
+  the same files, its gzip twins compressed by Node 26's zlib.
+- [ ] The third write with these files, in steps (owner's go-ahead): the
+  image with no package on the card first, then the packages with Play.
+- [ ] The tags once the system stayed up on the player (owner, 2026-10-05):
+  `v2026.10.02-05a1422` on snowsky-disc-player `c87ddc2` (its workflow
+  publishes at once; the published zip's SHA-256 checked against the
+  server's catalog), `v2.57.1` on snowsky-disc-server, `v2.57.2` here; the
+  drafts rebuilt by CI and compared with the records, published by the
+  owner.
 - [ ] `install.py` takes `disc-boot` and `disc-usb-console` from the boot
   release by their digests; `build/mips` only for development.
 

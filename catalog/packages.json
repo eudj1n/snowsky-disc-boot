@@ -6,11 +6,11 @@
     {
       "name": "disc-menu",
       "role": "menu",
-      "version": "2.57.1",
+      "version": "2.57.2",
       "source": {
-        "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.1/disc-menu-2.57.1.zip",
-        "sha256": "2ab9040936c977367e73b0d9728b2ab52c342c9bad4e0befdbafdc9f9b985e9e",
-        "size": 151501
+        "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.2/disc-menu-2.57.2.zip",
+        "sha256": "31dfe5cd48dec69500df32fc09244f5e6e40349dbf15825c99dca3d6e0e96e56",
+        "size": 151500
       },
       "profiles": [
         "2.57"
@@ -19,11 +19,35 @@
       "license": "MIT; Inter (SIL OFL 1.1) as rasterised masks",
       "default": true,
       "verified": {
-        "date": "2026-10-03",
-        "boot": "b43034b",
-        "emulator": "690a55c",
+        "date": "2026-10-05",
+        "boot": "5353a5e",
+        "emulator": "f1d5e33",
         "firmware": "2.57",
-        "acceptance": "menu_guest.py; install.py --guest (installed by Play, the menu answered); release 2.57.1"
+        "acceptance": "menu_guest.py 3 of 3; install.py --guest (installed by Play, the menu answered); release 2.57.2"
+      }
+    },
+    {
+      "name": "disc-server",
+      "role": "service",
+      "version": "2.57.1",
+      "source": {
+        "url": "https://github.com/eudj1n/snowsky-disc-server/releases/download/v2.57.1/disc-server-2.57.1.zip",
+        "sha256": "caca82e8136671412e7430aa8c829b8cce5b7c5fc7e691e3bbb7b29f27d676d9",
+        "size": 835013
+      },
+      "profiles": [
+        "2.57"
+      ],
+      "bootApi": 1,
+      "license": "MIT",
+      "default": true,
+      "notes": "snowsky-disc-server's release variant; its catalog/apps.json offers the player page by default",
+      "verified": {
+        "date": "2026-10-05",
+        "boot": "5353a5e",
+        "emulator": "f1d5e33",
+        "firmware": "2.57",
+        "acceptance": "two_packages.py 6 of 6 (beside diskOS, the page served at /); install.py --guest (installed by Play, confirmed); release 2.57.1 of snowsky-disc-server"
       }
     },
     {
