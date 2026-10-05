@@ -194,6 +194,42 @@ class ReviewedTests(unittest.TestCase):
         self.assertEqual(fractions[-1], 1.0)
         self.assertTrue(any(0 < f < 1 for f in fractions), 'seen on the way')
 
+    def test_a_write_counts_its_calls_then_the_writer_s_wait(self):
+        """The writer's session (owner, 2026-10-05): staging by its calls, then the ROM's silence
+        while the writer runs, counted by the clock from the writer's start in the journal."""
+        entry, start = 2696937520, '{"phase": "attempt", "sequence": 9, "kind": "control", "request": 4, "parameter": %d, "timeout_ms": 5000}'
+        self.assertTrue(usbboot.is_writer_start((start % entry).encode(), entry))
+        self.assertFalse(usbboot.is_writer_start((start % 1).encode(), entry), 'another program start')
+        self.assertFalse(usbboot.is_writer_start(b'{"phase": "return", "sequence": 9, "code": 0}', entry))
+        # 11 min of staging, then 15 min of waiting: halfway through staging 13 + 15 min remain.
+        f = usbboot.session_fraction(0.5, 330, 900)
+        self.assertAlmostEqual(330 * (1 - f) / f, 330 + 900)
+        f = usbboot.session_fraction(1.0, 960, 900, writer_started=660)
+        self.assertAlmostEqual(960 * (1 - f) / f, 600)
+        self.assertEqual(usbboot.session_fraction(0.4, 100), 0.4, 'a read counts its calls')
+        from unittest import mock
+        tools = self.root/'tools'
+        tools.mkdir()
+        (tools/'fake_writer.py').write_text(
+            'import sys, time\nfrom pathlib import Path\nout = Path(sys.argv[sys.argv.index("--output") + 1])\n'
+            'out.mkdir(parents=True)\nfor k in range(3):\n'
+            '    with open(out/"transfers.jsonl", "a") as j:\n        j.write("{}\\n" * 20)\n    time.sleep(0.5)\n'
+            f'with open(out/"transfers.jsonl", "a") as j:\n    j.write({start % entry!r} + "\\n")\n'
+            'time.sleep(3)\nprint("written")\n')
+        seen = []
+        reviewed = usbboot.Reviewed('2.57', self.root/'usb', self.image.parent, '/diskos', '/libusb.dylib', self.history,
+                                    profile=self.profile, progress=lambda label, fraction, seconds: seen.append((fraction, seconds)))
+        with mock.patch.object(usbboot, 'DEPLOY', tools):
+            result = reviewed.session('fake_writer.py', '--output', self.root/'w', output=self.root/'w', calls=31,
+                                      label='Writing', writer=(entry, 4))
+        self.assertEqual((result.returncode, result.stdout.strip()), (0, 'written'))
+        fractions = [f for f, _ in seen]
+        self.assertEqual(fractions, sorted(fractions), 'never backwards')
+        self.assertEqual(fractions[-1], 1.0)
+        waiting = [f for f, t in seen if t > 2.5 and f < 1]
+        self.assertTrue(waiting and waiting[-1] > waiting[0], 'the wait moves the bar by the clock')
+        self.assertTrue(all(f < 0.9 for f, t in seen if t < 1.4), 'the wait ahead is counted from the start')
+
     def install(self, words=None, restore=False, run=None):
         """install.py's reviewed path with the tools replaced; words: what the owner types, in order
         (none: --yes, without questions)."""

@@ -568,7 +568,12 @@ name ([observation](first-write-observation.md)).
   backup, the write and the readback. The reviewed tools run in the
   background while the installer counts the session's batches against the
   approved plan (the reads) and the logical blocks written against the write
-  plan's 768; the tools and their checks stay as they are.
+  plan's 768; the tools and their checks stay as they are. The write counts in
+  two phases (2026-10-05, after the second write's bar said 13 minutes left
+  with 15 still to come): its calls up to the writer's start, found in the
+  journal as the program start at the approved plan's `writer_entry`, then the
+  plan's `writer_wait_ms` by the clock; while staging, the calls so far tell
+  the staging's length and the wait is added (about 11 + 15 minutes).
 - [x] The read by digest, device and host (2026-10-05): the payload
   `rootfs-digest` (`device/acquisition/digest.c`, its own SHA-256 without
   libc, 8,024 bytes, stack about 13 of 32 KiB) answers the full read's
