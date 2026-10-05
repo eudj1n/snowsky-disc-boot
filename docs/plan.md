@@ -502,6 +502,22 @@ program made no run folder there
   on the player through the console (stock, the power key, the boot
   program's log and why it made no run folder), then the packages.
 - [ ] Why `disc-boot early` made no run folder on the device.
+- [ ] The second write (image fc47ae4, 2026-10-05: write `46444d85` exact,
+  the read by digest agreeing with the full backup and with stock) restarted
+  without end too: the fail-open wrappers were not the whole cause.
+- [ ] Logs that survive a reset (owner, 2026-10-05), before the next write
+  of the boot layer: everything the layer wrote went to `/run` (a tmpfs, gone
+  at each reset) and the card's boot report waits 45 s. A boot log in
+  `/usr/data/disc-boot/boot-log` (UBIFS, mounted by S21 before S22; a ring of
+  about 20 boots): the early program's first line before anything else, its
+  decision, what each wrapper started, the late hooks' results, every write a
+  plain redirection whose failure is ignored. Not the card: it is mounted
+  later by stock's player, which remounts it at start, and a FAT written
+  through resets is at risk.
+- [ ] The userdata partition read through USB Boot: the reader's raw pages
+  of `userdata`, its UBIFS taken apart offline (the boot log and stock's own
+  `/usr/data/fiio/log/process_failed.txt` from a system that never stays
+  up); also the whole-NAND backup's missing part.
 - [x] `install.py` shows each USB session's progress to the user (owner,
   2026-10-04/05), with the next write of the boot layer: a progress bar in
   the menu's look, the percentage, the time gone and the time left, for the
@@ -527,6 +543,26 @@ program made no run folder there
   page its plan is 794 batches, 13,588 calls and 8.9 MB against the full
   read's 42,220 calls and 227.5 MB. Still to do: an offline audit of its
   journal before it may replace the full read.
+- [ ] The read by digest in portions of 16 blocks (owner, 2026-10-05): its
+  first run on the player took about 2 s a batch, as the full read does,
+  because the host sleeps the transport's fixed settle (2 s) after each of
+  the 794 batch executions, while the payload needs tens of milliseconds;
+  the digest saved only the transfers. A marker pass as now, then 49
+  executions of 1,024 pages each with a wait computed from the portion and
+  bounded, the progress in 2 % steps, about a minute a read; the completion
+  marker written last keeps a too-short wait a refused result, never a
+  wrong one. First beside the full read again.
+- [ ] The write session's waits (owner, 2026-10-05): the host sleeps a fixed
+  15 min (`writer_wait_ms`) after starting the writer, since the ROM does not
+  answer USB while it runs (diskOS waits the same for `my_write5`), while
+  programming 768 blocks takes about a minute by the chip's timings; and
+  the staging takes about 11 min of transfers (two RAM pattern passes over
+  ~100 MB and the image's upload and comparison). diskOS 1.2.0's
+  `my_write6` hashes the staged image in DRAM before writing and records
+  timing samples of every NAND command in its debug block: its review gives
+  both the check on the device and the measured writer time from which a
+  wait may be computed. A too-early look at a writer is an unknown outcome
+  for these tools, so the wait shortens only on measurements.
 - [ ] With the next write of the boot layer (owner, 2026-10-05): the exact
   check by digest (stage "Later", the faster exact check), a SHA-256 of
   every logical block computed on the player by the reviewed reader

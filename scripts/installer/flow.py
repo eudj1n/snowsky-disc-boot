@@ -436,11 +436,12 @@ class Installer:
                       readback_session_id=session, automated_boot_test=False, native_process_verified=False)
         (Path(read['capture'])/'owner-boot-confirmation.json').write_text(json.dumps(record, indent=2, ensure_ascii=False) + '\n')
 
-    def stock_back(self, reviewed, title, facts):
-        """The way back to stock in an entry into USB Boot that already read the player: the write of
-        stock's rootfs, the owner's look at it, a fresh entry for its readback, the audits."""
+    def stock_back(self, reviewed, title, facts, enter=False):
+        """The way back to stock: the write of stock's rootfs (in the entry that read the player, or
+        a fresh one when enter), the owner's look at it, a fresh entry for its readback, the audits."""
         stock = reviewed.artifacts/load_json_safe(reviewed.package/'restore-write-plan.json')['plan']['image_name']
-        self.confirm(title, ['Stay connected: stock\'s rootfs is written in this same entry into USB Boot, once.'], 'RESTORE')
+        self.confirm(title, ([self.ENTER, self.STUCK, 'Next: stock\'s rootfs, written once.'] if enter else
+                             ['Stay connected: stock\'s rootfs is written in this same entry into USB Boot, once.']), 'RESTORE')
         written = reviewed.write('restore')
         answer = self.start_answer(title, 'stock')
         self.confirm(title, [self.ENTER, 'Next: read stock back in a fresh session and compare every byte.'], 'READ')
@@ -479,17 +480,16 @@ class Installer:
                                  'Its outcome is never retried.'], 'WRITE')
             written = reviewed.write(target)
             answer = self.start_answer(title, 'the new system')
-            self.confirm(title, [self.ENTER] + ([] if answer is None or answer[0] else [self.STUCK]) +
-                         ['Next: read it back in a fresh session and compare every byte.'], 'READ')
+            if answer is not None and not answer[0]:
+                # Straight back to stock (owner, 2026-10-05): the player holds this run's own image,
+                # known from the writer's completion; reading it back would only cost time.
+                self.say(title, ['The new system did not start normally: the way back is stock.'])
+                return self.stock_back(reviewed, title, dict(backup=backup, write=written, candidateAnswer=answer[1]), enter=True)
+            self.confirm(title, [self.ENTER, 'Next: read it back in a fresh session and compare every byte.'], 'READ')
             read = reviewed.readback(target)
             read['digest'] = self.beside(reviewed, 'digest-read', Path(written['capture'])/'metadata-main.bin', read['capture'], Path(image))
             audits = reviewed.audit(target)
             self.confirmation(read, written, answer)
-            if answer is not None and not answer[0]:
-                # The candidate's readback is the backup of the way back: then stock, in this same entry.
-                self.say(title, ['The new system did not start normally. Its readback is kept; the way back is stock.'])
-                return self.stock_back(reviewed, title, dict(backup=backup, write=written, read=read, audits=audits,
-                                                             candidateAnswer=answer[1]))
         except usbboot.ReviewedError as error:
             raise Stop(f'{error}. The run\'s evidence is in {self.work/"usb"}; nothing was retried. '
                        f'The way back to stock: install.py --restore --run {self.work} --diskos … --libusb …')
@@ -511,6 +511,13 @@ class Installer:
             raise Stop(f'{run} is not an installer run with a package (usb/history-used.json and its report)')
         try:
             reviewed = self.reviewed_tools(image, usbboot.History.load(used), work=run/'usb')
+            written = load_json_safe(run/'usb/write/result.json')
+            if written.get('status') == 'writer-completion-observed' and not (run/'usb/restore-write').exists():
+                # What the player holds is this run's own image, its write observed complete: no backup
+                # of it is needed on the way back to stock (owner, 2026-10-05).
+                self.say(title, [f'The player holds the image {run.name} wrote (write {written.get("session_id", "")[:8]}). '
+                                 'The way back to stock writes stock\'s rootfs over it.'])
+                return self.stock_back(reviewed, title, dict(run=str(run), holds='this run\'s image'), enter=True)
             self.confirm(title, [f'The way back to stock with the package of {run.name}.', self.ENTER, self.STUCK,
                                  'Next, in this one entry: the backup (what the player holds now), then stock\'s rootfs.'], 'BACKUP')
             backup = reviewed.backup(strict=False, name='restore-backup')

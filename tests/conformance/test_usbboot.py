@@ -266,17 +266,18 @@ class ReviewedTests(unittest.TestCase):
         self.assertFalse(installer.report['steps'][4]['read']['digest']['agreesWithFullRead'])
 
     def test_a_no_takes_the_player_back_to_stock(self):
-        """The new system did not start: its readback (the backup of the way back), stock written in
-        that same entry, the owner's look at stock, stock's readback; the history is the restore."""
-        code, installer, tools = self.install(['BACKUP', 'WRITE', 'no', 'its UI restarts without end', 'READ',
+        """The new system did not start: straight to stock in a fresh entry (the player holds this
+        run's own image, nothing to back up), the owner's look at stock, stock's readback; the
+        history is the restore."""
+        code, installer, tools = self.install(['BACKUP', 'WRITE', 'no', 'its UI restarts without end',
                                                'RESTORE', 'yes', 'stock starts, the volume works', 'READ'])
         self.assertEqual((code, installer.report['status']), (0, 'restored'))
         self.assertEqual([c for c in tools.calls if c in ('writer_transport.py acquire', 'collect_rootfs.py acquire')],
                          ['collect_rootfs.py acquire', 'collect_rootfs.py acquire', 'writer_transport.py acquire',
-                          'collect_rootfs.py acquire', 'collect_rootfs.py acquire', 'writer_transport.py acquire',
-                          'collect_rootfs.py acquire'], 'backup and its digest read, write, readback and its, stock, its readback')
+                          'writer_transport.py acquire', 'collect_rootfs.py acquire'],
+                         'backup and its digest read, write, stock, its readback; no readback of the failed image')
         usb = self.root/'run/usb'
-        self.assertFalse((usb/'read/owner-boot-confirmation.json').exists(), 'no confirmation of a start that failed')
+        self.assertFalse((usb/'read').exists(), 'the failed image is not read back')
         record = json.loads((usb/'restore-read/owner-boot-confirmation.json').read_text())
         self.assertEqual(record['owner_answer'], 'stock starts, the volume works')
         history = json.loads((usb/'history.json').read_text())
@@ -285,15 +286,22 @@ class ReviewedTests(unittest.TestCase):
         self.assertNotIn('First boot', [s['step'] for s in installer.report['steps']])
 
     def test_a_run_takes_the_player_back_to_stock_later(self):
-        """install.py --restore --run: that run's package, whatever the player holds, no review."""
+        """install.py --restore --run: that run's package, no review; the player holds that run's own
+        image (its write observed complete), so no backup; with an unknown state, the backup first."""
         self.install()
-        code, installer, tools = self.install(['BACKUP', 'RESTORE', 'yes', 'stock is back', 'READ'], restore=True,
-                                              run=str(self.root/'run'))
+        code, installer, tools = self.install(['RESTORE', 'yes', 'stock is back', 'READ'], restore=True, run=str(self.root/'run'))
         self.assertEqual((code, installer.report['status']), (0, 'restored'))
         self.assertNotIn('installation_review.py', tools.calls)
         usb = self.root/'run/usb'
-        self.assertTrue((usb/'restore-backup/result.json').is_file())
+        self.assertFalse((usb/'restore-backup').exists())
         self.assertEqual(json.loads((usb/'history.json').read_text())['previousTarget'], 'restore')
+        for folder in ('restore-write', 'restore-read'):
+            shutil.rmtree(usb/folder)
+        (usb/'write/result.json').unlink()        # the write's outcome unknown: what the player holds is not known
+        shutil.rmtree(self.root/'again')
+        code, installer, tools = self.install(['BACKUP', 'RESTORE', 'yes', 'stock is back', 'READ'], restore=True, run=str(self.root/'run'))
+        self.assertEqual((code, installer.report['status']), (0, 'restored'))
+        self.assertTrue((usb/'restore-backup/result.json').is_file())
 
 if __name__ == '__main__':
     unittest.main()

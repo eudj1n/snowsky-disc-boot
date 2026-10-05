@@ -137,9 +137,10 @@ and the owner answers yes or no; a fresh entry (`READ`, a session after the writ
 in its entry) reads it back and compares every byte by the approved exact plan, both USB journals
 are audited, and a yes is kept with its time in the readback's `owner-boot-confirmation.json`,
 between the write and the readback, where the next installation's review looks for it. A no takes
-the player back to stock (owner, 2026-10-05: the way back is stock, from any state): the
-candidate's readback is the backup, stock's rootfs is written in that same entry (`RESTORE`),
-the owner looks at stock's start and a fresh entry reads it back. Each session shows a bar, the
+the player back to stock (owner, 2026-10-05: the way back is stock, from any state): the player
+holds this run's own image, known from the writer's completion, so a fresh entry writes stock's
+rootfs straight away (`RESTORE`, no readback of the failed image), the owner looks at stock's start
+and a fresh entry reads it back. Each session shows a bar, the
 percentage and the time gone and left, counting its journal (two lines a call) against the
 plan's call limit. Right after the backup and after the readback, in the same entry, the rootfs is
 read again by digest (`collect_rootfs.py --mode rootfs-digest`: 794 batches, 13,588 calls and
@@ -148,8 +149,9 @@ read's and, after the write, the image's (`readback.py verify --digest`). Until 
 the player agree, the full read stays the evidence and the read by digest never stops an
 installation: its outcome and its time are kept beside the full read (`beside-full-read.json`). The run writes the next `history.json` (its `previousTarget` says candidate or
 restore) and keeps `usb/history-used.json`: `install.py --restore --run <run> --diskos … --libusb …`
-takes the player back to stock with that run's package whatever it holds now (the backup is only
-compared with the images it may be). The diskOS checkout must be at the writer's pinned revision
+takes the player back to stock with that run's package whatever it holds now: straight to stock
+when the player holds that run's own image (its write observed complete), else after a backup that
+is only compared with the images it may be. The diskOS checkout must be at the writer's pinned revision
 (`646212d`; a checkout moved elsewhere fails the tools' pin checks), and while a package is in use
 the sources it pins are not edited.
 Without either, the step says how the player is written instead.
