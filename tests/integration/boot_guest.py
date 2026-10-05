@@ -25,6 +25,7 @@ import argparse
 from contextlib import contextmanager
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -82,17 +83,18 @@ while :; do
 done
 '''
 UI = r'''#!/bin/sh
-# A probe UI: records its start, says it is ready, then becomes stock's own UI.
+# A probe UI: records its start, says it is ready, then becomes stock's own UI under the name
+# stock's watch loop looks for (contract: started by its path it is not found).
 read version < "$DISC_BOOT_SLOT/version"
 echo "$(date +%s) $version ui" >> "$DISC_BOOT_DATA/probe.log"
 : > "$DISC_BOOT_RUN/ready"
-exec /usr/bin/mq_ui "$@"
+exec -a mq_ui /usr/bin/mq_ui "$@"
 '''
 PLAYER = r'''#!/bin/sh
-# A probe player launcher: records its start, then becomes stock's player.
+# A probe player launcher: records its start, then becomes stock's player, as mq_player.
 read version < "$DISC_BOOT_SLOT/version"
 echo "$(date +%s) $version player" >> "$DISC_BOOT_DATA/probe.log"
-exec /usr/bin/mq_player "$@"
+exec -a mq_player /usr/bin/mq_player "$@"
 '''
 MENU = r'''#!/bin/sh
 # A probe menu: records its turn and what it was offered, answers the second probe UI and hands over.
@@ -220,6 +222,33 @@ def guest_pids(name):
     return pids
 
 
+def watched(name):
+    """The guest's processes the player's pgrep -x NAME finds, the way stock's watch loop looks:
+    BusyBox 1.31.1 matches argv[0] first and the process name only when NAME is nowhere in
+    argv[0], so /usr/bin/mq_ui is not found (owner's player, 2026-10-04 and 05). Here argv[0] is
+    cmdline's third field (qemu-user, then the file, then argv[0]); pgrep in the guest falls back
+    to the name and cannot show it."""
+    pids = []
+    for process in Path('/proc').iterdir():
+        try:
+            if not process.name.isdecimal() or (process/'root').resolve() != ROOTFS:
+                continue
+            fields = [f.decode(errors='replace') for f in (process/'cmdline').read_bytes().split(b'\0')]
+            argv0 = fields[2] if len(fields) > 2 and 'qemu' in Path(fields[0]).name else fields[0]
+            if (argv0 if name in argv0 else (process/'comm').read_text().strip()) == name:
+                pids.append(int(process.name))
+        except OSError:
+            continue
+    return pids
+
+
+def found_by_watch_loop():
+    """Stock's watch loop on the player finds the running pair under the names it looks for."""
+    seen = {name: (sorted(guest_pids(name)), sorted(watched(name))) for name in ('mq_ui', 'mq_player')}
+    assert all(running and running == found for running, found in seen.values()), seen
+    return {name: found for name, (_, found) in seen.items()}
+
+
 def stop(name):
     """SIGTERM to the guest's processes of that name, from the container (the guest has no pkill)."""
     for pid in guest_pids(name):
@@ -287,7 +316,17 @@ def steady(seconds=45):
     time.sleep(seconds)
     after = dict(restarts=pair_restarts() - before, ui=guest_pids('mq_ui'), player=guest_pids('mq_player'))
     assert (after['restarts'], after['ui'], after['player']) == (0, ui, player), dict(before=dict(ui=ui, player=player), **after)
-    return dict(seconds=seconds, ui=ui, player=player)
+    return dict(seconds=seconds, ui=ui, player=player, watched=found_by_watch_loop())
+
+
+def boot_log():
+    """The persistent boot log's last boot: its section opened by the early hook, the decision's exit
+    status and the wrappers' starts of the pair (they survive a reset; /run does not)."""
+    lines = guest('cat /usr/data/disc-boot/boot.log 2>/dev/null').splitlines()
+    heads = [i for i, line in enumerate(lines) if re.match(r'boot [0-9a-f-]{36} at [0-9.]+$', line)]
+    last = '\n'.join(lines[heads[-1]:]) if heads else ''
+    assert 'early exit 0' in last and ' mq_ui' in last and ' mq_player' in last, lines[-12:]
+    return last.splitlines()[:10]
 
 
 def ui_runs(name):
@@ -304,7 +343,7 @@ def run(output):
     assert (boot['mode'], boot['reason'], boot['keys']['read']) == ('platform', 'default', True), boot
     assert wait(lambda: stock_ui_runs() or None, bool, 'stock UI', 120)
     assert not guest('ls /run/disc-boot/ui-launch 2>/dev/null').strip()
-    step('nothing installed', boot=boot, service=guest_json('/run/disc-boot/service.json'), steady=steady())
+    step('nothing installed', boot=boot, service=guest_json('/run/disc-boot/service.json'), steady=steady(), bootLog=boot_log())
     # Stock's player, started by stock's PATH lookup, has the card guard first: a busy card stays whole.
     path = guarded_player()
     step('busy card kept', path=path, **busy_card_event(boot['card']))
@@ -423,7 +462,8 @@ def run(output):
     player = guest_json('/run/disc-boot/ui/player.json')
     launches = int(guest(f'grep -c " player" /usr/data/disc-boot/data/{UI_NAME}/probe.log').strip() or 0)
     assert player['launch'] == 'package' and launches >= 2, (player, launches)
-    step('ui package', ui=ui, starts=int(starts.strip()), player=player, playerLaunches=launches, path=guarded_player())
+    step('ui package', ui=ui, starts=int(starts.strip()), player=player, playerLaunches=launches, path=guarded_player(),
+         watched=found_by_watch_loop())
     # 11. A second ui package and the boot menu with Play. Stock's player ran before the card came in
     #     this boot, so it starts beside the menu at once, and the menu's choice, which brings its own
     #     player launcher, gets the pair restarted by stock's loop.
@@ -458,7 +498,7 @@ def run(output):
     assert pair_restarts() == restarts, ('stock restarted the pair', restarts, pair_restarts())
     assert stock_ui_runs()
     step('the menu hands over without a restart', choice=choice, player=player, ui=ui, pairRestarts=pair_restarts() - restarts,
-         path=guarded_player())
+         path=guarded_player(), watched=found_by_watch_loop())
     # 13. A choice for the next boot only, asked by the service: that boot runs it without the menu.
     menus = count(f'/usr/data/disc-boot/data/{MENU_NAME}/probe.log', 'menu')
     power('off')

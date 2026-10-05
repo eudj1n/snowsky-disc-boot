@@ -62,7 +62,7 @@ def decode_digest(raw, request, expected_bytes):
     require(w[3] == 0, f'NAND core failed with code {w[3]}; record is not valid')
     require(type(expected_bytes) is int and 8 < expected_bytes <= DATA_MAX and w[11] == expected_bytes,
             'Returned page length differs from requested geometry')
-    require(not any(raw[116:]), 'Nonzero reserved digest words')
+    require(not any(raw[120:]), 'Nonzero reserved digest words')
     return dict(page=w[10], observed_id=w[13], protect=w[14], feature=w[15], status=w[16],
                 polls=w[17], transfers=w[18], oob_head=raw[76:84], main_sha256=raw[84:116],
-                hardware_qualified=False)
+                cycles=struct.unpack_from('<I', raw, 116)[0], hardware_qualified=False)

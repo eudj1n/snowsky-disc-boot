@@ -142,10 +142,11 @@ holds this run's own image, known from the writer's completion, so a fresh entry
 rootfs straight away (`RESTORE`, no readback of the failed image), the owner looks at stock's start
 and a fresh entry reads it back. Each session shows a bar, the
 percentage and the time gone and left, counting its journal (two lines a call) against the
-plan's call limit. Right after the backup and after the readback, in the same entry, the rootfs is
-read again by digest (`collect_rootfs.py --mode rootfs-digest`: 794 batches, 13,588 calls and
+plan's call limit. Right after the backup, in the same entry, the rootfs is read again by digest
+(only there since 2026-10-05: one run measures what a page takes, a second after the readback
+added about 27 minutes for nothing new) (`collect_rootfs.py --mode rootfs-digest`: 794 batches, 13,588 calls and
 8.9 MB against the full read's 42,220 calls and 227.5 MB); every page's SHA-256 must equal the full
-read's and, after the write, the image's (`readback.py verify --digest`). Until those first runs on
+read's and the previous image's (`readback.py verify --digest`). Until those first runs on
 the player agree, the full read stays the evidence and the read by digest never stops an
 installation: its outcome and its time are kept beside the full read (`beside-full-read.json`). The run writes the next `history.json` (its `previousTarget` says candidate or
 restore) and keeps `usb/history-used.json`: `install.py --restore --run <run> --diskos … --libusb …`
@@ -194,6 +195,18 @@ docker run --rm --network none -e PYTHONPATH=/repo -v <emulator>:/repo:ro -v <fi
   --boot /src/build/mips/disc-boot --output /out/build
 ```
 
+The builder unpacks, changes and packs stock's tree in a scratch folder of
+the container's own file system (`DISC_IMAGE_SCRATCH` names another): a
+share from macOS keeps neither owners nor every mode bit, and the first two
+images written to the owner's player lost 453 of stock's (setuid of
+`/bin/busybox` among them). It refuses a folder whose file system changed
+stock's tree on extraction and compares the packed image's own listing
+(`unsquashfs -lln`) with stock's: every stock entry exactly (type, every
+mode bit, owner, size, link target), nothing but the boot layer's additions.
+Both listings go to the output (`stock-listing.txt`, `candidate-listing.txt`)
+with the images, `report.json` and `verified-tree`, the packed tree for the
+integration tests.
+
 `scripts/guest.py` runs such an image on a disposable stock-init guest of the
 emulator, at a revision reviewed for the firmware (`firmware/emulator-revisions.json`,
 kept apart from the profiles: their fingerprint is pinned by other reviews).
@@ -213,7 +226,11 @@ python3 scripts/guest.py status | down
 ```
 
 `boot_guest.py` is the guest acceptance (plan, stage 2): about 40 minutes,
-since a version is confirmed after 180 s of running. The server repository
+since a version is confirmed after 180 s of running. It checks stock's pair
+the way the player's `pgrep -x` finds it, by `argv[0]` (the third field of
+`cmdline` under qemu-user): `pgrep` in the guest falls back to the process
+name and cannot show a program started by its path (contract, "Process
+names"). The server repository
 drives the same wrapper with a record of its own (`--state`).
 
 The two-package acceptance (plan, stage 3) runs our server beside diskOS's

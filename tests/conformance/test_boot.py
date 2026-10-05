@@ -471,6 +471,12 @@ exit 0
 
     # The ui role
 
+    def fixture_wrapper(self, text, name):
+        """An image's wrapper with its paths under the fixture's root."""
+        for path in ('/run/disc-boot', '/opt/disc-boot', '/usr/bin/', '/usr/data'):
+            text = text.replace(path, str(self.root) + path)
+        return text
+
     def launch(self):
         """Stock's start of its UI: the image's /sbin/mq_ui wrapper, with the fixture's paths."""
         launcher = self.root/'opt/disc-boot/mq_ui'
@@ -478,9 +484,7 @@ exit 0
             launcher.parent.mkdir(parents=True, exist_ok=True)
             launcher.symlink_to(BINARY)
         wrapper = self.root/'sbin/mq_ui'
-        text = BUILDER.ui_wrapper()
-        for path in ('/run/disc-boot/ui-launch', '/opt/disc-boot/mq_ui', '/usr/bin/mq_ui'):
-            text = text.replace(path, str(self.root) + path)
+        text = self.fixture_wrapper(BUILDER.ui_wrapper(), 'mq_ui')
         wrapper.write_text(text)
         wrapper.chmod(0o755)
         return subprocess.Popen(['/bin/sh', str(wrapper)], env=self.env, start_new_session=True)
@@ -825,9 +829,7 @@ exit 0
             launcher.parent.mkdir(parents=True, exist_ok=True)
             launcher.symlink_to(BINARY)
         wrapper = self.root/'sbin/mq_player'
-        text = BUILDER.player_wrapper()
-        for path in ('/run/disc-boot/ui-launch', '/run/disc-boot/ui/fallback', '/run/disc-boot/player-ran', '/opt/disc-boot/', '/usr/bin/mq_player'):
-            text = text.replace(path, str(self.root) + path)
+        text = self.fixture_wrapper(BUILDER.player_wrapper(), 'mq_player')
         wrapper.write_text(text)
         wrapper.chmod(0o755)
         return subprocess.Popen(['/bin/sh', str(wrapper)], env=self.env, start_new_session=True)

@@ -84,6 +84,17 @@ static int valid(const struct batch_request *batch, const struct nr_profile *p, 
     return 1;
 }
 
+/* CP0 Count, which runs at a fixed share of the CPU clock in kernel mode; 0 on the host. */
+static uint32_t cycles(void) {
+#if defined(__mips__)
+    uint32_t count;
+    __asm__ __volatile__("mfc0 %0, $9" : "=r"(count));
+    return count;
+#else
+    return 0;
+#endif
+}
+
 void batch_digest_run(struct sfc_identity *s, const struct nr_profile *p, const struct batch_request *q,
                       volatile struct batch_digest_result *out, uint32_t first, uint32_t end) {
     struct nr_result scratch;   /* one page's full result, on the stack, never returned */
@@ -98,6 +109,7 @@ void batch_digest_run(struct sfc_identity *s, const struct nr_profile *p, const 
         for (unsigned i = 0; i < q->count; i++) {
             volatile struct nr_result *r = &scratch;
             volatile struct nr_digest *d = &out->records[i];
+            uint32_t began = cycles();
             page_run(s, p, &q->requests[i], r, q->requests[i].page);
             d->version = r->version; d->done = r->done; d->code = r->code;
             for (unsigned j = 0; j < 4; j++) d->nonce[j] = r->nonce[j];
@@ -111,6 +123,7 @@ void batch_digest_run(struct sfc_identity *s, const struct nr_profile *p, const 
                 for (unsigned j = 0; j < 32; j++) d->main_sha256[j] = sum[j];
                 for (unsigned j = 0; j < 8; j++) d->oob_head[j] = r->data[p->page_bytes + j];
             }
+            d->cycles = cycles() - began;
             barrier();
             d->magic = NR_DIGEST_MAGIC;
             out->completed = i+1;

@@ -223,14 +223,17 @@ Distributed as a zip; staged and installed as a folder with `package.json`:
 - Bounds: manifest 64 KiB, 256 files, 32 MiB per package; an installation
   checks free space first and keeps 16 MiB of `/usr/data` for stock.
 - A `ui` or `menu` package's entry is named `mq_ui`, because stock's watch
-  loop finds the UI by that exact process name (the menu runs in its place).
+  loop finds the UI by that exact name (the menu runs in its place); an entry
+  that starts another program starts it as `mq_ui` too ("Process names").
 - `title`, optional, 1–32 printable ASCII: the name a boot menu shows for
   the package (owner, 2026-10-03); without it the menu shows `name`.
 - A `ui` package may name `player`, a listed `0755` file: its own launcher
   of stock's player (diskOS's sets up its card protection there and tells
   its UI so). Boot runs it as `mq_player` while that package's UI runs (not
   after a fallback to stock's UI), with the package's environment; it must
-  end in `exec /usr/bin/mq_player` and never keep the player from starting:
+  end in stock's player started as `mq_player`
+  (`exec -a mq_player /usr/bin/mq_player "$@"`, "Process names")
+  and never keep the player from starting:
   when stock restarts the pair, the watchdog the previous player started
   keeps running, and 10 s without a player reset the device.
   A `service` package with `player` is refused.
@@ -290,6 +293,10 @@ a package folder checked as `disc-boot` checks it.
   ui/<name>/…           the same for each ui package, under its name; ui/<name>/remove
                         a removal another package asked for, done at the launcher's next start
   data/<name>/          a package's own persistent data, kept across updates
+  boot.log, boot.log.1  the boot log: each boot's id and uptime, the early
+                        decision's output and exit status, boot.json, each start
+                        of the pair by the wrappers and the start hook's status;
+                        256 KiB, then boot.log.1 (the early hook rotates it)
 ```
 
 Every change is a new file, synced, then renamed into place (UBIFS keeps a
@@ -350,7 +357,8 @@ do the same for its player):
 - `/sbin/mq_ui`, a shell script ahead of `/usr/bin` in the `PATH`
   `fiio_init.sh` runs with (its first start and every restart from its watch
   loop): it starts the launcher only when `/run/disc-boot/ui-launch` exists,
-  and stock's `/usr/bin/mq_ui` otherwise.
+  and stock's `/usr/bin/mq_ui` otherwise, either as `mq_ui`
+  ("Process names").
 - `/run/disc-boot/ui-launch`, written by `disc-boot early` only in `platform`
   mode with a `ui` package installed (and by a recovery that installed one).
   In `stock` mode, after Volume Up, without a package or when the boot
@@ -366,16 +374,46 @@ do the same for its player):
   `mq_player`.
 - `/sbin/mq_player`, the same kind of script for stock's player: with
   `ui-launch` and no fallback it starts `/opt/disc-boot/mq_player`, another
-  link to `disc-boot`, and stock's `/usr/bin/mq_player` otherwise. By that
+  link to `disc-boot`, and stock's `/usr/bin/mq_player` otherwise, either
+  as `mq_player`. By that
   name the boot program checks the `ui` slot and execs the package's
   `player` launcher as `mq_player`, through the link
-  `/run/disc-boot/ui/mq_player` (stock's watch loop finds the player by its
-  process name, which the kernel takes from the path executed: tested on the
-  guest, BusyBox's `pgrep -x` matches that name); without one, or when anything fails
+  `/run/disc-boot/ui/mq_player` (the process takes its name from the path
+  executed, and its `argv[0]` is `mq_player`); without one, or when anything fails
   (stock mode, an unreadable state, a slot that fails its check), it execs
   stock's player at once and says why in `/run/disc-boot/ui/player.json`.
   Every crash of the player restarts the UI too, so the UI's own count of
   starts bounds a launcher that fails.
+
+### Process names
+
+Stock's watch loop (`fiio_init.sh`) finds the pair with `pgrep -x mq_ui` and
+`pgrep -x mq_player` every 5 s and, missing either, kills both and starts
+them again. BusyBox's `pgrep` (1.31.1 on the player) matches `argv[0]`
+first and the process name only when the pattern is nowhere in `argv[0]`:
+a program started by its path (`/usr/bin/mq_ui`) is not found, and the
+loop restarts the pair every few seconds, with stock's player killed before
+it handles a key (the owner's player, 2026-10-04 and 05, both images:
+`docs/first-write-observation.md`). So whatever runs as the UI or the player
+is started from a file of that name (the kernel takes the process name from
+the path executed) with `argv[0]` `mq_ui` or `mq_player`:
+
+- the wrappers start the launcher or stock's program from its own path with
+  `exec -a` and the bare name (BusyBox ash, the player's shell, has it; a
+  shell without it, such as dash, starts by the path); the path stays the
+  program's, so the kernel's process name is right and the emulator, which
+  finds stock's player by `/usr/bin/mq_player` in `cmdline`, still finds it;
+  the card guard stays first in the started program's `PATH`;
+- the boot program passes the name itself (`execv` with `argv[0]` set);
+- a package does the same: `exec -a mq_player /usr/bin/mq_player "$@"` in a
+  script (diskOS's entry does so for its UI), `argv[0]` set in a program.
+
+Under qemu-user `cmdline` begins with the interpreter, so `pgrep` on the
+guest always falls back to the process name and cannot show this;
+`tests/integration/boot_guest.py` reads `argv[0]` from `cmdline` (its third
+field there) and checks the pair the way the player's `pgrep` does, and
+`tests/conformance/test_wrappers.py` checks the wrappers' `argv[0]` with
+compiled stand-ins.
 
 ## Several UIs and the boot menu (multi-boot)
 

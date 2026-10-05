@@ -486,8 +486,9 @@ class Installer:
                 self.say(title, ['The new system did not start normally: the way back is stock.'])
                 return self.stock_back(reviewed, title, dict(backup=backup, write=written, candidateAnswer=answer[1]), enter=True)
             self.confirm(title, [self.ENTER, 'Next: read it back in a fresh session and compare every byte.'], 'READ')
+            # The read by digest goes beside the backup only (owner, 2026-10-05): one run measures what
+            # a page takes for the portions, and a second one would add about 27 minutes for nothing new.
             read = reviewed.readback(target)
-            read['digest'] = self.beside(reviewed, 'digest-read', Path(written['capture'])/'metadata-main.bin', read['capture'], Path(image))
             audits = reviewed.audit(target)
             self.confirmation(read, written, answer)
         except usbboot.ReviewedError as error:

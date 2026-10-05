@@ -72,7 +72,9 @@ class BatchRom(Rom):
                     words[0] = 0x3144524e
                     main_sha = hashlib.sha256(data[:2048]).digest()
                     if self.fault == 'digest-flip' and page == 5200: main_sha = bytes([main_sha[0] ^ 1]) + main_sha[1:]
-                    results.append(struct.pack('<19I', *words)+data[2048:2056]+main_sha+bytes(12))
+                    # Then the page's CP0 ticks and two reserved words.
+                    reserved = bytes([1]) + bytes(7) if self.fault == 'reserved' else bytes(8)
+                    results.append(struct.pack('<19I', *words)+data[2048:2056]+main_sha+struct.pack('<I', 1000+page % 7)+reserved)
                 else:
                     results.append(struct.pack('<19I', *words)+data+bytes(4352-2176))
             digest = self.scope.get('mode') == 'rootfs-digest'
@@ -169,7 +171,7 @@ class CollectorTests(unittest.TestCase):
 
     def test_digest_records_are_refused_as_full_results_are(self):
         self.scope.update(mode='rootfs-digest')
-        for fault in ('nonce','ecc','otp','counters','page','batch-error','incomplete','tail','ambiguous','changed-marker'):
+        for fault in ('nonce','ecc','otp','counters','page','batch-error','incomplete','tail','ambiguous','changed-marker','reserved'):
             with self.subTest(fault=fault):
                 result,path,fake=self.run_fake(fault,skip_bootstrap=True)
                 self.assertEqual(result['status'],'failed')
@@ -200,6 +202,9 @@ class CollectorTests(unittest.TestCase):
         image,image_sha=self.small_full_range('rootfs-digest')
         result,path,fake=self.run_fake('bad-marker',skip_bootstrap=True)
         self.assertEqual((result['status'],result['logical_to_physical'],result['bad_blocks']),('rootfs-digest-collected',[81,82],[80]))
+        # Each page's ticks on the player, for the portions' wait (plan, stage 4b).
+        self.assertEqual((result['page_ticks']['pages'],result['page_ticks']['min'],result['page_ticks']['max']),
+                         (result['records_completed'],1000,1006))
         plan=readback.make_plan(self.base,self.reader,self.policy,self.metadata,image_sha,digest=True)
         self.assertEqual((plan['record_bytes'],(path/'records.bin').stat().st_size),(176,plan['capture_bytes']))
         verified=readback.verify_digest(path/'records.bin',image,plan,self.base,self.reader,self.policy,self.metadata,

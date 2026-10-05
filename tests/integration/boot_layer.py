@@ -113,7 +113,7 @@ def run(output):
             'trap "exit 0" TERM\nenv > "$DISC_BOOT_DATA/env"\n: > "$DISC_BOOT_RUN/ready"\nwhile :; do sleep 1; done\n')
     package(root, '/usr/data/disc-boot/ui/probe-ui/a', 'ui', 'bin/mq_ui',
             'echo package >> /run/ui-runs\n: > "$DISC_BOOT_RUN/ready"\nsleep 200\n',
-            player=('bin/player', 'echo "launcher $DISC_BOOT_ROLE" >> /run/player-runs\nexec /usr/bin/mq_player "$@"\n'))
+            player=('bin/player', 'echo "launcher $DISC_BOOT_ROLE" >> /run/player-runs\nexec -a mq_player /usr/bin/mq_player "$@"\n'))
     for domain in ('service', 'ui/probe-ui'):
         (root/f'usr/data/disc-boot/{domain}/state.json').write_text('{"schema":1,"current":"a","confirmed":false,"previous":null}')
     chroot('/bin/sh', '/etc/init.d/S22disc-boot', 'start')

@@ -413,7 +413,7 @@ def main():
     d.add_argument('--version', required=True)
     d.add_argument('--role', choices=ROLES, required=True)
     d.add_argument('--entry', required=True)
-    d.add_argument('--player', help="A ui package's own launcher of stock's player (it ends in /usr/bin/mq_player)")
+    d.add_argument('--player', help="A ui package's own launcher of stock's player (it ends in stock's player started as mq_player)")
     d.add_argument('--title', help='The name a boot menu shows (1-32 printable ASCII; default: the name)')
     d.add_argument('--arg', action='append', default=[], help='An argument for the entry (repeat for more)')
     d.add_argument('--ready', type=int, help='Seconds to become ready (1-120, default 30)')

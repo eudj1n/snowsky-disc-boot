@@ -74,6 +74,38 @@ def folder(kind, target):
     return kind if target == 'candidate' else f'{target}-{kind}'
 
 
+def is_writer_start(line, entry):
+    """The journal's line of the control call that starts the writer (program start at its entry)."""
+    if b'"request": 4' not in line:
+        return False
+    try:
+        row = json.loads(line)
+    except ValueError:
+        return False
+    return row.get('phase') == 'attempt' and row.get('request') == 4 and row.get('parameter') == entry
+
+
+def writer_wait(plan):
+    """The writer's entry and wait from an approved write plan, for the progress only; a plan
+    without them is counted by its calls."""
+    entry, wait = plan.get('writer_entry'), plan.get('writer_wait_ms')
+    return (entry, wait / 1000) if isinstance(entry, int) and isinstance(wait, (int, float)) and wait > 0 else None
+
+
+def session_fraction(calls_done, seconds, wait=None, writer_started=None):
+    """The share of a session done. Without a wait, its calls. With the writer's wait, the time:
+    while staging, the calls so far tell how long staging takes, and the wait follows; once the
+    writer runs, its time gone against the staging's and the whole wait."""
+    calls_done = min(1.0, calls_done)
+    if not wait:
+        return calls_done
+    if writer_started is None:
+        if calls_done <= 0:
+            return 0.0
+        return min(0.99, seconds / (seconds / calls_done + wait))
+    return min(0.99, seconds / (writer_started + wait))
+
+
 class Reviewed:
     def __init__(self, version, work, artifacts, diskos, libusb, history, run=subprocess.run, profile=None, progress=None):
         self.version, self.work, self.artifacts = version, Path(work), Path(artifacts)
@@ -97,16 +129,20 @@ class Reviewed:
             Path(stdout).write_text(result.stdout)
         return result
 
-    def session(self, name, *args, output, calls, label):
+    def session(self, name, *args, output, calls, label, writer=None):
         """A USB session's tool in the background, its journal (two lines a call) counted against
-        the plan's call limit, with the tool and its checks as they are."""
+        the plan's call limit, with the tool and its checks as they are. A write (writer: the
+        approved plan's writer entry and wait) counts in two phases: the calls up to the writer's
+        start, then the wait by the clock, since the ROM does not answer while the writer runs
+        (owner, 2026-10-05: the bar said 13 minutes left with 15 still to come)."""
         if self.progress is None or self.run is not subprocess.run:
             return self.tool(name, *args)
         command = [sys.executable, '-B', str(DEPLOY/name), *[str(a) for a in args]]
         self.work.mkdir(parents=True, exist_ok=True)
         with open(self.log, 'a') as log:
             log.write(' '.join(command) + '\n')
-        journal, lines, offset, started = Path(output)/'transfers.jsonl', 0, 0, time.monotonic()
+        journal, lines, offset, started, partial = Path(output)/'transfers.jsonl', 0, 0, time.monotonic(), b''
+        writer_started = None
         process = subprocess.Popen(command, cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         while process.poll() is None:
             try:
@@ -114,10 +150,14 @@ class Reviewed:
                     f.seek(offset)
                     chunk = f.read()
                     offset += len(chunk)
-                    lines += chunk.count(b'\n')
+                *complete, partial = (partial + chunk).split(b'\n')
+                lines += len(complete)
+                if writer and writer_started is None and any(is_writer_start(line, writer[0]) for line in complete):
+                    writer_started = time.monotonic() - started
             except OSError:
                 pass
-            self.progress(label, min(1.0, lines / 2 / calls), time.monotonic() - started)
+            now = time.monotonic() - started
+            self.progress(label, session_fraction(lines / 2 / calls, now, writer and writer[1], writer_started), now)
             time.sleep(1)
         out, err = process.communicate()
         self.progress(label, 1.0, time.monotonic() - started)
@@ -193,6 +233,7 @@ class Reviewed:
             mapping = load_json(Path(full)/'result.json').get('logical_to_physical') == result.get('logical_to_physical')
             outcome = dict(status=result['status'], capture=str(out), seconds=round(time.monotonic() - started),
                            agreesWithFullRead=agrees and mapping)
+            outcome['pageTicks'] = result.get('page_ticks')   # what a page takes, for the portions' wait
             if image is not None:
                 verified = self.tool('readback.py', 'verify', '--digest', '--version', self.version, '--metadata-page', metadata_page,
                                      '--image', image, '--image-sha256', self.image_sha(image), '--records', out/'records.bin',
@@ -290,7 +331,8 @@ class Reviewed:
             self.session('writer_transport.py', 'acquire', '--mode', 'write', '--target', target, *args, '--confirm-reviewed-device-state',
                          '--libusb', self.libusb, '--approved-plan-sha256', approved['plan_sha256'], '--output', out,
                          output=out, calls=approved['plan']['protocol_call_limit'],
-                         label='Writing stock\'s rootfs' if target == 'restore' else 'Writing the image')
+                         label='Writing stock\'s rootfs' if target == 'restore' else 'Writing the image',
+                         writer=writer_wait(approved['plan']))
         finally:
             self.close_admission(proposed)
         result = load_json(out/'result.json')
