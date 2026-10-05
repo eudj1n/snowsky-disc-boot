@@ -413,6 +413,19 @@ class Installer:
         self.say(title, ['Describe what you saw, in a few words.'])
         return word == 'yes', self.input().strip() or word, reported
 
+    def beside(self, reviewed, name, page, full, image):
+        """The read by digest beside a full read (plan, stage 4b), shown and kept; never a stop."""
+        outcome = reviewed.digest(reviewed.work/name, page, full, image)
+        if outcome['status'] == 'failed':
+            line = f'The read by digest did not complete ({outcome["error"]}); the full read stands.'
+        else:
+            same = outcome['agreesWithFullRead'] and outcome.get('matchesImage', True)
+            line = (f'Read again by digest in {outcome["seconds"] // 60}:{outcome["seconds"] % 60:02d}: '
+                    + ('every page as the full read.' if same else 'it differs from the full read; the full read stands. '
+                       'Tell the developers.'))
+        self.say('The player (USB Boot)', [line])
+        return outcome
+
     def confirmation(self, read, written, answer):
         """The owner's word, between the write and the readback, in the readback's capture."""
         if not answer or not answer[0]:
@@ -455,6 +468,10 @@ class Installer:
                                  self.ENTER, 'Next, in this one entry: the backup (what the player holds now), then the write.'],
                          'BACKUP')
             backup = reviewed.backup(strict=not restore)
+            if not restore:
+                previous = reviewed.history.get('previousImage')
+                backup['digest'] = self.beside(reviewed, 'digest-backup', Path(reviewed.history['bootCapture'])/'metadata-main.bin',
+                                               backup['capture'], Path(previous) if previous else None)
             if restore:
                 return self.stock_back(reviewed, title, dict(backup=backup))
             self.confirm(title, [f'The backup is {backup["capture"]}' + (f', the same as {backup["matches"]}.' if backup['matches'] else '.'),
@@ -465,6 +482,7 @@ class Installer:
             self.confirm(title, [self.ENTER] + ([] if answer is None or answer[0] else [self.STUCK]) +
                          ['Next: read it back in a fresh session and compare every byte.'], 'READ')
             read = reviewed.readback(target)
+            read['digest'] = self.beside(reviewed, 'digest-read', Path(written['capture'])/'metadata-main.bin', read['capture'], Path(image))
             audits = reviewed.audit(target)
             self.confirmation(read, written, answer)
             if answer is not None and not answer[0]:

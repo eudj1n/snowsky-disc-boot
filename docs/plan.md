@@ -511,8 +511,13 @@ program made no run folder there
   `sfc-identity-test` checks the batch on the SFC stand-in against the boot
   program's own SHA-256; `test_collect_rootfs.py` reads a stand-in NAND both
   ways (the same mapping, every page's digest the image's and the full
-  read's, a changed page found by its number). Still to do: the installer
-  runs it beside the full read, and an offline audit of its journal.
+  read's, a changed page found by its number). The installer runs it right
+  after the backup and after the readback, in the same entry, and keeps its
+  agreement with the full read and the image and its time; it never stops
+  an installation (`test_usbboot.py`). With the real payload and metadata
+  page its plan is 794 batches, 13,588 calls and 8.9 MB against the full
+  read's 42,220 calls and 227.5 MB. Still to do: an offline audit of its
+  journal before it may replace the full read.
 - [ ] With the next write of the boot layer (owner, 2026-10-05): the exact
   check by digest (stage "Later", the faster exact check), a SHA-256 of
   every logical block computed on the player by the reviewed reader

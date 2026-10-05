@@ -2,9 +2,11 @@
 replaced by a stand-in that leaves their outputs: the order of the steps, the admission opened only
 for the write and closed in every case, and each refusal."""
 import argparse
+import hashlib
 import io
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -20,6 +22,7 @@ class Tools:
 
     def __init__(self, test, faults=()):
         self.test, self.faults, self.calls, self.admission_at_write = test, set(faults), [], None
+        self.pages = [bytes([1]) * 2048, bytes([2]) * 2048]
 
     def value(self, command, name):
         return command[command.index(name) + 1]
@@ -56,15 +59,30 @@ class Tools:
             (out/'result.json').write_text(json.dumps(dict(status=status, writer_return_observed=True, writer_execution_attempted=True,
                                                            session_id='write-session')))
             (out/'metadata-main.bin').write_bytes(b'page')
+        elif tool == 'collect_rootfs.py' and args[0] == 'plan':
+            stdout = json.dumps(dict(plan=dict(protocol_call_limit=100), plan_sha256='digest-plan'))
+        elif tool == 'collect_rootfs.py' and self.value(command, '--mode') == 'rootfs-digest':
+            # The read by digest beside a full read: the digests of the pages the full read left.
+            out.mkdir(parents=True)
+            (out/'result.json').write_text(json.dumps(dict(status='rootfs-digest-collected', nonce_hex='n2', logical_to_physical=[80, 81],
+                                                           session_id=f'digest-{len(self.calls)}')))
+            (out/'records.bin').write_bytes(b'digest records')
+            digests = b''.join(hashlib.sha256(page).digest() for page in self.pages)
+            if 'digest-differs' in self.faults:
+                digests = bytes(32) + digests[32:]
+            (out/'logical-digests.bin').write_bytes(digests)
         elif tool == 'collect_rootfs.py':
             out.mkdir(parents=True)
             (out/'result.json').write_text(json.dumps(dict(status='rootfs-collected', nonce_hex='n1', capture_sha256='c1',
-                                                           session_id=f'read-{len(self.calls)}')))
+                                                           session_id=f'read-{len(self.calls)}', logical_to_physical=[80, 81])))
             (out/'records.bin').write_bytes(b'records')
+            (out/'logical-image.bin').write_bytes(b''.join(self.pages))
         elif tool == 'readback.py' and args[0] == 'plan':
             image = Path(self.value(command, '--image')).name
             stdout = json.dumps(dict(plan_sha256='exact-candidate' if image == self.test.image.name else
                                      'exact-restore' if image == self.test.stock.name else 'exact-previous'))
+        elif tool == 'readback.py' and '--digest' in command:
+            stdout = json.dumps(dict(status='saved-logical-digest-matches'))
         elif tool == 'readback.py':
             matches = 'readback-differs' not in self.faults or 'backup' in self.value(command, '--records')
             stdout = json.dumps(dict(status='saved-logical-readback-matches' if matches else 'saved-logical-readback-differs',
@@ -108,7 +126,7 @@ class ReviewedTests(unittest.TestCase):
         written = reviewed.write()
         read = reviewed.readback()
         reviewed.audit()
-        self.assertEqual(tools.calls, ['build_identity.py', 'build_identity.py', 'installation_review.py',
+        self.assertEqual(tools.calls, ['build_identity.py', 'build_identity.py', 'build_identity.py', 'installation_review.py',
                                        'collect_rootfs.py acquire', 'readback.py plan', 'readback.py verify',
                                        'writer_transport.py plan', 'writer_transport.py acquire',
                                        'collect_rootfs.py acquire', 'readback.py plan', 'readback.py verify',
@@ -190,7 +208,7 @@ class ReviewedTests(unittest.TestCase):
                                   package=None, app=None, packages_from=[], download=False, work=str(self.root/('again' if run else 'run')),
                                   catalog=str(catalog), simulate=None, simulate_small=False, fault=None, restore=restore, guest=False,
                                   history=str(self.root/'history.json'), diskos='/diskos', libusb='/libusb.dylib', run=run)
-        tools = self.tools = Tools(self)
+        tools = self.tools = Tools(self, getattr(self, 'tools_faults', ()))
         installer = flow.Installer(args, tui.Screen(look='plain', stream=io.StringIO()), runner=tools)
         installer.interactive = words is not None
         self.asked = {}
@@ -225,8 +243,8 @@ class ReviewedTests(unittest.TestCase):
         one entry into USB Boot, the readback in a fresh one."""
         code, installer, tools = self.install(['BACKUP', 'WRITE', 'yes', 'the stock UI came up, the volume works', 'READ'])
         self.assertEqual(code, 0, installer.report['status'])
-        self.assertIn('writer_transport.py acquire', self.asked['yes'])
-        self.assertEqual(self.asked['yes'].count('collect_rootfs.py acquire'), 1, 'asked before the readback session')
+        acquired = [c for c in self.asked['yes'] if c.endswith('acquire')]
+        self.assertEqual(acquired[-1], 'writer_transport.py acquire', 'asked after the write, before the readback session')
         record = json.loads((self.root/'run/usb/read/owner-boot-confirmation.json').read_text())
         self.assertEqual((record['observation'], record['owner_answer']),
                          ('owner-confirmed-normal-first-boot', 'the stock UI came up, the volume works'))
@@ -235,6 +253,18 @@ class ReviewedTests(unittest.TestCase):
         self.assertIs(record['automated_boot_test'], False)
         self.assertTrue(record['reported_at'].endswith('Z'))
 
+    def test_the_read_by_digest_goes_beside_the_full_reads_and_never_stops(self):
+        code, installer, tools = self.install(['BACKUP', 'WRITE', 'yes', 'fine', 'READ'])
+        player = installer.report['steps'][4]
+        self.assertEqual((player['backup']['digest']['agreesWithFullRead'], player['read']['digest']['agreesWithFullRead'],
+                          player['read']['digest']['matchesImage']), (True, True, True))
+        self.assertTrue((self.root/'run/usb/digest-read/beside-full-read.json').is_file())
+        shutil.rmtree(self.root/'run')
+        self.tools_faults = {'digest-differs'}
+        code, installer, tools = self.install(['BACKUP', 'WRITE', 'yes', 'fine', 'READ'])
+        self.assertEqual((code, installer.report['status']), (0, 'prepared'), 'the full read stands')
+        self.assertFalse(installer.report['steps'][4]['read']['digest']['agreesWithFullRead'])
+
     def test_a_no_takes_the_player_back_to_stock(self):
         """The new system did not start: its readback (the backup of the way back), stock written in
         that same entry, the owner's look at stock, stock's readback; the history is the restore."""
@@ -242,8 +272,9 @@ class ReviewedTests(unittest.TestCase):
                                                'RESTORE', 'yes', 'stock starts, the volume works', 'READ'])
         self.assertEqual((code, installer.report['status']), (0, 'restored'))
         self.assertEqual([c for c in tools.calls if c in ('writer_transport.py acquire', 'collect_rootfs.py acquire')],
-                         ['collect_rootfs.py acquire', 'writer_transport.py acquire', 'collect_rootfs.py acquire',
-                          'writer_transport.py acquire', 'collect_rootfs.py acquire'])
+                         ['collect_rootfs.py acquire', 'collect_rootfs.py acquire', 'writer_transport.py acquire',
+                          'collect_rootfs.py acquire', 'collect_rootfs.py acquire', 'writer_transport.py acquire',
+                          'collect_rootfs.py acquire'], 'backup and its digest read, write, readback and its, stock, its readback')
         usb = self.root/'run/usb'
         self.assertFalse((usb/'read/owner-boot-confirmation.json').exists(), 'no confirmation of a start that failed')
         record = json.loads((usb/'restore-read/owner-boot-confirmation.json').read_text())
