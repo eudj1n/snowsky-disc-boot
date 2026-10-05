@@ -460,6 +460,79 @@ boot menu").
   read 2026-10-03: 71 of 117 MiB available, no swap, `mq_ui` 16 MiB and
   `mq_player` 9 MiB resident; not yet during playback).
 
+## Stage 4b — after the first write (2026-10-04/05)
+
+The first write of image b43034b ended in stock's UI restarting without end
+on the owner's player: the player's wrapper did not fail open and the boot
+program made no run folder there
+([observation](first-write-observation.md)).
+
+- [x] Reconstructed and reproduced on the guest (2026-10-04): no stock
+  player, stock's watch loop restarting the UI every 7–8 s, the power key
+  and USB Boot out of reach without a reset.
+- [x] Both wrappers fail open (2026-10-05):
+  `tests/conformance/test_wrappers.py` under dash, BusyBox ash and bash in
+  POSIX mode; the old line fails it.
+- [x] The guest acceptance watches stock's pair after each boot that ends in
+  stock's UI or a running service and boots once without the boot program
+  (`boot_guest.py`; to run on the next image).
+- [x] Back to stock with the approved restore plan (2026-10-05): backup
+  (b43034b, exact), write `e4a19c47`, the owner's look at stock's start,
+  readback `2105747b` matching stock in all 50,816 records, both USB
+  journals audited (the audits learned the restore target).
+- [ ] The installation review binds a previous restore as the source state
+  (`installed_candidate.py` reads the candidate's plan and image only), so
+  that the next write starts from this restored stock.
+- [ ] The fixed image accepted on the guest with the new steps, then
+  written in steps: no package first (the console's marker only), checked
+  on the player through the console (stock, the power key, the boot
+  program's log and why it made no run folder), then the packages.
+- [ ] Why `disc-boot early` made no run folder on the device.
+- [ ] `install.py` shows each USB session's progress to the user (owner,
+  2026-10-04/05), with the next write of the boot layer: a progress bar in
+  the menu's look, the percentage, the time gone and the time left, for the
+  backup, the write and the readback. The reviewed tools run in the
+  background while the installer counts the session's batches against the
+  approved plan (the reads) and the logical blocks written against the write
+  plan's 768; the tools and their checks stay as they are.
+- [ ] With the next write of the boot layer (owner, 2026-10-05): the exact
+  check by digest (stage "Later", the faster exact check), a SHA-256 of
+  every logical block computed on the player by the reviewed reader
+  (`device/acquisition/`, `device/src/sha256.c`), diskOS's `my_write6`
+  read beside it. Its first run goes beside the full read, before and
+  after the write, and both must agree; only then it replaces the full read.
+  The write session too (owner, 2026-10-05): its 25 min are about six
+  passes of 100 MB over the ROM's USB protocol (the RAM test with a pattern
+  and its complement, the staged image compared again), while NAND takes
+  about half a minute; the staging regions and the staged image checked by
+  digest on the player, a lighter RAM test once this player's memory is
+  qualified, larger transfers. The aim is minutes for a write; the image
+  stays written only through USB Boot (FiiO's card update goes through its
+  signed recovery), and what changes often is a package on the card.
+- [x] The way back is stock, always (owner, 2026-10-05): the installer
+  assumes stock before its first write and offers only stock when a write's
+  readback or the owner's look at the new system's start fails; stock is
+  FiiO's own rootfs from the user's update, depends on nothing of ours, and
+  every package approves its restore plan. The backup before every write
+  stays mandatory as the proof of what the player held and an exact copy
+  for analysis; writing a backup back is a manual operation for us, not a
+  user's path. A working boot layer comes back by installing a release
+  again over stock (packages and settings in `/usr/data` stay).
+- [ ] Fewer entries into USB Boot (owner, 2026-10-05): the backup and the
+  write follow one another without leaving USB Boot (each session runs the
+  SPL and stages afresh; the first write of 2026-10-04 and the restore of
+  2026-10-05 went from backup to write that way). A session after the
+  writer does not start in the same entry: the restore's readback stopped at
+  `SPL DDR diagnostic failed` (2026-10-05, nothing read), so the readback
+  needs a fresh entry, which boots what was written once (with a broken
+  image the player may not come back to USB Boot until its battery runs
+  down). The way out is to check inside the writer's own session, by digest
+  (below), before any boot.
+- [ ] The installer's way back: after a failed readback or a "no" to the
+  start, the guided run offers stock (the approved restore plan, the same
+  backup, write, start and readback steps), and `install.py --restore`
+  works from a run's package when the player no longer starts.
+
 ## Stage 5 — GitHub, CI and releases (owner, 2026-10-03)
 
 - [x] Versions after FiiO's firmware: `<firmware>.<number>` (`2.57.1`, tag
@@ -492,8 +565,9 @@ boot menu").
   the server, the menu answered, the service confirmed); emulator 690a55c.
   The catalog names the menu by the release's address; the debug server
   left it for the first write's local catalog (`work/first-write/`).
-- [ ] The tag `v2.57.1`, the draft, the owner's publication (after the
-  first write, which carries these binaries).
+- [ ] ~~The tag `v2.57.1`~~: not released (2026-10-05): its boot binaries
+  have not run on a device (stage 4b). The next release takes the next
+  number once the fixed image passed on the player.
 - [ ] `install.py` takes `disc-boot` and `disc-usb-console` from the boot
   release by their digests; `build/mips` only for development.
 
@@ -510,6 +584,20 @@ boot menu").
   (`probe_keys`, `player_memory`) and `ci/cleanup.sh`. The DISC Web
   prototype, `experiments/`, `library/` and the speech work are not used.
 
+- A faster exact check (owner, 2026-10-05): a SHA-256 of every block
+  computed on the player, only the digests over USB, instead of all 100 MB
+  in 794 small batches (about 40 min); sampling blocks was weighed and
+  refused, since a NAND write fails in one block or page and a squashfs shows
+  it only when that file is read. With diskOS 1.2.0's `my_write6`, which
+  hashes on the device, as the writer to review; the hashing code is itself
+  checked against a known image. The same digest replaces the backup's full
+  read (owner, 2026-10-05): before a new image is written, the player's
+  rootfs must hash to stock or to one of our released images (reproducible
+  from the user's update and our release), else the installation is refused
+  (a full read then keeps a copy for analysis); after the write it must
+  hash to the image written; the way back to stock is allowed from any
+  state. That digest, not a chain of earlier captures and confirmations, is
+  then the proof of what the player held.
 - Ready-to-run installers for macOS and Windows (Windows needs a WinUSB
   driver for the USB Boot device); a browser installer over WebUSB.
 - An optional "official" label for packages signed by us.
