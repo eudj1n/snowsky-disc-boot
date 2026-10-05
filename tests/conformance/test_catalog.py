@@ -40,9 +40,9 @@ class CatalogTests(unittest.TestCase):
     def test_this_repositorys_catalog_is_valid(self):
         data = catalog.load()
         entries = {e['name']: e for e in data['entries']}
-        self.assertEqual(sorted(entries), ['disc-menu', 'diskos'])
-        self.assertEqual({n: e['role'] for n, e in entries.items()}, {'disc-menu': 'menu', 'diskos': 'ui'})
-        self.assertEqual([n for n, e in entries.items() if e['default']], ['disc-menu'])
+        self.assertEqual(sorted(entries), ['disc-menu', 'disc-server', 'diskos'])
+        self.assertEqual({n: e['role'] for n, e in entries.items()}, {'disc-menu': 'menu', 'disc-server': 'service', 'diskos': 'ui'})
+        self.assertEqual(sorted(n for n, e in entries.items() if e['default']), ['disc-menu', 'disc-server'])
         # diskOS is built from its own published release on the user's computer, never from here.
         self.assertEqual(entries['diskos']['source']['recipe'], 'diskos-release')
         self.assertTrue(all(PROFILE in e['profiles'] for e in entries.values()))
@@ -58,6 +58,12 @@ class CatalogTests(unittest.TestCase):
                     continue
                 self.assertEqual(release.firmware_of(entry['version']), PROFILE)
                 name = f'{entry["name"]}-{entry["version"]}.zip'
+                if entry['name'] == 'disc-server':
+                    # The server's release is recorded in snowsky-disc-server (releases/<version>.json),
+                    # which this repository's checks never read: its address and digest are the catalog's.
+                    self.assertEqual(entry['source']['url'], 'https://github.com/eudj1n/snowsky-disc-server/releases/'
+                                                             f'download/v{entry["version"]}/{name}')
+                    continue
                 self.assertEqual(entry['source']['url'], release.url(entry['version'], name))
                 record = ROOT/'releases'/f'{entry["version"]}.json'
                 self.assertTrue(record.is_file(), 'a release is recorded before the catalog names it')

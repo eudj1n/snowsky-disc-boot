@@ -39,6 +39,10 @@ import package  # noqa: E402
 from firmware_profile import load_profile  # noqa: E402
 from emulator.runtime.keys import Device  # noqa: E402
 from emulator.runtime.peripherals import Peripherals  # noqa: E402
+try:  # the emulator's own rule (snowsky-disc-qemu f1d5e33 on, issue #57); older revisions lack it
+    from emulator.runtime.boot_ready import watched as emulator_watched  # noqa: E402
+except ImportError:
+    emulator_watched = None
 
 PROFILE = load_profile()['version']
 ROOTFS = Path('/work/rootfs')
@@ -246,6 +250,10 @@ def found_by_watch_loop():
     """Stock's watch loop on the player finds the running pair under the names it looks for."""
     seen = {name: (sorted(guest_pids(name)), sorted(watched(name))) for name in ('mq_ui', 'mq_player')}
     assert all(running and running == found for running, found in seen.values()), seen
+    if emulator_watched is not None:
+        # The emulator's reading of the same rule agrees with this one, process by process.
+        theirs = {name: sorted(pid for pid in guest_pids(name) if emulator_watched(name, pid)) for name in seen}
+        assert theirs == {name: found for name, (_, found) in seen.items()}, (seen, theirs)
     return {name: found for name, (_, found) in seen.items()}
 
 
