@@ -12,6 +12,10 @@ ready); a job left on the card makes the running probe stage the next version
 into its inactive slot and ask boot to activate it, or ask for a rollback.
 Real timings: a version is confirmed after 180 s of running.
 
+Each boot that ends in stock's UI or a running service is watched for 45 s: the same UI and
+player all along and no restart in stock's log. One boot runs without the boot program at all
+(it cannot be executed), as on the owner's player on 2026-10-05: stock must run all the same.
+
 Stock's card event is also sent while a file on the mounted card is open (as a
 server streaming it holds one): stock's player then unmounts, fails and removes
 the mount point with rm -rf. The emulator's own card controls refuse to send it
@@ -274,6 +278,18 @@ def pair_restarts():
     return count('/usr/data/fiio/log/process_failed.txt', 'Restarting')
 
 
+def steady(seconds=45):
+    """Stock's pair keeps running: the same UI and player all along and no restart in stock's
+    log (owner's player, 2026-10-05: a player that never started made the watch loop restart
+    the UI every few seconds, which no step looked for)."""
+    before, ui, player = pair_restarts(), guest_pids('mq_ui'), guest_pids('mq_player')
+    assert ui and player, f'stock pair not running: ui {ui}, player {player}'
+    time.sleep(seconds)
+    after = dict(restarts=pair_restarts() - before, ui=guest_pids('mq_ui'), player=guest_pids('mq_player'))
+    assert (after['restarts'], after['ui'], after['player']) == (0, ui, player), dict(before=dict(ui=ui, player=player), **after)
+    return dict(seconds=seconds, ui=ui, player=player)
+
+
 def ui_runs(name):
     return wait(lambda: guest_json('/run/disc-boot/ui.json'), lambda u: u['state'] in ('ready', 'confirmed') and u['name'] == name,
                 f'{name} runs', 300)
@@ -288,16 +304,28 @@ def run(output):
     assert (boot['mode'], boot['reason'], boot['keys']['read']) == ('platform', 'default', True), boot
     assert wait(lambda: stock_ui_runs() or None, bool, 'stock UI', 120)
     assert not guest('ls /run/disc-boot/ui-launch 2>/dev/null').strip()
-    step('nothing installed', boot=boot, service=guest_json('/run/disc-boot/service.json'))
+    step('nothing installed', boot=boot, service=guest_json('/run/disc-boot/service.json'), steady=steady())
     # Stock's player, started by stock's PATH lookup, has the card guard first: a busy card stays whole.
     path = guarded_player()
     step('busy card kept', path=path, **busy_card_event(boot['card']))
     power('off')
+    # 1b. The boot program does not run at all (as on the owner's player, 2026-10-05): no run
+    # folder, no decision; both wrappers start stock's programs and the pair stays up.
+    program = ROOTFS/'opt/disc-boot/disc-boot'
+    program.chmod(0o644)
+    try:
+        power('on')
+        assert wait(lambda: stock_ui_runs() or None, bool, 'stock UI without the boot program', 120)
+        assert not guest('ls -d /run/disc-boot 2>/dev/null').strip(), 'the boot program ran'
+        step('the boot program fails, stock runs', steady=steady(), early=guest('cat /run/disc-boot-early.log 2>&1').strip()[-200:])
+        power('off')
+    finally:
+        program.chmod(0o755)
     # 2. Volume Up held: stock mode.
     power('on', hold='volume_up')
     boot = boot_status()
     assert (boot['mode'], boot['reason'], boot['keys']['volumeUp']) == ('stock', 'key', True), boot
-    step('volume up', boot=boot)
+    step('volume up', boot=boot, steady=steady())
     power('off')
     # 3. A damaged staged package and Play: refused, nothing installed, the package stays on the card.
     with card() as root:
@@ -321,7 +349,7 @@ def run(output):
     status = confirmed('1')
     boot = guest_json('/run/disc-boot/boot.json')
     assert (boot['reason'], status['slot'], status['previous']) == ('recovery', 'a', None), (boot, status)
-    step('installed with play', boot=boot, service=status, confirmedAfter=round(time.monotonic() - started))
+    step('installed with play', boot=boot, service=status, confirmedAfter=round(time.monotonic() - started), steady=steady())
     power('off')
     with card() as root:
         assert json.loads((root/'.disc/boot/result.json').read_text())['roles']['service']['installed'] is True

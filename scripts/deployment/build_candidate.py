@@ -180,7 +180,10 @@ def early_hook(profile, usb):
     return f'''#!/bin/sh
 # The boot layer's decision for this boot: keys, mode and the boot-loop count (docs/contract.md).
 case "${{1:-}}" in
-  start) /{BOOT} early --profile {profile['version']} --card {usb['sd_mount']} --card-source {usb['sd_source']} >/run/disc-boot-early.log 2>&1 ;;
+  start)
+    /{BOOT} early --profile {profile['version']} --card {usb['sd_mount']} --card-source {usb['sd_source']} >/run/disc-boot-early.log 2>&1
+    # Its exit status beside its output (the owner's player, 2026-10-05: no run folder and no way to see why).
+    echo "early exit $?" >>/run/disc-boot-early.log 2>/dev/null ;;
 esac
 exit 0
 '''
@@ -205,12 +208,21 @@ def card_guard(usb):
     return source.read_text().replace('@SD@', usb['sd_mount'])
 
 
+# Both wrappers fail open (owner's player, 2026-10-05): nothing before the exec of stock's binary
+# may end the script. A POSIX shell exits on a failed redirection of a special built-in (":")
+# and on a failed exec; the player's wrapper once wrote its marker with ":", and on a boot where
+# the boot program had made no run folder the wrapper ended there, stock's watch loop restarted
+# the UI for hours and the power key, which stock's player handles, did nothing. The boot
+# layer's branch execs only on ui-launch, which the boot program wrote in this very boot, so
+# that binary runs here; every other step is a plain command whose failure is ignored.
+
+
 def ui_wrapper():
     return f'''#!/bin/sh
 # Stock's UI unless the boot layer chose a ui package for this boot (docs/contract.md).
 # Without that choice (stock mode, Volume Up, no package, a failure of the boot program)
 # stock's own program starts and the boot program stays out of its way. Either way the
-# card guard comes first in its PATH.
+# card guard comes first in its PATH. Nothing here may end the script before stock's UI starts.
 PATH=/{GUARD.rsplit('/', 1)[0]}:$PATH; export PATH
 [ -f /run/disc-boot/ui-launch ] && [ -x /{LAUNCHER} ] && exec /{LAUNCHER} "$@"
 exec /usr/bin/mq_ui "$@"
@@ -224,10 +236,11 @@ def player_wrapper():
 # empties a card that is still mounted. While a ui package runs or the boot menu chooses
 # (not after a fallback to stock's UI) the boot program starts the player: the launcher the
 # chosen package brings, if any, else stock's. Started here, stock's player marks that a
-# player ran in this boot: it runs the watchdog from then on, so no later start waits.
+# player ran in this boot: it runs the watchdog from then on, so no later start waits. The
+# mark is a plain command's redirection: without a run folder it fails and the player starts.
 PATH=/{GUARD.rsplit('/', 1)[0]}:$PATH; export PATH
 [ -f /run/disc-boot/ui-launch ] && [ ! -f /run/disc-boot/ui/fallback ] && [ -x /{PLAYER_LAUNCHER} ] && exec /{PLAYER_LAUNCHER} "$@"
-{{ : > /run/disc-boot/player-ran; }} 2>/dev/null
+true 2>/dev/null >/run/disc-boot/player-ran
 exec /usr/bin/mq_player "$@"
 '''
 

@@ -111,7 +111,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(lines, ['PATH=/opt/disc-boot/guard:$PATH; export PATH',
                                  '[ -f /run/disc-boot/ui-launch ] && [ ! -f /run/disc-boot/ui/fallback ] && '
                                  '[ -x /opt/disc-boot/mq_player ] && exec /opt/disc-boot/mq_player "$@"',
-                                 '{ : > /run/disc-boot/player-ran; } 2>/dev/null',
+                                 'true 2>/dev/null >/run/disc-boot/player-ran',
                                  'exec /usr/bin/mq_player "$@"'])
         self.assertEqual(candidate.GUARD.rsplit('/', 1), ['opt/disc-boot/guard', 'rm'])
 
