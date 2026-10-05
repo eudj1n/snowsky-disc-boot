@@ -161,6 +161,9 @@ FACTS = {
     'uptime': 'cut -d" " -f1 /proc/uptime',
     'firmware': 'grep -E "^[A-Z_]*VERSION[A-Z_]*=|^BUILD_TYPE=" /etc/product_version/version.in 2>/dev/null | tr -d "\\r"',
     'boot': '[ -x /opt/disc-boot/disc-boot ] && /opt/disc-boot/disc-boot status || echo none',
+    # The early hook's output and exit status (the owner's player, 2026-10-05: no run folder, no way to see why).
+    'early': 'tail -n 8 /run/disc-boot-early.log 2>/dev/null || echo none; ls -d /run/disc-boot 2>/dev/null || echo "no run folder"',
+    'pair': 'for p in /proc/[0-9]*; do c=$(cat $p/comm 2>/dev/null); case "$c" in mq_ui|mq_player) echo "$c ${p#/proc/}";; esac; done; tail -n 3 /usr/data/fiio/log/process_failed.txt 2>/dev/null; true',
     'keys': 'devmem 0x10010100 32 2>/dev/null',
     'watchdog': 'w=$(for p in /proc/[0-9]*; do for f in $p/fd/*; do case "$(readlink $f 2>/dev/null)" in *watchdog*) echo "${p#/proc/} $(cat $p/comm)";; esac; done; done); echo "${w:-nobody holds it open (stock\'s player runs cmd_watchdog per call)}"',
     'input': 'for p in /proc/[0-9]*; do for f in $p/fd/*; do t=$(readlink $f 2>/dev/null); case "$t" in */input/event*) echo "$(cat $p/comm) $t";; esac; done; done; true',
