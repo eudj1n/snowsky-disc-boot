@@ -488,8 +488,17 @@ program made no run folder there
   installation it made). Checked on the owner's data: the next package
   (image fc47ae4, write plan `fecadd57…`) starts from the restore
   (`installed-candidate`, target `restore`, stock `e75d85bd…`).
-- [ ] The fixed image accepted on the guest with the new steps, then
-  written in steps: no package first (the console's marker only), checked
+- [x] The fixed image accepted on the guest (2026-10-05, image fc47ae4,
+  `e88ff73b…`, the boot binaries of b43034b; emulator 690a55c):
+  `boot_guest.py` 16 of 16 (stock's pair steady 45 s after four boots; with
+  the boot program unable to run, stock runs and the early hook's log says
+  `Permission denied`, `early exit 126`), `two_packages.py` 6 of 6,
+  `menu_guest.py` 3 of 3 with the menu 2.57.1, `install.py --guest` with
+  the first write's catalog (installed by Play, the menu answered, the
+  service confirmed). The first try stopped in the emulator's setup: its
+  priming of `sysconfig.db` waits for the file, not its table, and was
+  killed early under load; the second ran clean.
+- [ ] The fixed image written in steps: no package first (the console's marker only), checked
   on the player through the console (stock, the power key, the boot
   program's log and why it made no run folder), then the packages.
 - [ ] Why `disc-boot early` made no run folder on the device.
