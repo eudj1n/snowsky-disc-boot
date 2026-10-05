@@ -393,7 +393,7 @@ class Installer:
             self.confirm(title, ['Enter USB Boot again (Volume Down and the cable).',
                                  'Next: read it back in a fresh session and compare every byte.'], 'READ')
             read = reviewed.readback(target)
-            audits = reviewed.audit()
+            audits = reviewed.audit(target)
         except usbboot.ReviewedError as error:
             raise Stop(f'{error}. The run\'s evidence is in {self.work/"usb"}; nothing was retried.')
         history = reviewed.next_history(image)

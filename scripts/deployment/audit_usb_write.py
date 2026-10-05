@@ -1,4 +1,5 @@
-"""Independently reconstruct a saved candidate-write USB trace; never opens USB."""
+"""Independently reconstruct a saved write USB trace (the candidate's or the way back to stock,
+the restore); never opens USB."""
 import argparse
 import hashlib
 import json
@@ -14,6 +15,7 @@ if not __debug__:
 parser=argparse.ArgumentParser(description=__doc__)
 for name in ('run', 'package', 'artifacts', 'build', 'diskos', 'output'):
     parser.add_argument('--'+name, type=Path, required=True)
+parser.add_argument('--target', choices=('candidate', 'restore'), default='candidate', help='Which of the package\'s write plans the trace carried out')
 args=parser.parse_args()
 root=Path(__file__).resolve().parents[2]
 run=args.run
@@ -22,7 +24,7 @@ fp=lambda x:sha(json.dumps(x,sort_keys=True,separators=(',',':')).encode())
 request=json.loads((run/'request.json').read_text())
 result=json.loads((run/'result.json').read_text())
 plan=request['plan']; version=plan['version']
-package_plan=json.loads((args.package/'candidate-write-plan.json').read_text())
+package_plan=json.loads((args.package/f'{args.target}-write-plan.json').read_text())
 assert plan==result['plan']==package_plan['plan']
 assert fp(plan)==package_plan['plan_sha256']==request['approved_plan_sha256']==result['approved_plan_sha256']
 assert plan['operation']=='writer-write' and plan['writer_executions']==1 and plan['nand_writes']
@@ -131,7 +133,7 @@ rows=[json.loads(line) for line in (run/'transfers.jsonl').read_text().splitline
 trace=compare(rows,expected(),run,transport,plan['protocol_call_limit'],
               [transport['spl_entry'],reader['load_address'],plan['writer_entry']],
               result['connection'])
-report=dict(status='saved-candidate-write-trace-matches',session_id=result['session_id'],plan_sha256=fp(plan),
+report=dict(status=f'saved-{args.target}-write-trace-matches',session_id=result['session_id'],plan_sha256=fp(plan),
             calls=trace['calls'],raw_reads=trace['raw_reads'],read_bytes=trace['read_bytes'],
             bulk_writes=trace['bulk_writes'],executions=trace['executions'],
             result_sha256=sha((run/'result.json').read_bytes()),journal_sha256=sha((run/'transfers.jsonl').read_bytes()),

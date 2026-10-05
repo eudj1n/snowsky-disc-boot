@@ -215,10 +215,12 @@ class Reviewed:
         exact = self.compare(out, page, image, self.image_sha(image), approved=self.package/f'{target}-exact-readback-plan.json')
         return dict(capture=str(out), image=image.name, exact=exact['status'])
 
-    def audit(self):
-        for name, run, build in (('audit_usb_write.py', self.work/'write', self.meta), ('audit_usb_readback.py', self.work/'read', self.readback_build)):
+    def audit(self, target='candidate'):
+        """Both journals reconstructed offline; the write's against the plan it carried out."""
+        for name, run, build, extra in (('audit_usb_write.py', self.work/'write', self.meta, ['--target', target]),
+                                        ('audit_usb_readback.py', self.work/'read', self.readback_build, ['--target', target])):
             self.need(self.tool(name, '--run', run, '--package', self.package, '--artifacts', self.artifacts, '--build', build,
-                                '--diskos', self.diskos, '--output', run/'offline-review.json'), name)
+                                '--diskos', self.diskos, *extra, '--output', run/'offline-review.json'), name)
         return dict(write=str(self.work/'write/offline-review.json'), read=str(self.work/'read/offline-review.json'))
 
     def next_history(self, image):

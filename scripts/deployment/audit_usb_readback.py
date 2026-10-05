@@ -8,6 +8,7 @@ if not __debug__:
 parser=argparse.ArgumentParser(description=__doc__)
 for name in ('run', 'package', 'build', 'diskos', 'artifacts', 'output'):
     parser.add_argument('--'+name, type=Path, required=True)
+parser.add_argument('--target', choices=('candidate', 'restore'), default='candidate', help='Which of the review\'s images was written and is read back')
 args=parser.parse_args()
 root=Path(__file__).resolve().parents[2];run=args.run
 sha=lambda b:hashlib.sha256(b).hexdigest()
@@ -53,7 +54,7 @@ assert pages==observed_pages and hist==r['ecc_histogram'] and len(pages)==r['rec
 image=b''.join(b[:2048] for b in main[len(marker_pages):]);assert image==(run/'logical-image.bin').read_bytes()
 assert sha(image)==r['logical_image_sha256']
 review=json.loads((args.package/'installation-review.json').read_text())
-candidate=review['images']['candidate']
+candidate=review['images'][args.target]
 assert candidate['bytes']==len(image) and sha(image)==candidate['sha256']
 assert (args.artifacts/candidate['name']).read_bytes()==image
 for i,n in enumerate(pages[len(marker_pages):],len(marker_pages)):
