@@ -493,7 +493,7 @@ program made no run folder there
   on the player through the console (stock, the power key, the boot
   program's log and why it made no run folder), then the packages.
 - [ ] Why `disc-boot early` made no run folder on the device.
-- [ ] `install.py` shows each USB session's progress to the user (owner,
+- [x] `install.py` shows each USB session's progress to the user (owner,
   2026-10-04/05), with the next write of the boot layer: a progress bar in
   the menu's look, the percentage, the time gone and the time left, for the
   backup, the write and the readback. The reviewed tools run in the
@@ -506,6 +506,10 @@ program made no run folder there
   (`device/acquisition/`, `device/src/sha256.c`), diskOS's `my_write6`
   read beside it. Its first run goes beside the full read, before and
   after the write, and both must agree; only then it replaces the full read.
+  It keeps the reads' batches (owner, 2026-10-05): each batch returns its
+  blocks' digests instead of their bytes, so the progress keeps counting
+  real work against the plan and a stalled call stays a bounded timeout;
+  never one long digest of the whole image.
   The write session too (owner, 2026-10-05): its 25 min are about six
   passes of 100 MB over the ROM's USB protocol (the RAM test with a pattern
   and its complement, the staged image compared again), while NAND takes
@@ -523,7 +527,8 @@ program made no run folder there
   for analysis; writing a backup back is a manual operation for us, not a
   user's path. A working boot layer comes back by installing a release
   again over stock (packages and settings in `/usr/data` stay).
-- [ ] Fewer entries into USB Boot (owner, 2026-10-05): the backup and the
+- [x] Fewer entries into USB Boot (owner, 2026-10-05; the installer the
+  same day): the backup and the
   write follow one another without leaving USB Boot (each session runs the
   SPL and stages afresh; the first write of 2026-10-04 and the restore of
   2026-10-05 went from backup to write that way). A session after the
@@ -533,7 +538,8 @@ program made no run folder there
   image the player may not come back to USB Boot until its battery runs
   down). The way out is to check inside the writer's own session, by digest
   (below), before any boot.
-- [ ] The installer's way back: after a failed readback or a "no" to the
+- [x] The installer's way back (2026-10-05, `tests/conformance/test_usbboot.py`
+  with the tools replaced): after a failed readback or a "no" to the
   start, the guided run offers stock (the approved restore plan, the same
   backup, write, start and readback steps), and `install.py --restore`
   works from a run's package when the player no longer starts.

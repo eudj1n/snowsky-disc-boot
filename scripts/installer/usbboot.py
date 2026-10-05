@@ -24,6 +24,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[2]
 DEPLOY = ROOT/'scripts/deployment'
@@ -66,13 +67,21 @@ class History:
         return self.data.get(key)
 
 
+def folder(kind, target):
+    """A session's folder in the run: write and read for the candidate, restore-write and
+    restore-read for the way back to stock."""
+    return kind if target == 'candidate' else f'{target}-{kind}'
+
+
 class Reviewed:
-    def __init__(self, version, work, artifacts, diskos, libusb, history, run=subprocess.run, profile=None):
+    def __init__(self, version, work, artifacts, diskos, libusb, history, run=subprocess.run, profile=None, progress=None):
         self.version, self.work, self.artifacts = version, Path(work), Path(artifacts)
         self.diskos, self.libusb, self.history, self.run = str(diskos), str(libusb), history, run
         self.profile = Path(profile or ROOT/'firmware/installers'/f'v{version}.json')
         self.package, self.meta, self.readback_build = self.work/'package', self.work/'build-metadata', self.work/'build-readback'
         self.log = self.work/'commands.log'
+        # progress(label, fraction, seconds) while a USB session runs (the installer's screen).
+        self.progress = progress
 
     # One reviewed tool, as the procedure runs it
 
@@ -85,6 +94,32 @@ class Reviewed:
         if stdout:
             Path(stdout).write_text(result.stdout)
         return result
+
+    def session(self, name, *args, output, calls, label):
+        """A USB session's tool in the background, its journal (two lines a call) counted against
+        the plan's call limit, with the tool and its checks as they are."""
+        if self.progress is None or self.run is not subprocess.run:
+            return self.tool(name, *args)
+        command = [sys.executable, '-B', str(DEPLOY/name), *[str(a) for a in args]]
+        self.work.mkdir(parents=True, exist_ok=True)
+        with open(self.log, 'a') as log:
+            log.write(' '.join(command) + '\n')
+        journal, lines, offset, started = Path(output)/'transfers.jsonl', 0, 0, time.monotonic()
+        process = subprocess.Popen(command, cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        while process.poll() is None:
+            try:
+                with open(journal, 'rb') as f:
+                    f.seek(offset)
+                    chunk = f.read()
+                    offset += len(chunk)
+                    lines += chunk.count(b'\n')
+            except OSError:
+                pass
+            self.progress(label, min(1.0, lines / 2 / calls), time.monotonic() - started)
+            time.sleep(1)
+        out, err = process.communicate()
+        self.progress(label, 1.0, time.monotonic() - started)
+        return subprocess.CompletedProcess(command, process.returncode, out, err)
 
     def need(self, result, what):
         if result.returncode:
@@ -106,6 +141,8 @@ class Reviewed:
                             '--build', self.meta, '--readback-build', self.readback_build, '--boot-capture', self.history['bootCapture'],
                             '--stock-capture', self.history['stockCapture'], *history, '--libusb', self.libusb, '--output', self.package),
                   'the installation package')
+        # The history this package binds, for a way back to stock from this run (install.py --restore --run).
+        (self.work/'history-used.json').write_text(json.dumps(self.history.data, indent=2) + '\n')
         for name in ('installation-review.json', 'proposed-installer-profile.json', 'candidate-write-plan.json', 'restore-write-plan.json',
                      'postwrite-collection-plan.json', 'candidate-exact-readback-plan.json', 'restore-exact-readback-plan.json'):
             if not (self.package/name).is_file():
@@ -115,10 +152,12 @@ class Reviewed:
 
     # 2, 4. A collection of the primary rootfs, compared with an image
 
-    def collect(self, output, metadata_page):
-        self.need(self.tool('collect_rootfs.py', 'acquire', '--mode', 'rootfs', '--version', self.version, '--build', self.readback_build,
-                            '--diskos', self.diskos, '--metadata-page', metadata_page, '--libusb', self.libusb,
-                            '--approved-plan-sha256', self.plan_sha('postwrite-collection-plan.json'), '--output', output),
+    def collect(self, output, metadata_page, label='Reading the player'):
+        calls = load_json(self.package/'postwrite-collection-plan.json')['plan']['protocol_call_limit']
+        self.need(self.session('collect_rootfs.py', 'acquire', '--mode', 'rootfs', '--version', self.version, '--build', self.readback_build,
+                               '--diskos', self.diskos, '--metadata-page', metadata_page, '--libusb', self.libusb,
+                               '--approved-plan-sha256', self.plan_sha('postwrite-collection-plan.json'), '--output', output,
+                               output=output, calls=calls, label=label),
                   'the collection')
         result = load_json(Path(output)/'result.json')
         if result.get('status') != 'rootfs-collected':
@@ -147,17 +186,33 @@ class Reviewed:
         report = load_json(Path(image).parent/'report.json')
         return report['artifacts'][Path(image).name]['sha256']
 
-    def backup(self):
-        """What is installed now, read in a session of its own and compared with the history's image."""
-        out = self.work/'backup'
+    def backup(self, strict=True, name='backup'):
+        """What is installed now, read in a session of its own. Before a candidate's write it must be
+        the image the history says is installed; before the way back to stock, which any state may
+        take (owner, 2026-10-05), it is only compared with the images it may be, for the record."""
+        out = self.work/name
         page = Path(self.history['bootCapture'])/'metadata-main.bin'
-        self.collect(out, page)
-        previous = self.history.get('previousImage')
-        if previous:
-            sha = self.image_sha(previous)
-            self.compare(out, page, previous, sha)
-            return dict(capture=str(out), matches=Path(previous).name)
-        return dict(capture=str(out), matches=None)
+        self.collect(out, page, label='Backup: reading what the player holds')
+        if strict:
+            previous = self.history.get('previousImage')
+            if previous:
+                self.compare(out, page, previous, self.image_sha(previous))
+                return dict(capture=str(out), matches=Path(previous).name)
+            return dict(capture=str(out), matches=None)
+        return dict(capture=str(out), matches=self.known(out, page))
+
+    def known(self, capture, page):
+        """Which known image a capture holds (the run's candidate, the history's image), or None."""
+        candidates = [self.artifacts/load_json(self.package/'candidate-write-plan.json')['plan']['image_name']]
+        if self.history.get('previousImage'):
+            candidates.append(Path(self.history['previousImage']))
+        for k, image in enumerate(candidates):
+            try:
+                self.compare(capture, page, image, self.image_sha(image), name=f'exact-known-{k}')
+                return image.name
+            except (ReviewedError, OSError, KeyError):
+                continue
+        return None
 
     # 3. The write, once
 
@@ -177,7 +232,8 @@ class Reviewed:
 
     def write(self, target='candidate'):
         tracked, proposed = self.admission()
-        (self.work/'installer-before.json').write_text(json.dumps(tracked, indent=2) + '\n')
+        name = folder('write', target)
+        (self.work/f'{folder("installer-before", target)}.json').write_text(json.dumps(tracked, indent=2) + '\n')
         plan_file = f'{target}-write-plan.json'
         args = ['--version', self.version, '--build', self.meta, '--diskos', self.diskos, '--artifacts', self.artifacts,
                 '--metadata-page', Path(self.history['bootCapture'])/'metadata-main.bin',
@@ -185,14 +241,16 @@ class Reviewed:
         self.profile.write_text(json.dumps(proposed, indent=2) + '\n')
         try:
             replanned = self.tool('writer_transport.py', 'plan', '--mode', 'write', '--target', target, *args,
-                                  stdout=self.work/'write-replanned.json')
+                                  stdout=self.work/f'{name}-replanned.json')
             self.need(replanned, 'the write plan')
-            mine, approved = load_json(self.work/'write-replanned.json'), load_json(self.package/plan_file)
+            mine, approved = load_json(self.work/f'{name}-replanned.json'), load_json(self.package/plan_file)
             if (mine.get('plan'), mine.get('plan_sha256')) != (approved.get('plan'), approved.get('plan_sha256')):
                 raise ReviewedError('the write plan computed now differs from the approved one')
-            out = self.work/'write'
-            self.tool('writer_transport.py', 'acquire', '--mode', 'write', '--target', target, *args, '--confirm-reviewed-device-state',
-                      '--libusb', self.libusb, '--approved-plan-sha256', approved['plan_sha256'], '--output', out)
+            out = self.work/name
+            self.session('writer_transport.py', 'acquire', '--mode', 'write', '--target', target, *args, '--confirm-reviewed-device-state',
+                         '--libusb', self.libusb, '--approved-plan-sha256', approved['plan_sha256'], '--output', out,
+                         output=out, calls=approved['plan']['protocol_call_limit'],
+                         label='Writing stock\'s rootfs' if target == 'restore' else 'Writing the image')
         finally:
             self.close_admission(proposed)
         result = load_json(out/'result.json')
@@ -207,10 +265,10 @@ class Reviewed:
     # 4, 5. The readback and the audits
 
     def readback(self, target='candidate'):
-        write = self.work/'write'
-        out = self.work/'read'
+        write = self.work/folder('write', target)
+        out = self.work/folder('read', target)
         page = write/'metadata-main.bin'
-        self.collect(out, page)
+        self.collect(out, page, label='Reading back what was written')
         plan = load_json(self.package/f'{target}-write-plan.json')['plan']
         image = self.artifacts/Path(plan['image_name']).name
         exact = self.compare(out, page, image, self.image_sha(image), approved=self.package/f'{target}-exact-readback-plan.json',
@@ -219,16 +277,17 @@ class Reviewed:
 
     def audit(self, target='candidate'):
         """Both journals reconstructed offline; the write's against the plan it carried out."""
-        for name, run, build, extra in (('audit_usb_write.py', self.work/'write', self.meta, ['--target', target]),
-                                        ('audit_usb_readback.py', self.work/'read', self.readback_build, ['--target', target])):
+        write, read = self.work/folder('write', target), self.work/folder('read', target)
+        for name, run, build in (('audit_usb_write.py', write, self.meta), ('audit_usb_readback.py', read, self.readback_build)):
             self.need(self.tool(name, '--run', run, '--package', self.package, '--artifacts', self.artifacts, '--build', build,
-                                '--diskos', self.diskos, *extra, '--output', run/'offline-review.json'), name)
-        return dict(write=str(self.work/'write/offline-review.json'), read=str(self.work/'read/offline-review.json'))
+                                '--diskos', self.diskos, '--target', target, '--output', run/'offline-review.json'), name)
+        return dict(write=str(write/'offline-review.json'), read=str(read/'offline-review.json'))
 
-    def next_history(self, image):
-        """This installation as the next one's history."""
+    def next_history(self, image, target='candidate'):
+        """This installation, or its way back to stock, as the next one's history."""
         data = dict(self.history.data, previousReview=str(self.package/'installation-review.json'), previousImage=str(image),
-                    writeCapture=str(self.work/'write'), readbackCapture=str(self.work/'read'))
+                    writeCapture=str(self.work/folder('write', target)), readbackCapture=str(self.work/folder('read', target)),
+                    previousTarget=target)
         data.pop('stageCapture', None)
         (self.work/'history.json').write_text(json.dumps(data, indent=2) + '\n')
         return self.work/'history.json'

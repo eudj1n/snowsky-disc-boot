@@ -49,9 +49,12 @@ def main():
     parser.add_argument('--simulate-small', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--fault', action='append', help='A simulated fault: no-device, bad-blocks=N,M, write-stops=N, readback-flip=N')
     parser.add_argument('--restore', action='store_true', help="Back to stock: the restore image, the same path to the player")
+    parser.add_argument('--run', help="With --restore: back to stock with that installer run's package, whatever the player holds")
     parser.add_argument('--diskos', help="diskOS's checkout at the writer's pinned revision (the reviewed tools check it)")
     parser.add_argument('--libusb', help='The libusb library the reviewed tools load')
     args = parser.parse_args()
+    if args.run and not args.restore:
+        parser.error('--run names the run whose package takes the player back to stock: give --restore too')
     if args.guest and args.restore:
         parser.error('--restore writes a player; a guest starts fresh from each image')
     screen = tui.Screen(look='plain') if args.plain else None

@@ -128,19 +128,25 @@ and nothing retried. With `--history` (this player's `history.json`: its boot an
 installation's review, image, write and readback, or the stage capture of a first one),
 `--diskos` (the checkout at the writer's pinned revision, which the tools check) and
 `--libusb`, the step runs the reviewed tools in `scripts/installer/usbboot.py`, the order of
-[build and flash](build-and-flash.md) steps 3 to 5: the package offline, then after `BACKUP` a
-session that collects the primary rootfs and compares it with the history's image, after
-`WRITE` the profile's admission (only it and the review pin may change), both plans computed
-again and compared, one writer call and the admission closed in every case, the owner's word on
-the new system's first start (leaving USB Boot starts it once), kept with its time in the
-readback capture's `owner-boot-confirmation.json` so that the next installation's review finds
-it between the write and the readback, then after `READ`
-a fresh collection compared every byte with the image by its approved exact plan, and both USB
-journals audited. An unknown writer outcome stops everything. The run writes the next
-`history.json`. Before its first use on a player two points want a review: the backup session
-is collected with the boot capture's metadata page, as the write plan is, while the procedure's
-readback uses the write session's; and the diskOS checkout must be at the writer's pinned
-revision (`646212d`; a checkout moved elsewhere fails the tools' pin checks).
+[build and flash](build-and-flash.md) steps 3 to 5 as the owner runs it: the package offline,
+then in one entry into USB Boot the backup (`BACKUP`: the primary rootfs, which must be the
+history's image) and the write (`WRITE`: the profile's admission, only it and the review pin may
+change, both plans computed again and compared, one writer call, the admission closed in every
+case; an unknown writer outcome stops everything). The player then starts the new system once
+and the owner answers yes or no; a fresh entry (`READ`, a session after the writer does not start
+in its entry) reads it back and compares every byte by the approved exact plan, both USB journals
+are audited, and a yes is kept with its time in the readback's `owner-boot-confirmation.json`,
+between the write and the readback, where the next installation's review looks for it. A no takes
+the player back to stock (owner, 2026-10-05: the way back is stock, from any state): the
+candidate's readback is the backup, stock's rootfs is written in that same entry (`RESTORE`),
+the owner looks at stock's start and a fresh entry reads it back. Each session shows a bar, the
+percentage and the time gone and left, counting its journal (two lines a call) against the
+plan's call limit. The run writes the next `history.json` (its `previousTarget` says candidate or
+restore) and keeps `usb/history-used.json`: `install.py --restore --run <run> --diskos … --libusb …`
+takes the player back to stock with that run's package whatever it holds now (the backup is only
+compared with the images it may be). The diskOS checkout must be at the writer's pinned revision
+(`646212d`; a checkout moved elsewhere fails the tools' pin checks), and while a package is in use
+the sources it pins are not edited.
 Without either, the step says how the player is written instead.
 
 `--guest` puts the emulator's guest in the player's place (`scripts/installer/guest.py` over
