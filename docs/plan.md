@@ -609,7 +609,9 @@ name ([observation](first-write-observation.md)).
     `cb2bb043…`, 8,032 bytes, the full read's still `b1743a1d…`), and the
     collector's result sums them up (`page_ticks`: pages, min, median, p99,
     max, total). The next read beside a backup measures it; the portions'
-    wait comes from that measurement.
+    wait comes from that measurement. Until the portions, the installer reads
+    by digest only beside the backup (owner, 2026-10-05): a second run after
+    the readback cost about 27 minutes and told nothing new.
 - [ ] The write session's waits (owner, 2026-10-05): the host sleeps a fixed
   15 min (`writer_wait_ms`) after starting the writer, since the ROM does not
   answer USB while it runs (diskOS waits the same for `my_write5`), while

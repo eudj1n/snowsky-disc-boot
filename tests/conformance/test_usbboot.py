@@ -289,17 +289,20 @@ class ReviewedTests(unittest.TestCase):
         self.assertIs(record['automated_boot_test'], False)
         self.assertTrue(record['reported_at'].endswith('Z'))
 
-    def test_the_read_by_digest_goes_beside_the_full_reads_and_never_stops(self):
+    def test_the_read_by_digest_goes_beside_the_backup_only_and_never_stops(self):
+        """One read by digest a session, beside the backup (owner, 2026-10-05): it measures what a
+        page takes; after the readback it would add half an hour for nothing new."""
         code, installer, tools = self.install(['BACKUP', 'WRITE', 'yes', 'fine', 'READ'])
         player = installer.report['steps'][4]
-        self.assertEqual((player['backup']['digest']['agreesWithFullRead'], player['read']['digest']['agreesWithFullRead'],
-                          player['read']['digest']['matchesImage']), (True, True, True))
-        self.assertTrue((self.root/'run/usb/digest-read/beside-full-read.json').is_file())
+        self.assertTrue(player['backup']['digest']['agreesWithFullRead'])
+        self.assertTrue((self.root/'run/usb/digest-backup/beside-full-read.json').is_file())
+        self.assertNotIn('digest', player['read'])
+        self.assertFalse((self.root/'run/usb/digest-read').exists())
         shutil.rmtree(self.root/'run')
         self.tools_faults = {'digest-differs'}
         code, installer, tools = self.install(['BACKUP', 'WRITE', 'yes', 'fine', 'READ'])
         self.assertEqual((code, installer.report['status']), (0, 'prepared'), 'the full read stands')
-        self.assertFalse(installer.report['steps'][4]['read']['digest']['agreesWithFullRead'])
+        self.assertFalse(installer.report['steps'][4]['backup']['digest']['agreesWithFullRead'])
 
     def test_a_no_takes_the_player_back_to_stock(self):
         """The new system did not start: straight to stock in a fresh entry (the player holds this
