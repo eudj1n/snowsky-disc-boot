@@ -64,7 +64,7 @@ class InstalledCandidateTests(unittest.TestCase):
         self.wdir=r.root/'write'; self.rdir=r.root/'read'; self.wdir.mkdir();self.rdir.mkdir()
         (self.wdir/'writer-result.bin').write_bytes(self.debug)
         (self.rdir/'records.bin').write_bytes(r.path.read_bytes())
-        self.prior_path=r.root/'prior.json'; self.persist()
+        self.prior_path=r.root/'prior.json'; self.target='candidate'; self.persist()
 
     def session(self, name, plan, status, start, end):
         return dict(plan=plan, approved_plan_sha256=install.fingerprint(plan), session_id=name,
@@ -74,7 +74,7 @@ class InstalledCandidateTests(unittest.TestCase):
 
     def persist(self):
         self.prior_path.write_text(json.dumps(self.prior))
-        for folder,result,status in ((self.wdir,self.write,'saved-candidate-write-trace-matches'),
+        for folder,result,status in ((self.wdir,self.write,f'saved-{self.target}-write-trace-matches'),
                                       (self.rdir,self.read,'saved-postwrite-trace-matches')):
             for name,value in [('result.json',result),('request.json',result),('dependency.json',{'sha256':'d'*64})]:
                 (folder/name).write_text(json.dumps(value))
@@ -87,7 +87,7 @@ class InstalledCandidateTests(unittest.TestCase):
                 spl_executions=1, records=12, batch_executions=1, capture_sha256=self.exact['capture_sha256'])
             (folder/'offline-review.json').write_text(json.dumps(audit))
         (self.rdir/'owner-boot-confirmation.json').write_text(json.dumps(self.owner))
-        (self.rdir/'exact-candidate-review.json').write_text(json.dumps(self.exact))
+        (self.rdir/f'exact-{self.target}-review.json').write_text(json.dumps(self.exact))
 
     def assess(self):
         r=self.r
@@ -102,6 +102,27 @@ class InstalledCandidateTests(unittest.TestCase):
         self.assertFalse(state['new_image_staged']); self.assertFalse(state['freshness_verified'])
         self.assertEqual(plan,self.wp)
         self.assertIn('writer-result.bin',pins['write']['files'])
+
+    def test_accepts_a_previous_way_back_to_stock(self):
+        """The last installation was the restore (2026-10-05): its plan, image and exact readback are
+        the review's restore ones, and the next review starts from it."""
+        self.target = 'restore'
+        self.prior['images'] = dict(candidate=dict(name='other.bin', bytes=8192, sha256='e'*64), restore=self.image)
+        self.prior['exact_readback'] = dict(candidate={'other': 'plan'}, restore=self.r.plan)
+        self.wp.update(target='restore', installation_review_sha256=install.fingerprint(self.prior))
+        self.wp['installer_profile_sha256'] = install.fingerprint(dict(self.prior['context']['layout'],
+            physical_write_admitted=True, installation_review_sha256=install.fingerprint(self.prior)))
+        self.write['approved_plan_sha256'] = install.fingerprint(self.wp)
+        (self.rdir/'exact-candidate-review.json').unlink()
+        self.persist()
+        state, plan, pins = self.assess()
+        self.assertEqual((state['kind'], state['target'], state['image']), ('installed-candidate', 'restore', self.image))
+        self.assertIn('exact-restore-review.json', pins['readback']['files'])
+        self.wp['target'] = 'other'
+        self.write['approved_plan_sha256'] = install.fingerprint(self.wp)
+        self.persist()
+        with self.assertRaisesRegex(Exception, 'Expected one admitted candidate or restore write'):
+            self.assess()
 
     def test_unknown_write_or_missing_staging_cannot_be_repaired_by_readback(self):
         for key,value in [('status','writer-outcome-unknown'),('writer_return_observed',False),

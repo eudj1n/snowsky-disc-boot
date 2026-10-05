@@ -125,18 +125,19 @@ class Reviewed:
             raise ReviewedError(f'the collection ended {result.get("status")!r}')
         return result
 
-    def compare(self, capture, metadata_page, image, image_sha, approved=None):
+    def compare(self, capture, metadata_page, image, image_sha, approved=None, name='exact'):
+        """name: exact-<target> for a readback, as the next installation's review reads it."""
         result = load_json(Path(capture)/'result.json')
         plan = self.tool('readback.py', 'plan', '--version', self.version, '--metadata-page', metadata_page, '--image', image,
-                         '--image-sha256', image_sha, stdout=Path(capture)/'exact-plan.json')
+                         '--image-sha256', image_sha, stdout=Path(capture)/f'{name}-plan.json')
         self.need(plan, 'the exact plan')
-        if approved is not None and load_json(Path(capture)/'exact-plan.json') != load_json(approved):
+        if approved is not None and load_json(Path(capture)/f'{name}-plan.json') != load_json(approved):
             raise ReviewedError('the exact comparison plan differs from the approved one')
         review = self.tool('readback.py', 'verify', '--version', self.version, '--metadata-page', metadata_page, '--image', image,
                            '--image-sha256', image_sha, '--records', Path(capture)/'records.bin', '--nonce-hex', result['nonce_hex'],
-                           stdout=Path(capture)/'exact-review.json')
+                           stdout=Path(capture)/f'{name}-review.json')
         self.need(review, 'the exact comparison')
-        exact = load_json(Path(capture)/'exact-review.json')
+        exact = load_json(Path(capture)/f'{name}-review.json')
         if exact.get('status') != 'saved-logical-readback-matches' or exact.get('nonce_hex') != result['nonce_hex'] \
                 or exact.get('capture_sha256') != result.get('capture_sha256'):
             raise ReviewedError('the readback does not match the image')
@@ -212,7 +213,8 @@ class Reviewed:
         self.collect(out, page)
         plan = load_json(self.package/f'{target}-write-plan.json')['plan']
         image = self.artifacts/Path(plan['image_name']).name
-        exact = self.compare(out, page, image, self.image_sha(image), approved=self.package/f'{target}-exact-readback-plan.json')
+        exact = self.compare(out, page, image, self.image_sha(image), approved=self.package/f'{target}-exact-readback-plan.json',
+                             name=f'exact-{target}')
         return dict(capture=str(out), image=image.name, exact=exact['status'])
 
     def audit(self, target='candidate'):

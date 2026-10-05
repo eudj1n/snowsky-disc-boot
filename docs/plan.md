@@ -480,9 +480,14 @@ program made no run folder there
   (b43034b, exact), write `e4a19c47`, the owner's look at stock's start,
   readback `2105747b` matching stock in all 50,816 records, both USB
   journals audited (the audits learned the restore target).
-- [ ] The installation review binds a previous restore as the source state
-  (`installed_candidate.py` reads the candidate's plan and image only), so
-  that the next write starts from this restored stock.
+- [x] The installation review binds a previous restore as the source state
+  (2026-10-05): the last write's target (candidate or restore) selects its
+  image, exact plan, audit status and comparison file; the installer names
+  a readback's comparison `exact-<target>-…`, as the review reads it (the
+  installer's own `exact-…` names would have failed the next review of any
+  installation it made). Checked on the owner's data: the next package
+  (image fc47ae4, write plan `fecadd57…`) starts from the restore
+  (`installed-candidate`, target `restore`, stock `e75d85bd…`).
 - [ ] The fixed image accepted on the guest with the new steps, then
   written in steps: no package first (the console's marker only), checked
   on the player through the console (stock, the power key, the boot

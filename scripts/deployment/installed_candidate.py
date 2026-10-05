@@ -45,15 +45,16 @@ def session(folder, writing):
           audit['plan_sha256'] == result['approved_plan_sha256'] and
           0 < audit['calls'] <= plan['protocol_call_limit'], 'Historical audit binding mismatch')
     if writing:
-        check(plan.get('operation') == 'writer-write' and plan.get('target') == 'candidate'
+        # The last installation wrote its candidate or went back to stock (the restore, 2026-10-05).
+        check(plan.get('operation') == 'writer-write' and plan.get('target') in ('candidate', 'restore')
               and plan.get('nand_writes') is True and plan.get('writer_executions') == 1
               and plan.get('host_retries') == 0 and plan.get('reconnect') is False
               and plan.get('physical_write_admitted') is True,
-              'Expected one admitted candidate write')
+              'Expected one admitted candidate or restore write')
         check(all(result.get(k) is True for k in ('writer_execution_attempted', 'writer_return_observed',
               'full_staging_patterns_verified', 'image_ram_verified', 'writer_ram_verified',
               'completion_poison_verified')), 'Unresolved writer or incomplete historical staging')
-        check(audit.get('status') == 'saved-candidate-write-trace-matches' and
+        check(audit.get('status') == f"saved-{plan['target']}-write-trace-matches" and
               audit.get('writer_executions') == 1 and audit.get('nand_writes') is True and
               audit['image_sha256'] == plan['image_sha256'] and
               audit['metadata_sha256'] == plan['metadata_sha256'], 'Incomplete candidate write audit')
@@ -76,7 +77,7 @@ def assess(prior_path, image_path, write_folder, read_folder, current_context, r
            historical_pins, base, reader, policy, metadata, libusb_sha256):
     prior = install.load(prior_path)
     write, wpins = session(write_folder, True); read, rpins = session(read_folder, False)
-    plan = write['plan']; old = prior['context']; prior_hash = install.fingerprint(prior)
+    plan = write['plan']; old = prior['context']; prior_hash = install.fingerprint(prior); target = plan['target']
     check(prior.get('schema_version') == 1 and prior.get('status') == 'installation-inputs-reviewed'
           and prior_hash == plan.get('installation_review_sha256') and
           all(prior.get(k) is False for k in ('physical_device_accessed', 'flash_ready', 'freshness_verified')),
@@ -97,16 +98,16 @@ def assess(prior_path, image_path, write_folder, read_folder, current_context, r
           prior['boot']['selected_rootfs'] == policy['kernel']['metadata']['target'], 'Previous boot target mismatch')
     check(prior['libusb_sha256'] == wpins['dependency_sha256'] == rpins['dependency_sha256'] == libusb_sha256,
           'Historical USB dependency mismatch')
-    image = prior['images']['candidate']
+    image = prior['images'][target]
     check(image == dict(name=plan['image_name'], bytes=plan['image_bytes'], sha256=plan['image_sha256']) and
           install.file_pin(image_path, image['bytes']) == {k: image[k] for k in ('bytes', 'sha256')},
           'Previous approved image mismatch')
     check(read['plan'] == prior['postwrite_collection'], 'Postwrite collection was not in previous review')
     exact_plan = readback.make_plan(base, reader, policy, metadata, image['sha256'])
-    check(exact_plan == prior['exact_readback']['candidate'], 'Previous exact readback contract changed')
+    check(exact_plan == prior['exact_readback'][target], 'Previous exact readback contract changed')
     exact = readback.verify(read_folder/'records.bin', image_path, exact_plan, base, reader, policy,
                             metadata, bytes.fromhex(read['nonce_hex']))
-    check(exact == install.load(read_folder/'exact-candidate-review.json') and
+    check(exact == install.load(read_folder/f'exact-{target}-review.json') and
           exact['image_sha256'] == read['logical_image_sha256'] and
           all(exact[k] == read[other] for k, other in (('capture_sha256', 'capture_sha256'),
               ('records', 'records_completed'), ('bad_blocks', 'bad_blocks'),
@@ -137,9 +138,9 @@ def assess(prior_path, image_path, write_folder, read_folder, current_context, r
     read_start, read_end = timestamp(read['started_at']), timestamp(read['finished_at'])
     check(written < read_start and (read_end < reported if reboot else written < reported < read_start),
           'Write/readback/boot chronology mismatch')
-    for name in ('owner-boot-confirmation.json', 'exact-candidate-review.json'):
+    for name in ('owner-boot-confirmation.json', f'exact-{target}-review.json'):
         rpins['files'][name] = install.file_pin(read_folder/name, 1024*1024)
-    state = dict(kind='installed-candidate', image=image, previous_review_sha256=prior_hash,
+    state = dict(kind='installed-candidate', target=target, image=image, previous_review_sha256=prior_hash,
                  previous_review_file=install.file_pin(prior_path, 1024*1024), exact_readback=exact,
                  owner_boot=owner, new_image_staged=False, freshness_verified=False)
     return state, plan, dict(write=wpins, readback=rpins)
