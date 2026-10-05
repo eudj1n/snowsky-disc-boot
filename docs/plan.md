@@ -576,7 +576,7 @@ name ([observation](first-write-observation.md)).
   the staging's length and the wait is added (about 11 + 15 minutes).
 - [x] The read by digest, device and host (2026-10-05): the payload
   `rootfs-digest` (`device/acquisition/digest.c`, its own SHA-256 without
-  libc, 8,024 bytes, stack about 13 of 32 KiB) answers the full read's
+  libc, 8,024 bytes then, stack about 13 of 32 KiB) answers the full read's
   batch with 128 bytes a page (the full result's words, the first OOB bytes,
   the SHA-256 of the main bytes); the full read's payload stays byte for
   byte `b1743a1d…`. The collector reads by digest (`--mode rootfs-digest`,
@@ -601,6 +601,15 @@ name ([observation](first-write-observation.md)).
   bounded, the progress in 2 % steps, about a minute a read; the completion
   marker written last keeps a too-short wait a refused result, never a
   wrong one. First beside the full read again.
+  - [x] The measure first (2026-10-05): what a page takes on the player is not
+    known (only that 64 pages finish within the 2 s settle), and a wait sized
+    without it gains nothing (31 ms a page would make each portion wait 32 s).
+    The digest payload now keeps each page's CP0 Count ticks, from its read to
+    its digest, in the record's first reserved word (`cycles`; payload
+    `cb2bb043…`, 8,032 bytes, the full read's still `b1743a1d…`), and the
+    collector's result sums them up (`page_ticks`: pages, min, median, p99,
+    max, total). The next read beside a backup measures it; the portions'
+    wait comes from that measurement.
 - [ ] The write session's waits (owner, 2026-10-05): the host sleeps a fixed
   15 min (`writer_wait_ms`) after starting the writer, since the ROM does not
   answer USB while it runs (diskOS waits the same for `my_write5`), while

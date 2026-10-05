@@ -12,7 +12,9 @@ struct nr_digest {
     uint32_t data_bytes, data_crc32, observed_id, protect, feature, status, polls, transfers;
     uint8_t oob_head[8];
     uint8_t main_sha256[32];
-    uint32_t reserved[3];
+    /* CP0 Count ticks from the page's read to its digest (0 off the device): the measure the
+       portions of 16 blocks need for their wait (plan, stage 4b). */
+    uint32_t cycles, reserved[2];
 };
 struct batch_digest_result {
     uint32_t magic, version, completed, code;

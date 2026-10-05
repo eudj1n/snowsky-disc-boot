@@ -129,6 +129,16 @@ def bootstrap(session, inputs, nonce, record):
     write_compare(session, record['plan']['payload_entry'], inputs['payload'])
 
 
+def tick_summary(ticks):
+    """Each digested page's CP0 Count ticks (its read and digest on the player): what the portions
+    of 16 blocks need to size their wait (plan, stage 4b). Raw ticks; the CPU clock converts them."""
+    if not ticks:
+        return None
+    ordered = sorted(ticks)
+    return dict(pages=len(ordered), min=ordered[0], median=ordered[len(ordered)//2],
+                p99=ordered[min(len(ordered)-1, len(ordered)*99//100)], max=ordered[-1], total=sum(ordered))
+
+
 def collect(session, reader, inputs, nonce, record):
     policy, scope = inputs['page_policy'], inputs['collector_policy']
     config, plan = scope['profile'], record['plan']
@@ -137,7 +147,7 @@ def collect(session, reader, inputs, nonce, record):
     magic = 0x3244424e if digest_mode else 0x3152424e
     sequence, captured = 1, 0
     digest, image_digest = hashlib.sha256(), hashlib.sha256()
-    histogram = [0]*16
+    histogram, ticks = [0]*16, []
     folder = session.journal.output
     logical = 'logical-digests.bin' if digest_mode else 'logical-image.bin'
     with (folder/'records.bin').open('xb') as stream, (folder/logical).open('xb') as image:
@@ -171,6 +181,7 @@ def collect(session, reader, inputs, nonce, record):
                 check(policy['ecc_admitted'] & (1 << ecc), 'Untrusted batch page ECC')
                 # By digest the marker is the OOB's first byte and the page its main bytes' SHA-256.
                 decoded.append((d['oob_head'][0], d['main_sha256']) if digest_mode else d['data']); histogram[ecc] += 1
+                if digest_mode: ticks.append(d['cycles'])
             # Only fully validated batches enter the record stream. Failed raw
             # reads remain in the durable USB journal, including partial batches.
             for i,q in enumerate(requests):
@@ -213,7 +224,7 @@ def collect(session, reader, inputs, nonce, record):
     if digest_mode:
         record.update(status='rootfs-digest-collected', capture_sha256=digest.hexdigest(),
                       logical_digests_sha256=image_digest.hexdigest(), ecc_histogram=histogram,
-                      image_match_verified=False, active_boot_verified=False)
+                      page_ticks=tick_summary(ticks), image_match_verified=False, active_boot_verified=False)
         return
     record.update(status='rootfs-probe-collected' if scope['mode'] == 'rootfs-probe' else 'rootfs-collected',
                   capture_sha256=digest.hexdigest(), logical_image_sha256=image_digest.hexdigest(),

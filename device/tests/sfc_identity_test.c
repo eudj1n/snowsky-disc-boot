@@ -231,7 +231,7 @@ int main(void) {
                    d->observed_id==r->observed_id && d->protect==r->protect && d->feature==r->feature &&
                    d->status==r->status && d->polls==r->polls && d->transfers==r->transfers &&
                    !memcmp(d->main_sha256,want,32) && !memcmp(d->oob_head,r->data+2048,8) &&
-                   !d->reserved[0] && !d->reserved[1] && !d->reserved[2]);
+                   !d->cycles && !d->reserved[0] && !d->reserved[1]);
         }
         uint8_t empty[32],abc[32],known[32];sha256_ctx c;
         sha256_init(&c);sha256_final(&c,known);digest_sha256((const uint8_t *)"",0,empty);assert(!memcmp(empty,known,32));

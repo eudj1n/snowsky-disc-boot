@@ -233,6 +233,7 @@ class Reviewed:
             mapping = load_json(Path(full)/'result.json').get('logical_to_physical') == result.get('logical_to_physical')
             outcome = dict(status=result['status'], capture=str(out), seconds=round(time.monotonic() - started),
                            agreesWithFullRead=agrees and mapping)
+            outcome['pageTicks'] = result.get('page_ticks')   # what a page takes, for the portions' wait
             if image is not None:
                 verified = self.tool('readback.py', 'verify', '--digest', '--version', self.version, '--metadata-page', metadata_page,
                                      '--image', image, '--image-sha256', self.image_sha(image), '--records', out/'records.bin',
