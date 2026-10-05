@@ -15,11 +15,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from firmware_profile import fingerprint, load_profile, load_reader_profile, sha
 from deployment.metadata_policy import load_metadata_policy
 from deployment.kernel_review import review_partitions
-from deployment.nand_records import encode_request, decode_result
+from deployment.nand_records import encode_request, decode_result, decode_digest, DIGEST_BYTES
 from deployment.review import regular, require
 
 REQUEST_BYTES, RESULT_BYTES = 48, 4428
 RECORD_BYTES = REQUEST_BYTES + RESULT_BYTES
+DIGEST_RECORD = REQUEST_BYTES + DIGEST_BYTES   # a page read by digest (plan, stage 4b)
 
 
 def image_digest(path, size, expected):
@@ -32,7 +33,7 @@ def image_digest(path, size, expected):
     require(digest.hexdigest() == expected, 'Image fingerprint mismatch')
 
 
-def make_plan(base, reader, policy, metadata, image_sha256):
+def make_plan(base, reader, policy, metadata, image_sha256, digest=False):
     require(sha(image_sha256), 'Expected a reviewed image SHA-256')
     writer, chip = policy['writer'], policy['chip']
     layout = review_partitions(metadata, policy['kernel'], chip, writer)
@@ -46,18 +47,19 @@ def make_plan(base, reader, policy, metadata, image_sha256):
             and type(reserve) is int and reserve >= 0 and type(first) is int and first >= 0
             and first+count <= chip['blocks'], 'Invalid readback range')
     records = 2*count+blocks*ppb
-    return dict(schema_version=1, operation='offline-logical-readback',
+    record = DIGEST_RECORD if digest else RECORD_BYTES
+    return dict(schema_version=1, operation='offline-logical-digest-readback' if digest else 'offline-logical-readback',
                 firmware_profile_sha256=fingerprint(base), reader_profile_sha256=fingerprint(reader),
                 policy_sha256=fingerprint(policy), metadata_sha256=layout['page_sha256'],
                 image_sha256=image_sha256, image_bytes=blocks*writer['block_bytes'],
                 first_block=first, end_block_exclusive=first+count, logical_blocks=blocks,
                 pages_per_block=ppb, main_bytes=chip['page_bytes'], oob_bytes=chip['oob_bytes'],
                 marker_reads=2*count, data_reads=blocks*ppb,
-                record_bytes=RECORD_BYTES, records=records, capture_bytes=records*RECORD_BYTES,
+                record_bytes=record, records=records, capture_bytes=records*record,
                 physical_device_accessed=False, flash_ready=False)
 
 
-def _scan_records(records_path, plan, reader, policy, nonce, first_sequence, compare_page):
+def _scan_records(records_path, plan, reader, policy, nonce, first_sequence, compare_page, digest=False):
     """Shared record/mapping validation; callers must enforce their content contract.
 
     This returns observed hashes only, not an image acceptance status.
@@ -71,15 +73,16 @@ def _scan_records(records_path, plan, reader, policy, nonce, first_sequence, com
     ecc_histogram, bad, good = [0]*16, [], []
     sequence = first_sequence
     with records_path.open('rb') as capture:
+        size = DIGEST_RECORD if digest else RECORD_BYTES
         def page(number):
             nonlocal sequence
-            record = capture.read(RECORD_BYTES)
-            require(len(record) == RECORD_BYTES, f'Truncated record at sequence {sequence}')
+            record = capture.read(size)
+            require(len(record) == size, f'Truncated record at sequence {sequence}')
             capture_digest.update(record)
             request = encode_request(2, nonce, sequence, number)
             require(record[:REQUEST_BYTES] == request,
                     f'Wrong request/nonce/order at sequence {sequence}, page {number}')
-            result = decode_result(record[REQUEST_BYTES:], request, plan['main_bytes']+plan['oob_bytes'])
+            result = (decode_digest if digest else decode_result)(record[REQUEST_BYTES:], request, plan['main_bytes']+plan['oob_bytes'])
             status, feature = result['status'], result['feature']
             require(0 <= status <= 255 and 0 <= feature <= 255 and 0 <= result['protect'] <= 255,
                     f'Invalid registers at page {number}')
@@ -94,9 +97,12 @@ def _scan_records(records_path, plan, reader, policy, nonce, first_sequence, com
                     and result['transfers'] == result['polls']+8, f'Invalid counters at page {number}')
             ecc_histogram[ecc] += 1
             sequence += 1
-            return result['data']
+            # By digest a page is its marker byte and its main bytes' SHA-256.
+            return bytes([result['oob_head'][0]]) + result['main_sha256'] if digest else result['data']
 
         main, ppb = plan['main_bytes'], plan['pages_per_block']
+        if digest:
+            main = 0      # the marker byte leads, the SHA-256 follows
         for block in range(plan['first_block'], plan['end_block_exclusive']):
             a, b = page(block*ppb)[main], page(block*ppb)[main]
             require(a == b, f'Ambiguous marker at block {block}')
@@ -108,8 +114,9 @@ def _scan_records(records_path, plan, reader, policy, nonce, first_sequence, com
                 number = physical*ppb+offset
                 data = page(number)
                 require(offset != 0 or data[main] == 255, f'Marker changed at block {physical}')
-                compare_page(data[:main], logical, number)
-                logical_digest.update(data[:main])
+                content = data[1:] if digest else data[:main]
+                compare_page(content, logical, number)
+                logical_digest.update(content)
         require(not capture.read(1), 'Unexpected trailing bytes')
     require(sequence == first_sequence+plan['records'], 'Wrong record count')
     return dict(capture_sha256=capture_digest.hexdigest(), image_sha256=logical_digest.hexdigest(),
@@ -135,6 +142,22 @@ def verify(records_path, image, expected_plan, base, reader, policy, metadata, n
     return dict(status='saved-logical-readback-matches', plan_sha256=fingerprint(plan), **result)
 
 
+def verify_digest(records_path, image, expected_plan, base, reader, policy, metadata, nonce, first_sequence=1):
+    """The image's every page, by the SHA-256 of its main bytes, against a digest capture."""
+    plan = make_plan(base, reader, policy, metadata, expected_plan['image_sha256'], digest=True)
+    require(plan == expected_plan, 'Readback plan changed')
+    image_digest(image, plan['image_bytes'], plan['image_sha256'])
+    with image.open('rb') as source:
+        def compare(digest, logical, number):
+            expected = source.read(plan['main_bytes'])
+            require(len(expected) == plan['main_bytes'] and digest == hashlib.sha256(expected).digest(),
+                    f'Image mismatch at logical block {logical}, physical page {number}')
+        result = _scan_records(records_path, plan, reader, policy, nonce, first_sequence, compare, digest=True)
+        require(not source.read(1), 'Unexpected trailing bytes')
+    result['digests_sha256'] = result.pop('image_sha256')
+    return dict(status='saved-logical-digest-matches', plan_sha256=fingerprint(plan), image_sha256=plan['image_sha256'], **result)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('plan', 'verify'))
@@ -145,6 +168,7 @@ def main():
     parser.add_argument('--records', type=Path)
     parser.add_argument('--nonce-hex')
     parser.add_argument('--first-sequence', type=int, default=1)
+    parser.add_argument('--digest', action='store_true', help='A capture read by digest (plan, stage 4b)')
     args = parser.parse_args()
     if (args.action == 'verify' and (args.records is None or args.nonce_hex is None)) or (
             args.action == 'plan' and (args.records is not None or args.nonce_hex is not None or args.first_sequence != 1)):
@@ -155,9 +179,9 @@ def main():
         policy = load_metadata_policy(base, reader)
         require(regular(args.metadata_page, policy['main_bytes']) == policy['main_bytes'], 'Invalid metadata page')
         metadata = args.metadata_page.read_bytes()
-        plan = make_plan(base, reader, policy, metadata, args.image_sha256)
+        plan = make_plan(base, reader, policy, metadata, args.image_sha256, digest=args.digest)
         image_digest(args.image, plan['image_bytes'], args.image_sha256)
-        result = dict(plan=plan, plan_sha256=fingerprint(plan)) if args.action == 'plan' else verify(
+        result = dict(plan=plan, plan_sha256=fingerprint(plan)) if args.action == 'plan' else (verify_digest if args.digest else verify)(
             args.records, args.image, plan, base, reader, policy, metadata,
             bytes.fromhex(args.nonce_hex), args.first_sequence)
         print(json.dumps(result, indent=2))

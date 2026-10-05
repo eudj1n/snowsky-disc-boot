@@ -1,6 +1,9 @@
 #include "identity.h"
 #include "identity_layout.h"
 #include "batch.h"
+#ifdef ROOTFS_DIGEST
+#include "digest.h"
+#endif
 static uint32_t read32(void *context, uint32_t address) {
     (void)context;
     return *(volatile uint32_t *)(uintptr_t)address;
@@ -36,7 +39,10 @@ void identity_main(void) {
     p.page_bytes = PAGE_MAIN_BYTES; p.oob_bytes = PAGE_OOB_BYTES; p.total_pages = PAGE_TOTAL_PAGES;
     p.feature_mask = PAGE_FEATURE_MASK; p.feature_value = PAGE_FEATURE_VALUE;
     p.ecc_mask = PAGE_ECC_MASK; p.ecc_shift = PAGE_ECC_SHIFT; p.ecc_admitted = PAGE_ECC_ADMITTED;
-#ifdef ROOTFS_FIRST_PAGE
+#if defined(ROOTFS_FIRST_PAGE) && defined(ROOTFS_DIGEST)
+    batch_digest_run(&s, &p, &request, (volatile struct batch_digest_result *)(uintptr_t)BATCH_RESULT_ADDRESS,
+                     ROOTFS_FIRST_PAGE, ROOTFS_END_PAGE);
+#elif defined(ROOTFS_FIRST_PAGE)
     batch_run(&s, &p, &request, (volatile struct batch_result *)(uintptr_t)BATCH_RESULT_ADDRESS,
               ROOTFS_FIRST_PAGE, ROOTFS_END_PAGE);
 #else

@@ -42,6 +42,8 @@ def prepare(p, output, page_policy=None, collector=None):
                                     ('BATCH_REQUEST_ADDRESS', collector['profile']['request_address']),
                                     ('BATCH_RESULT_ADDRESS', collector['profile']['result_address'])]:
                     header.write(f'#define {name} 0x{value:x}\n')
+                if collector['mode'] == 'rootfs-digest':
+                    header.write('#define ROOTFS_DIGEST 1\n')
             else:
                 header.write(f'#define METADATA_PAGE {page_policy["page"]}\n')
             for key in ('expected_id', 'id_mask', 'main_bytes', 'oob_bytes', 'total_pages',
@@ -90,7 +92,7 @@ def inspect_elf(data, p):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--version')
-    parser.add_argument('--mode', choices=('identity', 'metadata', 'rootfs-probe', 'rootfs'), default='identity')
+    parser.add_argument('--mode', choices=('identity', 'metadata', 'rootfs-probe', 'rootfs', 'rootfs-digest'), default='identity')
     parser.add_argument('--diskos', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()

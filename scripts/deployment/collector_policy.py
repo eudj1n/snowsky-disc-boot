@@ -5,10 +5,12 @@ from deployment.metadata_policy import load_metadata_policy
 from deployment.review import regular
 
 REQUEST_BYTES, RESULT_BYTES, MAX_PAGES = 3088, 283408, 64
+# The rootfs read by digest (plan, stage 4b): 128 bytes a page in the same result RAM.
+DIGEST_RESULT_BYTES, DIGEST_RECORD_BYTES = 8208, 128
 
 
 def load_collector_policy(base, reader, mode, directory=PROFILES):
-    require(mode in ('rootfs-probe', 'rootfs'), 'Unknown collector scope')
+    require(mode in ('rootfs-probe', 'rootfs', 'rootfs-digest'), 'Unknown collector scope')
     page = load_metadata_policy(base, reader, directory)
     path = directory/'collectors'/f'v{base["version"]}.json'
     regular(path, 8192)

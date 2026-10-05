@@ -78,7 +78,7 @@ def prepare_inputs(base, cpu, reader, transport, build, diskos, mode='identity')
           and m.get('firmware_profile_sha256') == fingerprint(base)
           and m.get('reader_profile_sha256') == fingerprint(reader)
           and m.get('reader_profile') == reader, 'Build profile mismatch')
-    page_policy = load_metadata_policy(base, reader) if mode in ('metadata', 'rootfs-probe', 'rootfs') else None
+    page_policy = load_metadata_policy(base, reader) if mode in ('metadata', 'rootfs-probe', 'rootfs', 'rootfs-digest') else None
     collector = load_collector_policy(base, reader, mode) if mode.startswith('rootfs') else None
     check(m.get('collector_policy') == collector, 'Build collector policy mismatch')
     check(m.get('purpose', 'identity') == (mode if page_policy else 'identity')

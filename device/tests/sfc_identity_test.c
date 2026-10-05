@@ -2,6 +2,8 @@
 #include "nand_reader.h"
 #include "identity.h"
 #include "batch.h"
+#include "digest.h"
+#include "sha256.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -210,6 +212,42 @@ int main(void) {
     assert(f.starts==640 && !f.active);
     for(unsigned i=0;i<64;i++)assert(batch_result.results[i].data_bytes==2176 &&
         batch_result.results[i].sequence==i+1 && batch_result.results[i].data[2175]==(uint8_t)(2175+11));
+    {   /* The same batch read by digest (plan, stage 4b): each record carries the full result's
+           counters and status, the first OOB bytes and the SHA-256 of the main bytes, checked
+           against the boot program's own SHA-256 (src/sha256.c). */
+        static struct batch_digest_result digests;
+        s=setup(&f);s.limit=64;f.page_mode=1;f.id=0x120b;
+        batch_digest_run(&s,&page_policy,&batch,&digests,11,13);
+        assert(digests.magic==BATCH_DIGEST_RESULT_MAGIC && digests.completed==64 && !digests.code);
+        assert(f.starts==640 && !f.active);
+        for(unsigned i=0;i<64;i++) {
+            const struct nr_digest *d=&digests.records[i];
+            const struct nr_result *r=&batch_result.results[i];
+            uint8_t want[32];sha256_ctx c;
+            sha256_init(&c);sha256_update(&c,r->data,2048);sha256_final(&c,want);
+            assert(d->magic==NR_DIGEST_MAGIC && d->version==1 && d->done==NR_DONE && !d->code &&
+                   d->sequence==i+1 && d->page==r->page && d->operation==NR_READ_PAGE &&
+                   !memcmp(d->nonce,r->nonce,16) && d->data_bytes==2176 && d->data_crc32==r->data_crc32 &&
+                   d->observed_id==r->observed_id && d->protect==r->protect && d->feature==r->feature &&
+                   d->status==r->status && d->polls==r->polls && d->transfers==r->transfers &&
+                   !memcmp(d->main_sha256,want,32) && !memcmp(d->oob_head,r->data+2048,8) &&
+                   !d->reserved[0] && !d->reserved[1] && !d->reserved[2]);
+        }
+        uint8_t empty[32],abc[32],known[32];sha256_ctx c;
+        sha256_init(&c);sha256_final(&c,known);digest_sha256((const uint8_t *)"",0,empty);assert(!memcmp(empty,known,32));
+        static uint8_t long_input[4097];
+        for(unsigned i=0;i<sizeof(long_input);i++)long_input[i]=(uint8_t)(i*7+3);
+        for(unsigned n=0;n<=sizeof(long_input);n+=(n<130?1:257)) {
+            sha256_init(&c);sha256_update(&c,long_input,n);sha256_final(&c,known);
+            digest_sha256(long_input,n,abc);assert(!memcmp(abc,known,32));
+        }
+        struct nr_request saved=batch.requests[63];
+        batch.requests[63].page=10;s=setup(&f);
+        batch_digest_run(&s,&page_policy,&batch,&digests,11,13);
+        assert(digests.magic==BATCH_DIGEST_RESULT_MAGIC && digests.code==NR_INVALID && !digests.completed && !f.writes);
+        batch.requests[63]=saved;
+        puts("SFC digests: 64-page records, SHA-256 against the boot program's, every length to 4 KiB, prevalidation passed");
+    }
     /* An invalid final request must prevent every NAND operation. */
     for(unsigned fault=0;fault<7;fault++) {
         struct nr_request saved=batch.requests[63];

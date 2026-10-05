@@ -500,6 +500,19 @@ program made no run folder there
   background while the installer counts the session's batches against the
   approved plan (the reads) and the logical blocks written against the write
   plan's 768; the tools and their checks stay as they are.
+- [x] The read by digest, device and host (2026-10-05): the payload
+  `rootfs-digest` (`device/acquisition/digest.c`, its own SHA-256 without
+  libc, 8,024 bytes, stack about 13 of 32 KiB) answers the full read's
+  batch with 128 bytes a page (the full result's words, the first OOB bytes,
+  the SHA-256 of the main bytes); the full read's payload stays byte for
+  byte `b1743a1d…`. The collector reads by digest (`--mode rootfs-digest`,
+  17 calls a batch instead of 53, 8 KiB a result instead of 277) and
+  `readback.py --digest` compares every page with the image.
+  `sfc-identity-test` checks the batch on the SFC stand-in against the boot
+  program's own SHA-256; `test_collect_rootfs.py` reads a stand-in NAND both
+  ways (the same mapping, every page's digest the image's and the full
+  read's, a changed page found by its number). Still to do: the installer
+  runs it beside the full read, and an offline audit of its journal.
 - [ ] With the next write of the boot layer (owner, 2026-10-05): the exact
   check by digest (stage "Later", the faster exact check), a SHA-256 of
   every logical block computed on the player by the reviewed reader

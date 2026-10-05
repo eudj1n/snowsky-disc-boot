@@ -67,8 +67,17 @@ class BatchRom(Rom):
                 if self.fault == 'otp': words[15] = 0x50
                 if self.fault == 'counters': words[18] = 11
                 if self.fault == 'page': words[10] += 1
-                results.append(struct.pack('<19I', *words)+data+bytes(4352-2176))
-            output = (struct.pack('<4I',0x3152424e,1,count,1 if self.fault == 'batch-error' else 0)+b''.join(results)).ljust(collect.RESULT_BYTES,b'\0')
+                if self.scope.get('mode') == 'rootfs-digest':
+                    # The digest payload (device/acquisition/digest.c): the same words, the OOB head, the SHA-256.
+                    words[0] = 0x3144524e
+                    main_sha = hashlib.sha256(data[:2048]).digest()
+                    if self.fault == 'digest-flip' and page == 5200: main_sha = bytes([main_sha[0] ^ 1]) + main_sha[1:]
+                    results.append(struct.pack('<19I', *words)+data[2048:2056]+main_sha+bytes(12))
+                else:
+                    results.append(struct.pack('<19I', *words)+data+bytes(4352-2176))
+            digest = self.scope.get('mode') == 'rootfs-digest'
+            output = (struct.pack('<4I',0x3244424e if digest else 0x3152424e,1,count,1 if self.fault == 'batch-error' else 0)+
+                      b''.join(results)).ljust(collect.DIGEST_RESULT_BYTES if digest else collect.RESULT_BYTES,b'\0')
             if self.fault == 'incomplete': output = bytes(4)+output[4:]
             if self.fault == 'tail': output = output[:-1]+b'X'
             self.put(self.scope['profile']['result_address'], output)
@@ -158,6 +167,14 @@ class CollectorTests(unittest.TestCase):
                 self.assertLessEqual(result['batch_executions'],2)
                 self.assertFalse(result['flash_ready'])
 
+    def test_digest_records_are_refused_as_full_results_are(self):
+        self.scope.update(mode='rootfs-digest')
+        for fault in ('nonce','ecc','otp','counters','page','batch-error','incomplete','tail','ambiguous','changed-marker'):
+            with self.subTest(fault=fault):
+                result,path,fake=self.run_fake(fault,skip_bootstrap=True)
+                self.assertEqual(result['status'],'failed')
+                self.assertFalse(result['flash_ready'])
+
     def test_full_mode_small_fixture_matches_independent_readback(self):
         self.scope.update(mode='rootfs',end_page=5120+4*64,logical_blocks=2)
         self.policy['writer'].update(logical_blocks=2,bad_block_reserve=2)
@@ -169,6 +186,50 @@ class CollectorTests(unittest.TestCase):
         verified=readback.verify(path/'records.bin',image,plan,self.base,self.reader,self.policy,self.metadata,
                                  bytes.fromhex(result['nonce_hex']))
         self.assertEqual(verified['logical_to_physical'],[81,82])
+
+    def small_full_range(self, mode):
+        self.scope.update(mode=mode,end_page=5120+4*64,logical_blocks=2)
+        self.policy['writer'].update(logical_blocks=2,bad_block_reserve=2)
+        expected=b''.join(struct.pack('<I',page)*512 for page in range(5184,5312))
+        image=self.root/'expected';image.write_bytes(expected)
+        return image, hashlib.sha256(expected).hexdigest()
+
+    def test_digest_mode_matches_the_image_and_the_full_read(self):
+        """Read by digest (plan, stage 4b): 128 bytes a page, the same bad block skipped, every page's
+        SHA-256 equal to the image's and to the full read's of the same NAND."""
+        image,image_sha=self.small_full_range('rootfs-digest')
+        result,path,fake=self.run_fake('bad-marker',skip_bootstrap=True)
+        self.assertEqual((result['status'],result['logical_to_physical'],result['bad_blocks']),('rootfs-digest-collected',[81,82],[80]))
+        plan=readback.make_plan(self.base,self.reader,self.policy,self.metadata,image_sha,digest=True)
+        self.assertEqual((plan['record_bytes'],(path/'records.bin').stat().st_size),(176,plan['capture_bytes']))
+        verified=readback.verify_digest(path/'records.bin',image,plan,self.base,self.reader,self.policy,self.metadata,
+                                        bytes.fromhex(result['nonce_hex']))
+        self.assertEqual((verified['status'],verified['logical_to_physical']),('saved-logical-digest-matches',[81,82]))
+        self.assertEqual(hashlib.sha256((path/'logical-digests.bin').read_bytes()).hexdigest(),result['logical_digests_sha256'])
+        self.assertEqual(verified['digests_sha256'],result['logical_digests_sha256'])
+        digests=(path/'logical-digests.bin').read_bytes()
+        pages=image.read_bytes()
+        self.assertEqual(digests,b''.join(hashlib.sha256(pages[k:k+2048]).digest() for k in range(0,len(pages),2048)))
+        full=self.run_full_same_nand()
+        self.assertEqual(full['logical_to_physical'],result['logical_to_physical'])
+        self.assertLess(plan['capture_bytes'],readback.make_plan(self.base,self.reader,self.policy,self.metadata,image_sha)['capture_bytes']//20)
+        self.assertLess(result['plan']['protocol_call_limit'],full['plan']['protocol_call_limit'])
+
+    def run_full_same_nand(self):
+        self.scope.update(mode='rootfs')
+        result,path,fake=self.run_fake('bad-marker',skip_bootstrap=True)
+        self.assertEqual(result['status'],'rootfs-collected')
+        return result
+
+    def test_a_digest_that_differs_is_found_by_its_page(self):
+        self.small_full_range('rootfs-digest')
+        expected=b''.join(struct.pack('<I',page)*512 for page in range(5120,5248))   # no bad block: blocks 80 and 81
+        image=self.root/'expected-80';image.write_bytes(expected);image_sha=hashlib.sha256(expected).hexdigest()
+        result,path,fake=self.run_fake('digest-flip',skip_bootstrap=True)
+        plan=readback.make_plan(self.base,self.reader,self.policy,self.metadata,image_sha,digest=True)
+        with self.assertRaisesRegex(ValueError,'Image mismatch at logical block 1, physical page 5200'):
+            readback.verify_digest(path/'records.bin',image,plan,self.base,self.reader,self.policy,self.metadata,
+                                   bytes.fromhex(result['nonce_hex']))
 
     def test_preflight_plan_drift_does_not_load_usb_or_create_output(self):
         plan=self.plan();self.inputs['payload']=b'changed'
@@ -224,6 +285,11 @@ class CollectorTests(unittest.TestCase):
         self.assertIn('#define ROOTFS_FIRST_PAGE 0x1400',text)
         self.assertIn('#define ROOTFS_END_PAGE 0x1480',text)
         self.assertNotIn('METADATA_PAGE',text)
+        self.assertNotIn('ROOTFS_DIGEST',text,'only the digest payload links the digest batch')
+        digest_scope=load_collector_policy(self.base,self.reader,'rootfs-digest')
+        (self.root/'digest').mkdir()
+        prepare(self.reader,self.root/'digest',self.policy,digest_scope)
+        self.assertIn('#define ROOTFS_DIGEST 1',(self.root/'digest/identity_layout.h').read_text())
         full=load_collector_policy(self.base,self.reader,'rootfs')
         self.assertEqual(full['end_page'],912*64)
 
