@@ -97,6 +97,10 @@ static int marker(void) {
     if (!fstat(fd, &st) && S_ISREG(st.st_mode) && st.st_size == (off_t)strlen(ACK)) n = read(fd, data, sizeof(data));
     close(fd); return n == (ssize_t)strlen(ACK) && !memcmp(data, ACK, strlen(ACK));
 }
+/* Revoked: the card is mounted and holds no marker. A card that is not mounted is no revocation:
+   stock's player unmounts and mounts it again at every start of the pair, which is when a session
+   matters most (owner's player, 2026-10-05: the pair restarting after the menu). */
+static int revoked(void) { return mounted_card() && !marker(); }
 static int foreign_gadget(void) {
     char p[PATH_MAX]; path(p, BASE); DIR *d = opendir(p);
     if (!d) return errno != ENOENT;
@@ -280,7 +284,7 @@ int main(int argc, char **argv) {
     }
     fprintf(stderr, "console started\n"); fflush(stderr);
     deadline = now() + session; reason = "session expired or revoked";
-    while (!interrupted && now() < deadline && marker() && !foreign_gadget() && configured() && still_bound() && !exists("/run/disc-usb.stop")) {
+    while (!interrupted && now() < deadline && !revoked() && !foreign_gadget() && configured() && still_bound() && !exists("/run/disc-usb.stop")) {
         if (waitpid(child, NULL, WNOHANG) == child) { child = -1; reason = "console exited"; break; }
         tick();
     }

@@ -515,7 +515,45 @@ name ([observation](first-write-observation.md)).
   the tags: the boot log records the launcher's decisions, the menu's answer
   and hand-over and the menu watcher's kills; the USB console starts without
   waiting for the card's mount (it gave up while the menu waited); then the
-  Play installation's path again, with the console.
+  Play installation's path again, with the console. 2026-10-06: the owner
+  saw it once more after the countdown's choice (a dark, flickering screen:
+  stock's loop turning the backlight off at each restart of the UI), so the
+  key is not the cause. Ruled out offline: the menu's framebuffer page
+  (stock's UI pans to page 0 itself at start), the environment the menu
+  hands on (stock's, plus `DISC_BOOT_*`), the order of the pair's start alone
+  (on the guest every order recovered). Stock's pair talks over POSIX queues
+  (`/dev/mqueue/ui`, `/dev/mqueue/player`; each recreates its own and opens
+  the other's), which outlive the processes until a reboot. The diagnostics
+  for the next failure: the wrappers keep the stock pair's own output (in
+  `/run`) and copy its tail into the boot log at the next start, with the
+  kernel's fatal-signal lines (`print-fatal-signals`) and the queues' state;
+  the boot program logs its decisions there too; the console does not wait
+  for the card's mount.
+  - [x] Found offline (2026-10-06): stock's pair serialises on a `flock` of
+    `/usr/data/fiio/process_lock.txt` (util.c's `process_lock_segment`, a
+    blocking `LOCK_EX`; `process_try_lock_segment` with `LOCK_NB`). A holder
+    that does not let go explains a UI hanging on its logo; a lock kept by a
+    process that inherited its descriptor would outlive the pair's restarts.
+    After the menu's choice the UI and the player started at once, where
+    stock starts the player 2 s after the UI.
+  - [x] The diagnostics and the candidate fix (2026-10-06, branch
+    `diagnostics`): the boot log keeps the boot program's decisions (`plog`),
+    and in platform mode, at each start of the pair, the previous UI's last
+    lines (its output in `/run/disc-boot/out`, a 1 MiB tmpfs; the player's
+    output stays on the console, where the emulator waits for its network
+    thread's line, which a first try took away), the
+    kernel's fatal-signal lines, the lock's holders and waiters from
+    `/proc/locks`, processes in uninterruptible sleep and stock's queues; the
+    console waits 90 s for the card and survives its remounts; after the
+    menu's choice the player starts 2 s behind the UI, as stock's loop
+    starts them. Host tests cover each; the guest and the player next.
+- [ ] The menu during an installation with Play (owner, 2026-10-06): the
+  installation finishes before the menu offers anything, and the menu shows
+  its progress (a status file the boot program writes during the
+  installation, read by the menu like `choices.json`, so the menu stays a
+  package); no stock UI in between and no restart of the pair after it
+  (2026-10-06 on the player with diskOS: the menu, stock playing the last
+  track, a dark screen, the menu again with diskOS, then diskOS).
 - [ ] One SPL a USB Boot entry (2026-10-05): a second SPL in the same entry
   re-runs the whole DDR bring-up, and its PHY training (`CALIB_DONE`, failure
   30 in diskOS's breadcrumbs) left one byte lane untrained in 3 of 6 recorded
@@ -779,6 +817,28 @@ name ([observation](first-write-observation.md)).
   owner.
 - [ ] `install.py` takes `disc-boot` and `disc-usb-console` from the boot
   release by their digests; `build/mips` only for development.
+
+## Stage 6 — the user's path (owner, 2026-10-06)
+
+The order (owner, 2026-10-06): the menu's failure and the diagnostics (a new
+image and write), then the faster write session (stage 4b), then this stage,
+then the tags. Run from a clean clone of `2.x` on 2026-10-06, `install.py
+--dry-run` stopped at its first check: it needs a local build of the boot
+layer and the emulator's checkout to build the image.
+
+- [ ] The boot layer from the release file (`disc-boot-<v>-mips.tar.gz`) by
+  the digests of its record, not a local build (the item above).
+- [ ] A light image builder of our own (Python and `squashfs-tools`), with
+  the emulator's reader of FiiO's update fetched at its pinned revision
+  rather than the emulator's image with its qemu build.
+- [ ] diskOS's writer and SPL fetched at their pinned revision, as the diskOS
+  package already is (`catalog.py fetch --name diskos --download`, checked
+  from a clean clone on 2026-10-06).
+- [ ] The computer's check explains libusb and Docker where they are missing.
+- [ ] The README's guide: what is installed, the risk, the way back, the
+  packages.
+- [ ] The whole path from a clean clone, in CI where it can run (no player)
+  and on a clean computer.
 
 ## Later
 

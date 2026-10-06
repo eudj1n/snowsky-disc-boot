@@ -295,8 +295,9 @@ a package folder checked as `disc-boot` checks it.
   data/<name>/          a package's own persistent data, kept across updates
   boot.log, boot.log.1  the boot log: each boot's id and uptime, the early
                         decision's output and exit status, boot.json, each start
-                        of the pair by the wrappers and the start hook's status;
-                        256 KiB, then boot.log.1 (the early hook rotates it)
+                        of the pair by the wrappers and the start hook's status,
+                        and the boot program's decisions ("What the boot log
+                        keeps"); 256 KiB, then boot.log.1 (the early hook rotates it)
 ```
 
 Every change is a new file, synced, then renamed into place (UBIFS keeps a
@@ -384,6 +385,34 @@ do the same for its player):
   stock's player at once and says why in `/run/disc-boot/ui/player.json`.
   Every crash of the player restarts the UI too, so the UI's own count of
   starts bounds a launcher that fails.
+
+### Stock's order after the menu
+
+`fiio_init.sh` starts stock's UI, then its player 2 s later, and the two then
+share a `flock` of `/usr/data/fiio/process_lock.txt` (a blocking `LOCK_EX`)
+and their POSIX queues (`/dev/mqueue/ui`, `/dev/mqueue/player`). When the menu
+answers, the UI starts at once in the menu's process; the player's launcher,
+which waited for the answer, starts stock's player 2 s after it, so the pair
+keeps stock's order (owner's player, 2026-10-05/06: stock's UI hung on its
+logo once and died at every start of the pair twice after the menu's choice).
+
+### What the boot log keeps
+
+Besides the early hook's and the wrappers' lines, the boot program adds to
+`/usr/data/disc-boot/boot.log`, with the uptime:
+
+- every change of a role's state (`menu asking`, `ui/<name> confirmed`,
+  `service failed: …`), what the player's launcher starts and why, the choice
+  each UI launcher reads, each start of stock's UI or player, and each UI it
+  stops after an installation;
+- in platform mode, at each start of the pair, the last lines the previous UI
+  wrote (stock's UI keeps no log of its own; stock's player keeps
+  `fiio_player.log`), the kernel's fatal-signal lines (`print-fatal-signals`),
+  the holders and waiters of stock's process lock (`/proc/locks`), processes in
+  uninterruptible sleep and stock's queues. The UI's output goes to
+  `/run/disc-boot/out`, a tmpfs of 1 MiB of its own: a full one refuses writes,
+  which no program dies of. The player's output stays where stock sends it: the
+  emulator waits for its network thread's line there.
 
 ### Process names
 

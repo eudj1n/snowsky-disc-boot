@@ -16,6 +16,10 @@ void bpath(char out[PATH_MAX], const char *fmt, ...);
 double mono(void);
 void pause_s(double seconds);
 void blog(const char *fmt, ...);
+/* One line in the persistent boot log (DATA_DIR/boot.log): the uptime, then the message; nothing
+   once the log reaches BOOT_LOG_CAP (the early hook rotates it) or when it cannot be written. */
+#define BOOT_LOG_CAP 262144
+void plog(const char *fmt, ...);
 
 int exists(const char *abs);
 int is_dir(const char *abs);

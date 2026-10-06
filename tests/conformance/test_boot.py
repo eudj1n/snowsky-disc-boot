@@ -43,7 +43,7 @@ class BootTests(unittest.TestCase):
             (self.root/name).mkdir(parents=True, exist_ok=True)
         (self.root/'proc/mounts').write_text('/dev/root / squashfs ro 0 0\n')
         self.env = dict(os.environ, DISC_TEST_LEAK='1', DISC_BOOT_FIXTURE_ROOT=str(self.root),
-                        DISC_BOOT_FIXTURE_TIMING='confirm=1,grace=1,window=30,backoff=0.1,card=2,ui=30,menu=2')
+                        DISC_BOOT_FIXTURE_TIMING='confirm=1,grace=1,window=30,backoff=0.1,card=2,ui=30,menu=2,pair=0.3')
         self.data = self.root/'usr/data/disc-boot'
         self.run_dir = self.root/'run/disc-boot'
         self.addCleanup(self.cleanup)
@@ -723,6 +723,70 @@ exit 0
         self.assertEqual((self.choice()['ui'], self.choice()['by']), ('beta', 'menu'))
         self.assertEqual(self.wait_status('ui', 'confirmed')['name'], 'beta')
         self.assertTrue((self.run_dir/'player-ran').exists())
+        # The persistent boot log (it survives a reset): each decision with its uptime, in order.
+        lines = [line.split(' ', 1)[1] for line in (self.data/'boot.log').read_text().splitlines()]
+        wanted = ['player waiting: the menu is choosing', 'choice alpha by ', 'menu asking 1', 'menu answered',
+                  'ui/beta starting 1', 'player follows the UI by', 'player package beta', 'ui/beta confirmed 1']
+        found = [next((i for i, line in enumerate(lines) if w in line), -1) for w in wanted]
+        self.assertTrue(all(i >= 0 for i in found), (wanted, lines))
+        # Stock's order after the menu's choice: the UI first, the player behind it.
+        self.assertLess(found[wanted.index('menu answered')], found[wanted.index('player follows the UI by')])
+        self.assertTrue(any('mq_ui launcher' in line for line in lines), lines)
+
+    def test_the_pair_s_output_reaches_the_boot_log_at_its_next_start(self):
+        """What a program in the UI's place wrote (stock's UI keeps no log of its own) is in the boot
+        log at the pair's next start, with stock's queues; the program's output goes to RUN_DIR/out."""
+        self.stock_ui()
+        self.install('ui', 'a', f'echo package >> "{self.root}/out/ui"\necho "cannot open the player queue"\n'
+                                'echo "second line" >&2\n', name='other-ui')
+        (self.root/'dev/mqueue').mkdir(parents=True)
+        (self.root/'dev/mqueue/ui').write_text('QSIZE:0          NOTIFY:0     SIGNO:0     NOTIFY_PID:0     \n')
+        self.early()
+        self.launch().wait(timeout=10)
+        self.assertIn('cannot open the player queue', (self.run_dir/'out/mq_ui.log').read_text())
+        self.launch().wait(timeout=10)
+        log = (self.data/'boot.log').read_text()
+        self.assertIn('mq_ui before said: cannot open the player queue', log)
+        self.assertIn('mq_ui before said: second line', log)
+        self.assertIn('mqueue ui QSIZE:0', log)
+        self.assertEqual(self.runs(), ['package', 'package'])
+
+    def test_stock_s_process_lock_and_stuck_processes_reach_the_boot_log(self):
+        """Stock's pair serialises on a flock of /usr/data/fiio/process_lock.txt (blocking): its holder
+        and waiters, and processes in uninterruptible sleep, are in the boot log at each start."""
+        self.stock_ui()
+        self.install('ui', 'a', f'echo package >> "{self.root}/out/ui"\n', name='other-ui')
+        lock = self.root/'usr/data/fiio/process_lock.txt'
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text('')
+        inode = lock.stat().st_ino
+        proc = self.root/'proc'
+        for pid, name, state in ((1234, 'mq_player', 'S'), (1235, 'mq_ui', 'S'), (4321, 'cp', 'D')):
+            (proc/str(pid)).mkdir(parents=True, exist_ok=True)
+            (proc/str(pid)/'stat').write_text(f'{pid} ({name}) {state} 1 1 1 0\n')
+        (proc/'locks').write_text(f'1: FLOCK  ADVISORY  WRITE 1234 00:0e:{inode} 0 EOF\n'
+                                  f'1: -> FLOCK  ADVISORY  WRITE 1235 00:0e:{inode} 0 EOF\n'
+                                  '2: POSIX  ADVISORY  WRITE 999 00:0e:1 0 EOF\n')
+        self.early()
+        self.launch().wait(timeout=10)
+        log = (self.data/'boot.log').read_text()
+        self.assertIn('process_lock holds by 1234 (mq_player S)', log)
+        self.assertIn('process_lock waits by 1235 (mq_ui S)', log)
+        self.assertIn('uninterruptible 4321 (cp D)', log)
+        self.assertNotIn('by 999', log)
+
+    def test_the_boot_log_stops_at_its_cap(self):
+        self.stock_ui()
+        self.install('ui', 'a', f'echo package >> "{self.root}/out/ui"\n', name='other-ui')
+        self.early()
+        log = self.data/'boot.log'
+        log.write_bytes(b'x' * 262144)
+        self.launch().wait(timeout=10)
+        self.assertEqual(self.runs(), ['package'])
+        self.assertEqual(log.stat().st_size, 262144, 'a full log is left as it is, by the wrappers and the boot program')
+        log.unlink()
+        self.launch().wait(timeout=10)
+        self.assertIn('choice other-ui', log.read_text())
 
     def test_after_a_player_ran_the_pair_restarts_for_the_package_player(self):
         self.stock_ui(); self.stock_player()

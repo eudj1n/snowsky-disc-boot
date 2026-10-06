@@ -49,6 +49,31 @@ void blog(const char *fmt, ...) {
     va_end(ap);
 }
 
+void plog(const char *fmt, ...) {
+    char p[PATH_MAX], line[512];
+    struct stat s;
+    bpath(p, DATA_DIR "/boot.log");
+    if (!stat(p, &s) && s.st_size >= BOOT_LOG_CAP) return;
+    struct timespec t;
+#ifdef CLOCK_BOOTTIME
+    if (clock_gettime(CLOCK_BOOTTIME, &t)) t.tv_sec = t.tv_nsec = 0;
+#else
+    if (clock_gettime(CLOCK_MONOTONIC, &t)) t.tv_sec = t.tv_nsec = 0;
+#endif
+    int n = snprintf(line, sizeof(line), "%ld.%02ld ", (long)t.tv_sec, (long)(t.tv_nsec / 10000000));
+    va_list ap; va_start(ap, fmt);
+    int m = vsnprintf(line + n, sizeof(line) - (size_t)n - 1, fmt, ap);
+    va_end(ap);
+    if (m < 0) return;
+    n += m < (int)(sizeof(line) - (size_t)n - 1) ? m : (int)(sizeof(line) - (size_t)n - 2);
+    line[n++] = '\n';
+    int fd = open(p, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0644);
+    if (fd < 0) return;
+    ssize_t w = write(fd, line, (size_t)n);
+    (void)w;
+    close(fd);
+}
+
 int exists(const char *abs) { struct stat s; return lstat(abs, &s) == 0; }
 int is_dir(const char *abs) { struct stat s; return lstat(abs, &s) == 0 && S_ISDIR(s.st_mode); }
 
