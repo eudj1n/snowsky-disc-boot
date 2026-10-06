@@ -547,6 +547,18 @@ name ([observation](first-write-observation.md)).
     console waits 90 s for the card and survives its remounts; after the
     menu's choice the player starts 2 s behind the UI, as stock's loop
     starts them. Host tests cover each; the guest and the player next.
+- [ ] The power key in the menu (owner, 2026-10-06: the player could not be
+  switched off while the menu asked). The key is on `event0` with the
+  others (`x2000_key`, GPE31), whose driver sends gestures: `0x103` a press,
+  `0x108` a hold, the standby and power-off that stock's UI answers with
+  `poweroff -f` (snowsky-disc-qemu's reading of the stock program; the hold
+  not yet seen on the device). The menu takes `event0` and reads only the
+  volume keys and Play, and neither stock's UI nor its player runs while it
+  asks, so nothing answers the hold. The menu answers it as stock does:
+  "Switching off", then the power-off (by the boot layer, as the menu's
+  answer, so the menu stays a package that touches no power itself). First
+  the codes the player sends, read on the device through the console while
+  the menu asks; the emulator does not model the hold (it stops the guest).
 - [ ] The menu during an installation with Play (owner, 2026-10-06): the
   installation finishes before the menu offers anything, and the menu shows
   its progress (a status file the boot program writes during the
