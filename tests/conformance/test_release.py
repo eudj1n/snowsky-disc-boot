@@ -42,8 +42,8 @@ class ReleaseTests(unittest.TestCase):
             self.assertEqual((self.root/'a'/name).read_bytes(), (self.root/'b'/name).read_bytes(), name)
         with zipfile.ZipFile(self.root/'a/disc-menu-2.57.1.zip') as z:
             manifest = json.loads(z.read('package.json'))
-            self.assertEqual((manifest['name'], manifest['version'], manifest['role'], manifest['profiles']),
-                             ('disc-menu', '2.57.1', 'menu', ['2.57']))
+            self.assertEqual((manifest['name'], manifest['version'], manifest['role'], manifest['profiles'], manifest['homepage']),
+                             ('disc-menu', '2.57.1', 'menu', ['2.57'], release.REPOSITORY))
             self.assertEqual(sorted(z.namelist()), ['LICENSE', 'bin/mq_ui', 'licenses/Inter.OFL', 'package.json'])
         with tarfile.open(self.root/'a/disc-boot-2.57.1-mips.tar.gz') as tar:
             self.assertEqual(sorted(tar.getnames()), [f'disc-boot-2.57.1/{n}' for n in ('LICENSE', 'build-id', 'disc-boot', 'disc-usb-console')])

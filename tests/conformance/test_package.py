@@ -91,6 +91,36 @@ class PackageToolTests(unittest.TestCase):
         with self.assertRaisesRegex(package.PackageError, 'only a ui package'):
             self.describe(self.folder(name='service'), player='bin/run')
 
+    def test_a_homepage_is_a_plain_https_address(self):
+        folder = self.folder()
+        self.assertNotIn('homepage', self.describe(folder))
+        self.assertIsNone(package.check(folder, arch='fixture')['homepage'])
+        url = 'https://github.com/eudj1n/snowsky-disc-server'
+        self.assertEqual(self.describe(folder, homepage=url)['homepage'], url)
+        self.assertEqual(package.check(folder, arch='fixture')['homepage'], url)
+        for bad in ('http://github.com/x', 'https://', 'https://github.com/x?tab=readme', 'https://github.com/x#top',
+                    'https://github.com/a b', 'https://github.com/"x"', 'https://github.com/<x>', 'javascript:alert(1)',
+                    'https://github.com/' + 'x' * 182, 7, ''):
+            with self.subTest(bad), self.assertRaisesRegex(package.PackageError, 'homepage must be an https address'):
+                self.describe(folder, homepage=bad)
+        self.assertTrue(package.homepage_ok('https://github.com/' + 'x' * 181))
+        described = self.cli('describe', '--source', str(folder), '--name', 'disc-server', '--version', '2', '--role', 'service',
+                             '--entry', 'bin/run', '--arch', 'fixture', '--profile', PROFILE, '--homepage', url)
+        self.assertEqual(described.returncode, 0, described.stdout + described.stderr)
+        self.assertEqual(json.loads((folder/'package.json').read_text())['homepage'], url)
+
+    def test_disc_boot_ignores_a_homepage_the_tools_check(self):
+        # disc-boot reads only the keys it knows: a homepage, good or bad, never stops a package;
+        # the tools are where a bad one is refused.
+        for label, homepage in (('good', 'https://github.com/eudj1n/snowsky-disc-boot'), ('bad', 'http://example.com/?q')):
+            with self.subTest(label):
+                folder = self.folder(name=f'h-{label}')
+                manifest = self.describe(folder)
+                manifest['homepage'] = homepage
+                (folder/'package.json').write_text(json.dumps(manifest))
+                self.assertIsNone(self.boot_verify(folder, 'service'))
+                self.assertEqual(self.tool_verify(folder, 'service') is None, label == 'good')
+
     def test_a_zip_is_deterministic_and_checks_like_its_folder(self):
         folder = self.folder(extra={'lib/libx.so': 'x'})
         self.describe(folder)
