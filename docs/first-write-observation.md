@@ -246,3 +246,43 @@ The plan's remedy is one SPL per entry. A later session skips the SPL when this 
 a clean diagnostic and its RAM pattern passes succeed. A session stopped at the diagnostic asks
 for a fresh entry and runs again; it never got as far as the NAND. Not filed with diskOS
 (owner).
+
+## The fourth write (diagnostics and status links)
+
+The owner wrote the image of boot `ef056a6` on 2026-10-06 (build `ef056a613a3f`, image
+`c460b12e…`, accepted on the guest the same day): the third write's diagnostics, the menu's
+hand-over in stock's order and the status links. The card took the menu 2.57.2, disc-server
+2.57.2 (the player already ran it, updated through the manager) and the player page.
+
+| Step (2026-10-06) | Observed |
+| --- | --- |
+| Backup | session `352463b7`, 15:37:38–16:15:43Z, `0da9a217…` as the history said |
+| Read by digest, beside it | `42a25650`, 16:15:45–16:43:08Z, every page agreeing; each page's CP0 Count ticks 0 |
+| Write, same entry | `40df245d`, stopped in 3 s at the third SPL's DDR diagnostic `(9, 30, 0x12, 1)`, before any page or writer: `failed-before-writer`, the player untouched |
+| Write, a fresh entry (`install.py --resume`) | `2a00f7cf`, 16:55:56–17:22:08Z, `writer-completion-observed`, a clean diagnostic; admission closed |
+| The owner's look, no key held | "it ok": the menu, the choice of a system, its skip and a manual switch |
+| Readback, a fresh entry | `9efdc040`, 17:34:24–18:12:43Z, `saved-logical-readback-matches` against `c460b12e…` |
+| Audits | `saved-candidate-write-trace-matches`, `saved-postwrite-trace-matches` |
+
+The installer had said to stay connected for the write after the backup. That was the third SPL
+of one entry, and the known DDR failure stopped it; the owner lost an hour to a failure known
+since the third write. The installer now asks for a fresh entry before each write, and
+`--resume` went on from that run's backup (compared again offline, the same package prepared
+again). The read by digest no longer goes with an installation: three runs brought page ticks of
+zero (plan, stage 4b).
+
+### Play after the write
+
+The status named the new build, the server's page (`service.json`) and no page for diskOS (its
+package predates the field). Two starts with Play held (`reason: recovery`) ended about a second
+after the menu's first answer, which was diskOS by its countdown (5 s), before stock's player
+had run and mounted the card: no installation, the staged menu and server left on the card,
+`result.json` from diskOS's installation. The start after each began at a power-on reset
+(CPM `RSR` `0x1`, not the watchdog), and the boot log does not reach the disk line by line, so
+its last seconds may be lost. The owner's account: the keys held too long. A power key held for
+about ten seconds switches the player off in hardware, and a Play still held may answer the
+menu. A third start with Play, the first answer stock's UI, installed both packages (40 s),
+stopped stock's UI for them, asked again and started diskOS. To do with the faster write
+(owner): the boot log synced line by line; the menu takes only a fresh Play press; the
+installer says to hold Play until the logo and press the power key briefly; the installation
+finishes before the menu offers anything.

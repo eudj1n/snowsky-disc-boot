@@ -547,6 +547,18 @@ name ([observation](first-write-observation.md)).
     console waits 90 s for the card and survives its remounts; after the
     menu's choice the player starts 2 s behind the UI, as stock's loop
     starts them. Host tests cover each; the guest and the player next.
+- [ ] The power key in the menu (owner, 2026-10-06: the player could not be
+  switched off while the menu asked). The key is on `event0` with the
+  others (`x2000_key`, GPE31), whose driver sends gestures: `0x103` a press,
+  `0x108` a hold, the standby and power-off that stock's UI answers with
+  `poweroff -f` (snowsky-disc-qemu's reading of the stock program; the hold
+  not yet seen on the device). The menu takes `event0` and reads only the
+  volume keys and Play, and neither stock's UI nor its player runs while it
+  asks, so nothing answers the hold. The menu answers it as stock does:
+  "Switching off", then the power-off (by the boot layer, as the menu's
+  answer, so the menu stays a package that touches no power itself). First
+  the codes the player sends, read on the device through the console while
+  the menu asks; the emulator does not model the hold (it stops the guest).
 - [ ] The menu during an installation with Play (owner, 2026-10-06): the
   installation finishes before the menu offers anything, and the menu shows
   its progress (a status file the boot program writes during the
@@ -562,6 +574,14 @@ name ([observation](first-write-observation.md)).
   diagnostic in TCSM skips the SPL and keeps its RAM pattern passes; a
   session stopped at the DDR diagnostic (before any NAND access) asks for a
   fresh entry and runs again. Not filed with diskOS (owner, 2026-10-05).
+  The fourth write (2026-10-06, image `c460b12e`) stopped the same way:
+  the write's session, the third SPL of the backup's entry (backup 38 min,
+  the read by digest 27 min, whose page ticks came back zero), failed the
+  DDR check (failure 30) before the writer, the player untouched. The
+  installer now asks for a fresh entry before each write (the candidate's
+  and stock's), and `install.py --resume RUN` goes on with such a run from
+  its backup (`test_usbboot`). Still open: the readback and the digest's
+  own entries, and the page ticks.
 - [x] The second write (image fc47ae4, 2026-10-05: write `46444d85` exact,
   the read by digest agreeing with the full backup and with stock) restarted
   without end too, card or no card: the fail-open wrappers were not the cause.
@@ -672,6 +692,25 @@ name ([observation](first-write-observation.md)).
     wait comes from that measurement. Until the portions, the installer reads
     by digest only beside the backup (owner, 2026-10-05): a second run after
     the readback cost about 27 minutes and told nothing new.
+  - [x] The measure came back zero (2026-10-06): three reads by digest beside
+    a backup, 27 minutes each, gave every page 0 ticks, though the payload
+    reads CP0 Count before and after each page (two `mfc0 $9` in it): Count
+    stands still in that context (likely Cause.DC set by the ROM or the SPL;
+    not settled). What the sessions do tell: 794 batches in 27.4 min, about
+    2.07 s a batch, the host's fixed 2 s settle and the transfers; the
+    device's own time a batch is under it. The installer no longer reads by
+    digest beside the backup (owner, 2026-10-06).
+  - [ ] A timer that runs there, settled offline from the SoC's and the SPL's
+    sources (Count with Cause.DC cleared, or the OST), then one short
+    measurement in a session of its own (a payload timing a known loop and a
+    few page reads: a minute or two, with the owner's go-ahead), never again
+    a 27-minute read for it. The same timer serves the measured writer below.
+- [ ] The settle after each batch (owner's question, 2026-10-06): the backup
+  and the readback take 35–40 minutes for 96 MiB that cross USB in about two:
+  the host waits the transport's fixed 2 s after each of their batch
+  executions. A wait sized by the measured time (above), or a completion the
+  host can look for without an unknown outcome, would take each read to a
+  few minutes; the backup, the readback and the portions by digest alike.
 - [ ] The write session's waits (owner, 2026-10-05): the host sleeps a fixed
   15 min (`writer_wait_ms`) after starting the writer, since the ROM does not
   answer USB while it runs (diskOS waits the same for `my_write5`), while
