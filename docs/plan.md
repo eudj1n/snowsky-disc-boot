@@ -833,7 +833,17 @@ name ([observation](first-write-observation.md)).
   that breaks the rule (dropped, never a reason to refuse the package); a
   status file may hold 8 KiB. `test_boot` (a good and a bad page side by
   side). Reaches the player with the next image, the diagnostics image
-  rebuilt with it and accepted on the guest again before its write.
+  rebuilt with it (build `ef056a613a3f`, image `c460b12e…`), accepted on the
+  guest at emulator `f1d5e33` on 2026-10-06 (`work/status-home`):
+  `boot_guest`, the diagnostics' own look, `two_packages` (server 2.57.2,
+  diskOS with its page, the player page; 6 of 6), `menu_guest` (a menu built
+  with its page, 3 of 3), `boot_report`, `boot_layer`, `install.py --guest`.
+  `service.json` and `ui.json` named the server's and diskOS's pages (role
+  status and `installed`), `menu.json` the menu's. `boot_guest` failed once
+  at "installed with play": one reading saw `mq_player` 12230 beside 8589,
+  the other not, after 45 steady seconds of one player, a child caught on
+  its way to exec; its rerun passed. `found_by_watch_loop` now reads again
+  until the two agree, for at most two seconds (not yet run on the guest).
 
 ## Stage 6 — the user's path (owner, 2026-10-06)
 

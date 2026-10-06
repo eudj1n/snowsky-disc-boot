@@ -247,8 +247,15 @@ def watched(name):
 
 
 def found_by_watch_loop():
-    """Stock's watch loop on the player finds the running pair under the names it looks for."""
-    seen = {name: (sorted(guest_pids(name)), sorted(watched(name))) for name in ('mq_ui', 'mq_player')}
+    """Stock's watch loop on the player finds the running pair under the names it looks for.
+    The two readings are taken apart, so a child of the pair caught on its way to exec (2026-10-06:
+    mq_player 12230 beside 8589, gone at once) may show in one; they are read again until they
+    agree, for at most two seconds; a lasting difference still fails."""
+    for attempt in range(5):
+        seen = {name: (sorted(guest_pids(name)), sorted(watched(name))) for name in ('mq_ui', 'mq_player')}
+        if all(running and running == found for running, found in seen.values()):
+            break
+        time.sleep(0.5)
     assert all(running and running == found for running, found in seen.values()), seen
     if emulator_watched is not None:
         # The emulator's reading of the same rule agrees with this one, process by process.
