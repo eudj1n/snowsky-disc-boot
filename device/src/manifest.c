@@ -3,6 +3,7 @@
 #define _DARWIN_C_SOURCE
 #include "manifest.h"
 #include "boot_util.h"
+#include <ctype.h>
 #include <dirent.h>
 #include <limits.h>
 #include <stdarg.h>
@@ -45,6 +46,16 @@ static int hex64(const char *s) {
     return 1;
 }
 
+/* A project's page as the tools write it: https, a host and a plain path, at most 200 bytes. */
+static int homepage_ok(const char *url) {
+    if (strncmp(url, "https://", 8)) return 0;
+    const char *at = url + 8, *host = at;
+    for (; *at && *at != '/'; at++) if (!isalnum((unsigned char)*at) && *at != '.' && *at != '-') return 0;
+    if (at == host) return 0;
+    for (; *at; at++) if (!isalnum((unsigned char)*at) && !strchr("._~%+@:/-", *at)) return 0;
+    return 1;
+}
+
 static int string_at(const bjson *j, const char *key, char *out, size_t cap, int required) {
     int v = bjson_find(j, 0, key);
     if (v == -1 && !required) return 1;
@@ -73,6 +84,8 @@ int manifest_load(const char *dir, manifest *m, char *err, size_t cap) {
     if (string_at(&j, "entry", m->entry, sizeof(m->entry), 1) || !path_ok(m->entry)) { fail(err, cap, "entry must be a listed relative path"); goto done; }
     if ((v = string_at(&j, "player", m->player, sizeof(m->player), 0)) < 0 || (v == 0 && !path_ok(m->player))) { fail(err, cap, "player must be a listed relative path"); goto done; }
     if ((v = string_at(&j, "title", m->title, sizeof(m->title), 0)) < 0 || (v == 0 && !m->title[0])) { fail(err, cap, "title must be 1-32 printable ASCII"); goto done; }
+    /* Shown, never acted on: one that breaks the tools' rule is dropped, not a reason to refuse the package. */
+    if (string_at(&j, "homepage", m->homepage, sizeof(m->homepage), 0) || !homepage_ok(m->homepage)) m->homepage[0] = 0;
     m->ready = 30;
     if ((v = bjson_find(&j, 0, "ready")) != -1) {
         if (v < 0 || bjson_int(&j, v, &n) || n < 1 || n > MAX_READY) { fail(err, cap, "ready must be 1-120 seconds"); goto done; }

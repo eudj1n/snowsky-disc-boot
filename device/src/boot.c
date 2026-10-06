@@ -31,6 +31,8 @@
 #define UI_STARTS 3
 #define MENU_FAILURES 2
 #define MAX_UIS 16
+/* A role's status file: sixteen installed interfaces, each with its project's page, fit. */
+#define STATUS_BYTES 8192
 #define LOG_CAP 65536
 #define RESERVE (16LL * 1024 * 1024)
 #define STOCK_LIBS "/usr/lib:/usr/lib/pulseaudio/:/usr/data/lib:/usr/data/lib/ffmpeg"
@@ -187,7 +189,7 @@ static int ui_installed(const char *name) {
     return !rstate_read(domain, &rs) && rs.current;
 }
 
-typedef struct { char name[33], version[65], title[33], slot; int confirmed; } ui_entry;
+typedef struct { char name[33], version[65], title[33], homepage[201], slot; int confirmed; } ui_entry;
 
 static int entry_order(const void *a, const void *b) { return strcmp(((const ui_entry *)a)->name, ((const ui_entry *)b)->name); }
 
@@ -208,10 +210,11 @@ static int list_uis(ui_entry *out, int cap) {
         if (rstate_read(domain, &rs) || !rs.current) continue;
         snprintf(out[n].name, sizeof(out[n].name), "%.32s", e->d_name);
         bpath(slot, DATA_DIR "/%s/%c", domain, rs.current);
-        out[n].version[0] = out[n].title[0] = 0;
+        out[n].version[0] = out[n].title[0] = out[n].homepage[0] = 0;
         if (!manifest_load(slot, m, err, sizeof(err))) {
             snprintf(out[n].version, sizeof(out[n].version), "%s", m->version);
             snprintf(out[n].title, sizeof(out[n].title), "%s", m->title[0] ? m->title : m->name);
+            snprintf(out[n].homepage, sizeof(out[n].homepage), "%s", m->homepage);
         }
         out[n].slot = rs.current;
         out[n].confirmed = rs.confirmed;
@@ -225,7 +228,7 @@ static int list_uis(ui_entry *out, int cap) {
 
 /* The ui role's status also says this boot's choice and what is installed. */
 static void ui_extra(char *out, size_t cap) {
-    char p[PATH_MAX], choice[SMALL_FILE], version[80];
+    char p[PATH_MAX], choice[SMALL_FILE], version[80], homepage[220];
     size_t len;
     bpath(p, RUN_DIR "/ui/choice.json");
     if (read_small(p, choice, sizeof(choice), &len)) snprintf(choice, sizeof(choice), "null");
@@ -235,8 +238,10 @@ static void ui_extra(char *out, size_t cap) {
     size_t o = (size_t)snprintf(out, cap, ",\"choice\":%s,\"installed\":[", choice);
     for (int k = 0; k < count && o < cap; k++) {
         json_str(version, sizeof(version), list[k].version);
-        o += (size_t)snprintf(out + o, cap - o, "%s{\"name\":\"%s\",\"version\":%s,\"slot\":\"%c\",\"confirmed\":%s}",
-                              k ? "," : "", list[k].name, version, list[k].slot, list[k].confirmed ? "true" : "false");
+        if (list[k].homepage[0]) json_str(homepage, sizeof(homepage), list[k].homepage);
+        else snprintf(homepage, sizeof(homepage), "null");
+        o += (size_t)snprintf(out + o, cap - o, "%s{\"name\":\"%s\",\"version\":%s,\"homepage\":%s,\"slot\":\"%c\",\"confirmed\":%s}",
+                              k ? "," : "", list[k].name, version, homepage, list[k].slot, list[k].confirmed ? "true" : "false");
     }
     if (o < cap) o += (size_t)snprintf(out + o, cap - o, "]");
     if (o >= cap) snprintf(out, cap, ",\"choice\":null,\"installed\":null");
@@ -245,12 +250,14 @@ static void ui_extra(char *out, size_t cap) {
 static void role_status(const char *domain, const char *state, const manifest *m, const role_state *rs, int failures, const char *note) {
     const char *role = role_of(domain);
     plog("%s %s%s%s%s%s", domain, state, m ? " " : "", m ? m->version : "", note && *note ? ": " : "", note ? note : "");
-    char p[PATH_MAX], buf[SMALL_FILE], name[80], version[80], noted[300], request[260], previous[400] = "null", extra[3000] = "";
+    char p[PATH_MAX], buf[STATUS_BYTES], name[80], version[80], homepage[220] = "null", noted[300], request[260], previous[400] = "null",
+         extra[6400] = "";
     bpath(p, RUN_DIR);
     mkdirs(p, 0755);
     bpath(p, RUN_DIR "/%s.json", role);
     json_str(name, sizeof(name), m ? m->name : "");
     json_str(version, sizeof(version), m ? m->version : "");
+    if (m && m->homepage[0]) json_str(homepage, sizeof(homepage), m->homepage);
     json_str(noted, sizeof(noted), note ? note : "");
     json_str(request, sizeof(request), last_request);
     /* The version a rollback returns to, while its slot still holds it. */
@@ -268,9 +275,9 @@ static void role_status(const char *domain, const char *state, const manifest *m
     }
     if (!strcmp(role, "ui")) ui_extra(extra, sizeof(extra));
     int n = snprintf(buf, sizeof(buf),
-        "{\"schema\":1,\"role\":\"%s\",\"state\":\"%s\",\"name\":%s,\"version\":%s,\"slot\":%s%c%s,\"confirmed\":%s,"
+        "{\"schema\":1,\"role\":\"%s\",\"state\":\"%s\",\"name\":%s,\"version\":%s,\"homepage\":%s,\"slot\":%s%c%s,\"confirmed\":%s,"
         "\"failures\":%d,\"note\":%s,\"lastRequest\":%s,\"previous\":%s%s}\n",
-        role, state, m ? name : "null", m ? version : "null",
+        role, state, m ? name : "null", m ? version : "null", homepage,
         rs && rs->current ? "\"" : "nul", rs && rs->current ? rs->current : 'l', rs && rs->current ? "\"" : "",
         rs && rs->confirmed ? "true" : "false", failures, noted, last_request[0] ? request : "null", previous, extra);
     if (n > 0 && n < (int)sizeof(buf)) write_atomic(p, buf, (size_t)n, 0644);
@@ -1159,7 +1166,7 @@ static int cmd_stop(void) {
 }
 
 static void print_file(const char *name) {
-    char p[PATH_MAX], buf[SMALL_FILE];
+    char p[PATH_MAX], buf[STATUS_BYTES];
     size_t len;
     bpath(p, RUN_DIR "/%s", name);
     if (read_small(p, buf, sizeof(buf), &len)) { fputs("null", stdout); return; }

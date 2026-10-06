@@ -827,6 +827,13 @@ name ([observation](first-write-observation.md)).
   it is ever tagged, goes on the commit that built it. Checked with
   `test_package`, `test_catalog`, `test_release` (22) and `test_installer`,
   `test_metadata_policy` (17).
+- [x] The status names them (owner, 2026-10-06, for the server's "Player
+  software"): the role's status and `ui.json`'s `installed` carry
+  `homepage` from the package's manifest, null when it names none or one
+  that breaks the rule (dropped, never a reason to refuse the package); a
+  status file may hold 8 KiB. `test_boot` (a good and a bad page side by
+  side). Reaches the player with the next image, the diagnostics image
+  rebuilt with it and accepted on the guest again before its write.
 
 ## Stage 6 — the user's path (owner, 2026-10-06)
 
