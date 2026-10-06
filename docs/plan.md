@@ -502,9 +502,28 @@ name ([observation](first-write-observation.md)).
   service confirmed). The first try stopped in the emulator's setup: its
   priming of `sysconfig.db` waits for the file, not its table, and was
   killed early under load; the second ran clean.
-- [ ] The fixed image written in steps: no package first (the console's marker only), checked
-  on the player through the console (stock, the power key, the boot
-  program's log and why it made no run folder), then the packages.
+- [x] The fixed image written in steps, its first step (2026-10-05, the third
+  write, release 2.57.2: image `0da9a217…`, write `6df65b78` exact, readback
+  matching in all 50,816 records, both journals audited): the first start
+  without Play kept stock's pair steady and the power key working; the boot
+  log recorded it ([observation](first-write-observation.md#the-third-write-release-2572)).
+- [ ] The packages with Play, the second step: two of the first three starts
+  of the menu after the installation broke after a key chose stock (stock's
+  UI hung on its logo; stock's UI died at every start of the pair until a
+  reboot); the countdown's choice worked. Not reproduced since (an immediate
+  key press, a press after ten seconds, 13.5 min of samples). Next, before
+  the tags: the boot log records the launcher's decisions, the menu's answer
+  and hand-over and the menu watcher's kills; the USB console starts without
+  waiting for the card's mount (it gave up while the menu waited); then the
+  Play installation's path again, with the console.
+- [ ] One SPL a USB Boot entry (2026-10-05): a second SPL in the same entry
+  re-runs the whole DDR bring-up, and its PHY training (`CALIB_DONE`, failure
+  30 in diskOS's breadcrumbs) left one byte lane untrained in 3 of 6 recorded
+  re-runs (both after the writer, one of four after a read); the first SPL
+  of an entry passed in all 11. A session in an entry whose SPL left a clean
+  diagnostic in TCSM skips the SPL and keeps its RAM pattern passes; a
+  session stopped at the DDR diagnostic (before any NAND access) asks for a
+  fresh entry and runs again. Not filed with diskOS (owner, 2026-10-05).
 - [x] The second write (image fc47ae4, 2026-10-05: write `46444d85` exact,
   the read by digest agreeing with the full backup and with stock) restarted
   without end too, card or no card: the fail-open wrappers were not the cause.
@@ -747,8 +766,11 @@ name ([observation](first-write-observation.md)).
   addresses; the server is a default beside the menu. The page's zip is the
   one its release workflow packs (Node 24): the 2026-10-02 local build held
   the same files, its gzip twins compressed by Node 26's zlib.
-- [ ] The third write with these files, in steps (owner's go-ahead): the
-  image with no package on the card first, then the packages with Play.
+- [ ] The third write with these files, in steps (owner's go-ahead,
+  2026-10-05): the image with no package first passed on the player; the
+  packages with Play installed, the server confirmed (its page on port 7870
+  and its manager on 7871 answered over Wi-Fi), but the menu broke twice in
+  its first three starts (stage 4b): the tags wait for that.
 - [ ] The tags once the system stayed up on the player (owner, 2026-10-05):
   `v2026.10.02-05a1422` on snowsky-disc-player `c87ddc2` (its workflow
   publishes at once; the published zip's SHA-256 checked against the
