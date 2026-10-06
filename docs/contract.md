@@ -231,10 +231,13 @@ Distributed as a zip; staged and installed as a folder with `package.json`:
   most 200 bytes, of letters, digits and `.-` in the host and
   `._~%+@:/-` in the path, without a query or a fragment
   (`https://github.com/eudj1n/snowsky-disc-server`). Every public package
-  names one (owner, 2026-10-06: preparing the public releases). Boot
-  ignores it, as any key it does not know, so a package that carries it
-  needs no newer boot program; `scripts/package.py` and `scripts/catalog.py`
-  refuse a malformed one, and the server's manager shows it as a link.
+  names one (owner, 2026-10-06: preparing the public releases). Boot never
+  acts on it: it names it in the role's status and in `ui.json`'s
+  `installed`, and leaves out one that breaks the rule rather than refuse
+  the package (an older boot program ignores the key, so a package that
+  carries it needs no newer one); `scripts/package.py` and
+  `scripts/catalog.py` refuse a malformed one, and the server's manager
+  shows it as a link.
 - A `ui` package may name `player`, a listed `0755` file: its own launcher
   of stock's player (diskOS's sets up its card protection there and tells
   its UI so). Boot runs it as `mq_player` while that package's UI runs (not
@@ -577,7 +580,7 @@ menu's `stock` entry is stock's UI with the `service` package running.
   `/run/disc-boot/menu/`.
 - `ui.json` keeps the chosen UI's status (`stock-ui` when stock's UI was
   chosen) and adds `choice` and `installed` (each package's name, version,
-  slot, confirmed); `menu.json` is the menu's role status (`asking`,
+  homepage, slot, confirmed); a status file holds at most 8 KiB; `menu.json` is the menu's role status (`asking`,
   `answered`, `failed`, `absent`); `disc-boot status` adds both and the
   choice.
 
@@ -668,7 +671,8 @@ enforce this: packages run as root, at the installer's risk.
 - `service.json`, `ui.json`, `menu.json`: the role's state (`starting`,
   `ready`, `confirmed`, `restarting`, `rolled-back`, `failed`, `stopped`,
   `absent`, `stock-mode`, `fallback`, `not-ready`; `stock-ui` for the ui
-  role, `asking` and `answered` for the menu), the package's name and version,
+  role, `asking` and `answered` for the menu), the package's name, version
+  and `homepage` (null when it names none),
   the slot, confirmed or not, failures, a note, the last request's outcome
   and `previous`: `{slot, name, version, manifest}` of the version a
   rollback returns to while its slot still holds it, else null (written

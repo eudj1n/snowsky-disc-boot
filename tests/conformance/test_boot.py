@@ -581,6 +581,21 @@ exit 0
     def menu(self, script, confirmed=False, **kwargs):
         return self.install('menu', 'a', f'echo menu >> "{self.root}/out/ui"\n' + script, name='disc-menu', confirmed=confirmed, **kwargs)
 
+    def test_the_status_names_each_package_s_project_page(self):
+        # The manager links what the status names (snowsky-disc-server "Player software"); a page
+        # that breaks the tools' rule is left out, never a reason to refuse the package.
+        self.stock_ui()
+        page = 'https://github.com/b0hemia/diskos'
+        for name, homepage in (('alpha', page), ('beta', 'http://example.com/beta')):
+            self.install('ui', 'a', f'echo {name} >> "{self.root}/out/ui"\n: > "$DISC_BOOT_RUN/ready"\nsleep 2.5\n',
+                         name=name, confirmed=True, edit=lambda m, h=homepage: m.update(homepage=h))
+        self.set_global(ui='alpha')
+        self.early()
+        self.launch().wait(timeout=10)
+        status = self.wait_status('ui', 'confirmed')
+        self.assertEqual((status['name'], status['homepage']), ('alpha', page))
+        self.assertEqual([(i['name'], i['homepage']) for i in status['installed']], [('alpha', page), ('beta', None)])
+
     def test_the_default_chooses_among_several_uis(self):
         self.stock_ui()
         self.two_uis()
