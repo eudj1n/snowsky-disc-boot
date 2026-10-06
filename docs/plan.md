@@ -547,6 +547,15 @@ name ([observation](first-write-observation.md)).
     console waits 90 s for the card and survives its remounts; after the
     menu's choice the player starts 2 s behind the UI, as stock's loop
     starts them. Host tests cover each; the guest and the player next.
+- [x] diskOS's screen after its own "Screen off" (owner, 2026-10-06/07: it
+  did not wake by the power key, twice, and the player was switched off and
+  on): diskOS 1.2.0 cuts the panel's rail itself (`bl_power=4`) after its
+  screensaver and screen-off times, and wakes it only on a touch, read on a
+  raw `event1` descriptor of its own; it ignores the player's signals for
+  waking by design ("random wake"), and the power key brings the panel back
+  only when the player itself blanked it (`ui/main.c`, PW-10). A touch woke
+  it on the owner's player. Not the boot layer's: the menu takes only
+  `event0`, never `event1`.
 - [ ] The power key in the menu (owner, 2026-10-06: the player could not be
   switched off while the menu asked). The key is on `event0` with the
   others (`x2000_key`, GPE31), whose driver sends gestures: `0x103` a press,
