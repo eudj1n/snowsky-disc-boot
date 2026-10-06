@@ -46,6 +46,11 @@ class CatalogTests(unittest.TestCase):
         # diskOS is built from its own published release on the user's computer, never from here.
         self.assertEqual(entries['diskos']['source']['recipe'], 'diskos-release')
         self.assertTrue(all(PROFILE in e['profiles'] for e in entries.values()))
+        # Every package is public: each names its project's page.
+        self.assertEqual({n: e['homepage'] for n, e in entries.items()}, {
+            'disc-menu': 'https://github.com/eudj1n/snowsky-disc-boot',
+            'disc-server': 'https://github.com/eudj1n/snowsky-disc-server',
+            'diskos': 'https://github.com/b0hemia/diskos'})
 
     def test_this_repositorys_packages_are_releases(self):
         """Debug builds stay local; our own packages are release files, named by the release's
@@ -81,6 +86,7 @@ class CatalogTests(unittest.TestCase):
             'verified must give': lambda e: e.update(verified={'date': '2026-10-03'}),
             'default must be': lambda e: e.update(default='yes'),
             'title must be': lambda e: e.update(title='x' * 33),
+            'homepage must be': lambda e: e.update(homepage='http://github.com/eudj1n/snowsky-disc-boot'),
         }
         for message, damage in cases.items():
             with self.subTest(message):
@@ -167,12 +173,13 @@ class CatalogTests(unittest.TestCase):
         binary = b'\x7fELF a stand-in for diskOS\'s UI'
         release = self.release('diskos-installer/payload/mq_ui', binary)
         archive = dict(url='https://example.com/diskos.tar.gz', sha256=digest(release.read_bytes()), size=release.stat().st_size)
-        entry = dict(name='diskos', role='ui', version='1.2.0', title='diskOS', profiles=[PROFILE],
+        entry = dict(name='diskos', role='ui', version='1.2.0', title='diskOS', homepage='https://github.com/b0hemia/diskos', profiles=[PROFILE],
                      source=dict(recipe='diskos-release', archives=[archive], member='diskos-installer/payload/mq_ui',
                                  memberSha256=digest(binary)))
         folder = catalog.fetch(entry, self.root/'diskos', [release])
         manifest = json.loads((folder/'package.json').read_text())
-        self.assertEqual((manifest['entry'], manifest['player'], manifest['title']), ('mq_ui', 'diskos/mq_ui', 'diskOS'))
+        self.assertEqual((manifest['entry'], manifest['player'], manifest['title'], manifest['homepage']),
+                         ('mq_ui', 'diskos/mq_ui', 'diskOS', 'https://github.com/b0hemia/diskos'))
         self.assertEqual((folder/'diskos/mq_ui').read_bytes(), binary)
         self.assertIn('/tmp/.diskos_boot_select', (folder/'mq_ui').read_text())
         package.check(folder, 'ui', PROFILE)

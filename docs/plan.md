@@ -817,6 +817,16 @@ name ([observation](first-write-observation.md)).
   owner.
 - [ ] `install.py` takes `disc-boot` and `disc-usb-console` from the boot
   release by their digests; `build/mips` only for development.
+- [x] Project pages for the public releases (owner, 2026-10-06): an optional
+  `homepage` in `package.json` and in catalog entries (contract,
+  "Packages"), checked by `package.py` and `catalog.py`, ignored by boot
+  (`test_package.py`: a good or bad one never stops `disc-boot verify`).
+  The catalog names one for each package; diskOS's recipe passes its own
+  on. The menu's carries it from the next menu release on: a rebuild of
+  2.57.2 from this tree no longer gives its recorded zip, so `v2.57.2`, if
+  it is ever tagged, goes on the commit that built it. Checked with
+  `test_package`, `test_catalog`, `test_release` (22) and `test_installer`,
+  `test_metadata_policy` (17).
 
 ## Stage 6 — the user's path (owner, 2026-10-06)
 

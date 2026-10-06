@@ -107,7 +107,7 @@ def build(version, output, mips=ROOT/'build/mips', release=True):
         (folder/'bin/mq_ui').chmod(0o755)
         shutil.copyfile(ROOT/'LICENSE', folder/'LICENSE')
         shutil.copyfile(ROOT/'device/licenses/Inter.OFL', folder/'licenses/Inter.OFL')
-        package.describe(folder, 'disc-menu', version, 'menu', 'bin/mq_ui', profiles=[firmware])
+        package.describe(folder, 'disc-menu', version, 'menu', 'bin/mq_ui', profiles=[firmware], homepage=REPOSITORY)
         package.zip_package(folder, output/menu_zip)
     kit(version, mips, output/kit_name)
     files = {name: dict(bytes=(output/name).stat().st_size, sha256=digest(output/name)) for name in (menu_zip, kit_name)}

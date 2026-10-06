@@ -14,6 +14,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import sys
@@ -36,6 +37,10 @@ ROLES = ('service', 'ui', 'menu')
 STAGING = Path('.disc/boot/install')
 RESULT = Path('.disc/boot/result.json')
 ZIP_TIME = (2026, 1, 1, 0, 0, 0)
+# A package's project page (optional): disc-boot ignores it, the server's manager shows it;
+# the tools keep it a plain https address (no query, no fragment).
+HOMEPAGE = re.compile(r'https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~%+@:/-]*)?')
+HOMEPAGE_BYTES = 200
 
 
 class PackageError(ValueError):
@@ -64,6 +69,10 @@ def path_ok(path):
     if len(parts) > 8 or path == 'package.json':
         return False
     return all(part and len(part) <= 64 and part not in ('.', '..') and set(part) <= allowed for part in parts)
+
+
+def homepage_ok(value):
+    return isinstance(value, str) and len(value) <= HOMEPAGE_BYTES and HOMEPAGE.fullmatch(value) is not None
 
 
 def integer(value, low=0, high=10**15 - 1):
@@ -143,6 +152,10 @@ def load(folder):
     if title is not Missing and not printable(title, 32):
         fail('title must be 1-32 printable ASCII')
     m['title'] = None if title is Missing else title
+    homepage = root.get('homepage', Missing)
+    if homepage is not Missing and not homepage_ok(homepage):
+        fail('homepage must be an https address of at most 200 characters, without a query or a fragment')
+    m['homepage'] = None if homepage is Missing else homepage
     ready = root.get('ready', Missing)
     if ready is not Missing and not integer(ready, 1, MAX_READY):
         fail('ready must be 1-120 seconds')
@@ -255,7 +268,7 @@ def check(folder, role=None, profile=None, arch=ARCH, check_modes=True):
 
 
 def describe(folder, name, version, role, entry, args=(), ready=None, profiles=None, arch=ARCH, boot_api=BOOT_API,
-             player=None, title=None):
+             player=None, title=None, homepage=None):
     """package.json for a folder: every file with its size, digest and mode (0755 when executable)."""
     folder = Path(folder)
     files = {}
@@ -284,6 +297,8 @@ def describe(folder, name, version, role, entry, args=(), ready=None, profiles=N
         manifest['player'] = player
     if title is not None:
         manifest['title'] = title
+    if homepage is not None:
+        manifest['homepage'] = homepage
     text = json.dumps(manifest, indent=2) + '\n'
     if len(text.encode()) >= MANIFEST_BYTES:
         fail('package.json would exceed 64 KiB')
@@ -415,6 +430,7 @@ def main():
     d.add_argument('--entry', required=True)
     d.add_argument('--player', help="A ui package's own launcher of stock's player (it ends in stock's player started as mq_player)")
     d.add_argument('--title', help='The name a boot menu shows (1-32 printable ASCII; default: the name)')
+    d.add_argument('--homepage', help="The project's page (an https address; disc-boot ignores it, the server's manager shows it)")
     d.add_argument('--arg', action='append', default=[], help='An argument for the entry (repeat for more)')
     d.add_argument('--ready', type=int, help='Seconds to become ready (1-120, default 30)')
     d.add_argument('--profile', action='append', help='A supported firmware profile (default: the active one)')
@@ -439,7 +455,7 @@ def main():
     try:
         if args.command == 'describe':
             m = describe(args.source, args.name, args.version, args.role, args.entry, args.arg, args.ready, args.profile, args.arch,
-                         player=args.player, title=args.title)
+                         player=args.player, title=args.title, homepage=args.homepage)
             out = dict(name=m['name'], version=m['version'], role=m['role'], files=len(m['files']),
                        bytes=sum(f['size'] for f in m['files'].values()))
         elif args.command == 'check':

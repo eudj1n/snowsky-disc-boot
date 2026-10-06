@@ -59,12 +59,14 @@ with `DISC_BOOT_FIXTURE_FILE` naming the binary itself.
 ## Packages
 
 `scripts/package.py` follows the contract's rules and messages (a test holds
-it to `disc-boot verify` case by case):
+it to `disc-boot verify` case by case; only `homepage` is the tools' own
+check, as boot ignores it):
 
 ```sh
 # package.json for a folder: every file with its size, SHA-256 and mode (0755 when executable)
 python3 scripts/package.py describe --source build/pkg --name disc-server --version 2026.10.02 \
-  --role service --entry bin/disc-server --arg --listen --arg 0.0.0.0
+  --role service --entry bin/disc-server --arg --listen --arg 0.0.0.0 \
+  --homepage https://github.com/eudj1n/snowsky-disc-server
 python3 scripts/package.py check --source build/pkg          # or a zip; --role, --profile, --arch
 python3 scripts/package.py zip --source build/pkg --output work/disc-server.zip
 # On a mounted card, for the recovery with Play (an explicit operator step):

@@ -87,6 +87,8 @@ def entry_ok(entry, kind):
         fail(f'{where}: license is required')
     if not isinstance(entry.get('default'), bool):
         fail(f'{where}: default must be true or false')
+    if 'homepage' in entry and not package.homepage_ok(entry['homepage']):
+        fail(f'{where}: homepage must be an https address of at most 200 characters, without a query or a fragment')
     verified = entry.get('verified')
     if not isinstance(verified, dict) or not all(package.printable(verified.get(key), 200) for key in VERIFIED):
         fail(f'{where}: verified must give at least its date and acceptance')
@@ -232,7 +234,7 @@ def diskos_release(entry, archive_path, output):
     (output/'mq_ui').write_text(DISKOS_ENTRY)
     (output/'mq_ui').chmod(0o755)
     package.describe(output, entry['name'], entry['version'], 'ui', 'mq_ui', ready=30, profiles=entry['profiles'],
-                     player='diskos/mq_ui', title=entry.get('title'))
+                     player='diskos/mq_ui', title=entry.get('title'), homepage=entry.get('homepage'))
     return output
 
 

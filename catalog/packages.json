@@ -7,6 +7,7 @@
       "name": "disc-menu",
       "role": "menu",
       "version": "2.57.2",
+      "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
       "source": {
         "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.2/disc-menu-2.57.2.zip",
         "sha256": "31dfe5cd48dec69500df32fc09244f5e6e40349dbf15825c99dca3d6e0e96e56",
@@ -30,6 +31,7 @@
       "name": "disc-server",
       "role": "service",
       "version": "2.57.1",
+      "homepage": "https://github.com/eudj1n/snowsky-disc-server",
       "source": {
         "url": "https://github.com/eudj1n/snowsky-disc-server/releases/download/v2.57.1/disc-server-2.57.1.zip",
         "sha256": "caca82e8136671412e7430aa8c829b8cce5b7c5fc7e691e3bbb7b29f27d676d9",
@@ -55,6 +57,7 @@
       "role": "ui",
       "version": "1.2.0",
       "title": "diskOS",
+      "homepage": "https://github.com/b0hemia/diskos",
       "source": {
         "recipe": "diskos-release",
         "archives": [

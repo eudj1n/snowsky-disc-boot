@@ -227,6 +227,14 @@ Distributed as a zip; staged and installed as a folder with `package.json`:
   that starts another program starts it as `mq_ui` too ("Process names").
 - `title`, optional, 1–32 printable ASCII: the name a boot menu shows for
   the package (owner, 2026-10-03); without it the menu shows `name`.
+- `homepage`, optional: the project's page, an `https://` address of at
+  most 200 bytes, of letters, digits and `.-` in the host and
+  `._~%+@:/-` in the path, without a query or a fragment
+  (`https://github.com/eudj1n/snowsky-disc-server`). Every public package
+  names one (owner, 2026-10-06: preparing the public releases). Boot
+  ignores it, as any key it does not know, so a package that carries it
+  needs no newer boot program; `scripts/package.py` and `scripts/catalog.py`
+  refuse a malformed one, and the server's manager shows it as a link.
 - A `ui` package may name `player`, a listed `0755` file: its own launcher
   of stock's player (diskOS's sets up its card protection there and tells
   its UI so). Boot runs it as `mq_player` while that package's UI runs (not
@@ -274,7 +282,9 @@ One form for both (`schema` 1, `kind` `packages` or `apps`, `entries`):
   1.2.0 expects), so nothing of diskOS is redistributed from here. The
   binary is byte for byte the one built from diskOS's sources at `0edcfba`.
 - A package entry adds `role`, `profiles`, `bootApi` and an optional
-  `title`; an app entry adds `api`, the server API it needs.
+  `title`; an app entry adds `api`, the server API it needs. Either may
+  name its `homepage` (the rule of `package.json`); a recipe passes it on
+  to the package it builds.
 
 `scripts/catalog.py` checks a catalog of either kind and turns an entry into
 a package folder checked as `disc-boot` checks it.
