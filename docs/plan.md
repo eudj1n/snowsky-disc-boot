@@ -680,6 +680,25 @@ name ([observation](first-write-observation.md)).
     wait comes from that measurement. Until the portions, the installer reads
     by digest only beside the backup (owner, 2026-10-05): a second run after
     the readback cost about 27 minutes and told nothing new.
+  - [x] The measure came back zero (2026-10-06): three reads by digest beside
+    a backup, 27 minutes each, gave every page 0 ticks, though the payload
+    reads CP0 Count before and after each page (two `mfc0 $9` in it): Count
+    stands still in that context (likely Cause.DC set by the ROM or the SPL;
+    not settled). What the sessions do tell: 794 batches in 27.4 min, about
+    2.07 s a batch, the host's fixed 2 s settle and the transfers; the
+    device's own time a batch is under it. The installer no longer reads by
+    digest beside the backup (owner, 2026-10-06).
+  - [ ] A timer that runs there, settled offline from the SoC's and the SPL's
+    sources (Count with Cause.DC cleared, or the OST), then one short
+    measurement in a session of its own (a payload timing a known loop and a
+    few page reads: a minute or two, with the owner's go-ahead), never again
+    a 27-minute read for it. The same timer serves the measured writer below.
+- [ ] The settle after each batch (owner's question, 2026-10-06): the backup
+  and the readback take 35–40 minutes for 96 MiB that cross USB in about two:
+  the host waits the transport's fixed 2 s after each of their batch
+  executions. A wait sized by the measured time (above), or a completion the
+  host can look for without an unknown outcome, would take each read to a
+  few minutes; the backup, the readback and the portions by digest alike.
 - [ ] The write session's waits (owner, 2026-10-05): the host sleeps a fixed
   15 min (`writer_wait_ms`) after starting the writer, since the ROM does not
   answer USB while it runs (diskOS waits the same for `my_write5`), while

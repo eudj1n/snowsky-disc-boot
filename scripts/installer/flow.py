@@ -414,19 +414,6 @@ class Installer:
         self.say(title, ['Describe what you saw, in a few words.'])
         return word == 'yes', self.input().strip() or word, reported
 
-    def beside(self, reviewed, name, page, full, image):
-        """The read by digest beside a full read (plan, stage 4b), shown and kept; never a stop."""
-        outcome = reviewed.digest(reviewed.work/name, page, full, image)
-        if outcome['status'] == 'failed':
-            line = f'The read by digest did not complete ({outcome["error"]}); the full read stands.'
-        else:
-            same = outcome['agreesWithFullRead'] and outcome.get('matchesImage', True)
-            line = (f'Read again by digest in {outcome["seconds"] // 60}:{outcome["seconds"] % 60:02d}: '
-                    + ('every page as the full read.' if same else 'it differs from the full read; the full read stands. '
-                       'Tell the developers.'))
-        self.say('The player (USB Boot)', [line])
-        return outcome
-
     def confirmation(self, read, written, answer):
         """The owner's word, between the write and the readback, in the readback's capture."""
         if not answer or not answer[0]:
@@ -468,11 +455,9 @@ class Installer:
             self.confirm(title, [f'The package is ready: write plan {prepared["write"][:12]}…, readback plan {prepared["read"][:12]}….',
                                  self.ENTER, 'Next: the backup (what the player holds now); the write follows in a fresh entry.'],
                          'BACKUP')
+            # No read by digest beside it any more (owner, 2026-10-06): three runs of 27 minutes each
+            # brought page ticks of zero (the player's CP0 Count stands still in USB Boot).
             backup = reviewed.backup(strict=not restore)
-            if not restore:
-                previous = reviewed.history.get('previousImage')
-                backup['digest'] = self.beside(reviewed, 'digest-backup', Path(reviewed.history['bootCapture'])/'metadata-main.bin',
-                                               backup['capture'], Path(previous) if previous else None)
             if restore:
                 return self.stock_back(reviewed, title, dict(backup=backup))
             self.write_and_read(reviewed, title, image, backup)
@@ -494,8 +479,6 @@ class Installer:
             self.say(title, ['The new system did not start normally: the way back is stock.'])
             return self.stock_back(reviewed, title, dict(backup=backup, write=written, candidateAnswer=answer[1]))
         self.confirm(title, [self.ENTER, 'Next: read it back in a fresh session and compare every byte.'], 'READ')
-        # The read by digest goes beside the backup only (owner, 2026-10-05): one run measures what
-        # a page takes for the portions, and a second one would add about 27 minutes for nothing new.
         read = reviewed.readback('candidate')
         audits = reviewed.audit('candidate')
         self.confirmation(read, written, answer)

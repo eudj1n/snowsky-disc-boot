@@ -290,20 +290,14 @@ class ReviewedTests(unittest.TestCase):
         self.assertIs(record['automated_boot_test'], False)
         self.assertTrue(record['reported_at'].endswith('Z'))
 
-    def test_the_read_by_digest_goes_beside_the_backup_only_and_never_stops(self):
-        """One read by digest a session, beside the backup (owner, 2026-10-05): it measures what a
-        page takes; after the readback it would add half an hour for nothing new."""
+    def test_no_read_by_digest_goes_with_an_installation(self):
+        """Three reads by digest beside the backup brought page ticks of zero, 27 minutes each
+        (owner, 2026-10-06): an installation no longer runs one."""
         code, installer, tools = self.install(['BACKUP', 'WRITE', 'yes', 'fine', 'READ'])
-        player = installer.report['steps'][4]
-        self.assertTrue(player['backup']['digest']['agreesWithFullRead'])
-        self.assertTrue((self.root/'run/usb/digest-backup/beside-full-read.json').is_file())
-        self.assertNotIn('digest', player['read'])
-        self.assertFalse((self.root/'run/usb/digest-read').exists())
-        shutil.rmtree(self.root/'run')
-        self.tools_faults = {'digest-differs'}
-        code, installer, tools = self.install(['BACKUP', 'WRITE', 'yes', 'fine', 'READ'])
-        self.assertEqual((code, installer.report['status']), (0, 'prepared'), 'the full read stands')
-        self.assertFalse(installer.report['steps'][4]['backup']['digest']['agreesWithFullRead'])
+        self.assertEqual((code, installer.report['status']), (0, 'prepared'))
+        self.assertNotIn('digest', installer.report['steps'][4]['backup'])
+        self.assertFalse((self.root/'run/usb/digest-backup').exists())
+        self.assertNotIn('rootfs-digest', ' '.join(tools.calls))
 
     def test_a_no_takes_the_player_back_to_stock(self):
         """The new system did not start: straight to stock in a fresh entry (the player holds this
@@ -313,9 +307,9 @@ class ReviewedTests(unittest.TestCase):
                                                'RESTORE', 'yes', 'stock starts, the volume works', 'READ'])
         self.assertEqual((code, installer.report['status']), (0, 'restored'))
         self.assertEqual([c for c in tools.calls if c in ('writer_transport.py acquire', 'collect_rootfs.py acquire')],
-                         ['collect_rootfs.py acquire', 'collect_rootfs.py acquire', 'writer_transport.py acquire',
+                         ['collect_rootfs.py acquire', 'writer_transport.py acquire',
                           'writer_transport.py acquire', 'collect_rootfs.py acquire'],
-                         'backup and its digest read, write, stock, its readback; no readback of the failed image')
+                         'backup, write, stock, its readback; no readback of the failed image')
         usb = self.root/'run/usb'
         self.assertFalse((usb/'read').exists(), 'the failed image is not read back')
         record = json.loads((usb/'restore-read/owner-boot-confirmation.json').read_text())
