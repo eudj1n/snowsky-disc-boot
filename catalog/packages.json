@@ -30,12 +30,12 @@
     {
       "name": "disc-server",
       "role": "service",
-      "version": "2.57.1",
+      "version": "2.57.2",
       "homepage": "https://github.com/eudj1n/snowsky-disc-server",
       "source": {
-        "url": "https://github.com/eudj1n/snowsky-disc-server/releases/download/v2.57.1/disc-server-2.57.1.zip",
-        "sha256": "caca82e8136671412e7430aa8c829b8cce5b7c5fc7e691e3bbb7b29f27d676d9",
-        "size": 835013
+        "url": "https://github.com/eudj1n/snowsky-disc-server/releases/download/v2.57.2/disc-server-2.57.2.zip",
+        "sha256": "6066637fc774487812f22023add896d89c1ac7c1465276ae173f1f6b774d3eb3",
+        "size": 837731
       },
       "profiles": [
         "2.57"
@@ -45,11 +45,11 @@
       "default": true,
       "notes": "snowsky-disc-server's release variant; its catalog/apps.json offers the player page by default",
       "verified": {
-        "date": "2026-10-05",
-        "boot": "5353a5e",
+        "date": "2026-10-06",
+        "boot": "ef056a6",
         "emulator": "f1d5e33",
         "firmware": "2.57",
-        "acceptance": "two_packages.py 6 of 6 (beside diskOS, the page served at /); install.py --guest (installed by Play, confirmed); release 2.57.1 of snowsky-disc-server"
+        "acceptance": "2.57.1 to 2.57.2 through the manager on the guest (two images) and on the owner's player, confirmed; release 2.57.2 of snowsky-disc-server (its record says the rest)"
       }
     },
     {

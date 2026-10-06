@@ -827,6 +827,12 @@ name ([observation](first-write-observation.md)).
   it is ever tagged, goes on the commit that built it. Checked with
   `test_package`, `test_catalog`, `test_release` (22) and `test_installer`,
   `test_metadata_policy` (17).
+- [x] The catalog names disc-server 2.57.2 as the default (2026-10-06): the
+  manager's language and "Player software" with these links; on the owner's
+  player 2.57.1 updated to it through the manager and confirmed, the
+  server's first update on the device (snowsky-disc-server
+  `releases/2.57.2.json`, `6066637f…`). Its address answers once its tag is
+  published, with the other tags.
 - [x] The status names them (owner, 2026-10-06, for the server's "Player
   software"): the role's status and `ui.json`'s `installed` carry
   `homepage` from the package's manifest, null when it names none or one
