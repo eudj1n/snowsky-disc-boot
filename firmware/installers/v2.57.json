@@ -15,5 +15,5 @@
   "session_budget_ms": 1800000,
   "writer_wait_ms": 900000,
   "physical_write_admitted": false,
-  "installation_review_sha256": "0e1f262abbcce40a78cbcfc205f4fb45b390cd48dff14a83b6eb5f736e8c0965"
+  "installation_review_sha256": "f96a09ae9714ec0d491a2b5f9f56d49315c8d17efc1c20c0904a3bbf368a755e"
 }

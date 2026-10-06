@@ -1,11 +1,14 @@
-# The first two writes to the owner's player — 2026-10-04/05
+# The writes of the boot layer to the owner's player — 2026-10-04/05
 
-Both writes of the boot layer to the owner's player were exact, and both systems restarted
-stock's UI without end at their first start. The cause, found 2026-10-05 and reproduced on a
-native kernel with the player's BusyBox: the image's wrappers started stock's UI and player by
-their paths, and stock's watch loop, which looks for them with BusyBox's `pgrep -x`, never
-found them ([The cause](#the-cause)). Runtime evidence stays in the ignored
-`work/install-20261004-185637/`, `work/install-20261005-122816/` and `work/first-write/`.
+The first two writes of the boot layer to the owner's player were exact, and both systems
+restarted stock's UI without end at their first start. The cause, found 2026-10-05 and
+reproduced on a native kernel with the player's BusyBox: the image's wrappers started stock's
+UI and player by their paths, and stock's watch loop, which looks for them with BusyBox's
+`pgrep -x`, never found them ([The cause](#the-cause)). The third write, with the fix and the
+release files, started steadily; the menu then broke twice after the packages' installation
+([The third write](#the-third-write-release-2572)). Runtime evidence stays in the ignored
+`work/install-20261004-185637/`, `work/install-20261005-122816/`,
+`work/install-20261005-222707/`, `work/menu-repro/` and `work/first-write/`.
 
 ## The first write (image b43034b)
 
@@ -157,3 +160,89 @@ container's own file system, had none of it.
   edited; the tools refused the plan, as they should, but the rule is now explicit.
 - Release 2.57.1 (`releases/2.57.1.json`) is not tagged: its boot binaries have not run on a
   device in a system that stayed up. The next release takes the next number.
+
+## The third write (release 2.57.2)
+
+The owner authorized the third write on 2026-10-05, with the files of release 2.57.2 (the menu
+2.57.2, snowsky-disc-server 2.57.1, the player page 2026.10.02-05a1422), all taken from local
+files because nothing was published yet. The installation package started from the restore
+(`install-20261005-122816`'s readback and the owner's answer). Before the session, the same
+package was prepared offline on the player's real history. `install.py` built its own image
+(`0da9a217…`, every stock entry exact) and staged the packages and the page on the card.
+
+| Step (2026-10-05) | Observed |
+| --- | --- |
+| Backup | session `17:29:31–18:07:49Z`, 794 batches, stock (`e75d85bd…`) |
+| Read by digest, beside it | stopped after 12 calls at the second SPL's DDR diagnostic `(0xd1a6c0de, 9, 30, 0x12, 1)`, before any RAM test or NAND access (below) |
+| Write, after a fresh entry | session `6df65b78`, 18:10:15–18:36:24Z, `writer-completion-observed`, 768 blocks, bad blocks 383 and 716, no retries; admission closed |
+| The owner's look, no key held | steady, the keys and the power key working |
+| Readback, a fresh entry | finished 19:17:59Z, all 50,816 records `saved-logical-readback-matches` against `0da9a217…` |
+| Audits | `saved-candidate-write-trace-matches`, `saved-postwrite-trace-matches` |
+
+**The boot layer's fix held on the player.** The first start without Play kept stock's pair
+steady. The boot log recorded each start of the pair by its bare name, and the console showed
+`argv0 mq_ui`, `argv0 mq_player`, with `pgrep -x` finding both.
+
+### The menu after the installation
+
+The owner's next three starts (boot log, stock's `process_failed.txt`):
+
+1. **Play held.** The boot layer installed the menu and the server, stopped stock's UI and ran
+   the menu at 14.69 s. A key chose stock, and stock's UI hung on its logo. The pair was never
+   restarted.
+2. **No key held.** The menu ran at the pair's first start, and the countdown chose stock.
+   Stock ran normally.
+3. **No key held.** The menu ran at 4.51 s, and a key chose stock after the countdown had
+   stopped. From 19.70 s stock's watch loop restarted the pair every 7.1 s
+   (`mq_ui Restarting`, the player logging a fresh start each time). Stock's UI died at every
+   start until the owner rebooted.
+
+The next three boots ran in stock mode (`boot-loop`). The server stayed tentative until it had
+been ready for 180 s, and none of these boots lasted that long, so `unconfirmed` reached 3.
+That is the guard working as designed. Nothing that acts on the pair depends on the server's
+confirmation: the boot program stops stock's UI only after an installation from the card, and
+the menu only when it does not answer within 60 s (`t_menu`, not 30 s as first said).
+
+**Through the console** (read-only, except one write the owner approved):
+- The counter was reset to 0 (`state.json`, written atomically).
+- The menu came back. While it waited with its countdown stopped, the console never appeared:
+  it waits at most 30 s for the card's mount, which stock's player does, and the player waits
+  for the menu's choice. The menu's watcher ended it at 60 s, and stock ran.
+- In that boot the server became ready, stayed up past 180 s and was confirmed.
+- Two more starts did not reproduce the failure: a key pressed at once, then a key pressed about
+  ten seconds after the countdown was stopped. In both the menu answered `stock`, and stock's
+  pair ran under the names stock's loop looks for.
+- 31 samples over 13.5 min showed the same pair, no restart and the server ready.
+- Over Wi-Fi, the page on port 7870 and the manager on 7871 answered.
+
+**Not established:** why stock's UI hung, or died at each start, after the menu's choice in
+two of three starts. Stock's UI keeps no log. The kernel showed no fault. `/run`, which held the
+boot program's state, was gone after the reboot.
+
+### The second SPL of a USB Boot entry
+
+The read by digest failed at the SPL, which brings DDR up before any payload.
+
+**Where it fails.** In diskOS's SPL source (`spl-src/`, GPL-2.0, `ddr_innophy.c` with patch
+0003's breadcrumbs), failure 30 is `ddrp_hardware_calibration()`. It starts the PHY's hardware
+training and polls `CALIB_DONE` until its low nibble is `0x3`. The poll ended at `0x12`: one of
+the two byte lanes never finished training. The same 20 bytes (`86eb682f…`) stopped a readback
+after the writer on 2026-09-24.
+
+**Why only a re-run.** Each SPL run repeats the whole bring-up on DRAM that is already running:
+the PHY reset through `dfi_reset_n`, the PLL, the DFI initialisation, the mode registers
+(MR63 first) and the training. Auto self-refresh is not the cause: the SPL takes it from the
+`ginfo` block (`ginfo_w63ah6nkb.bin`), whose `ddr_change_param` is all zero, so it is off.
+diskOS's own patch 0008 calls the training's result marginal. Their SPL records a failure but
+does not retry it.
+
+| SPL run within a USB Boot entry | Diagnostic |
+| --- | --- |
+| The first | clean in all 11 recorded |
+| A second, after a read | clean 3 times, failed once (this one) |
+| A second, after the writer | failed both times |
+
+The plan's remedy is one SPL per entry. A later session skips the SPL when this entry's SPL left
+a clean diagnostic and its RAM pattern passes succeed. A session stopped at the diagnostic asks
+for a fresh entry and runs again; it never got as far as the NAND. Not filed with diskOS
+(owner).
