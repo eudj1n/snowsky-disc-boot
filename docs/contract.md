@@ -405,12 +405,14 @@ Besides the early hook's and the wrappers' lines, the boot program adds to
   `service failed: …`), what the player's launcher starts and why, the choice
   each UI launcher reads, each start of stock's UI or player, and each UI it
   stops after an installation;
-- in platform mode, at each start of the pair, the last lines the previous
-  program of that name wrote (stock's UI keeps no log of its own), the kernel's
-  fatal-signal lines (`print-fatal-signals`), the holders and waiters of stock's
-  process lock (`/proc/locks`), processes in uninterruptible sleep and stock's
-  queues. The programs' output goes to `/run/disc-boot/out`, a tmpfs of 1 MiB
-  of its own: a full one refuses writes, which no program dies of.
+- in platform mode, at each start of the pair, the last lines the previous UI
+  wrote (stock's UI keeps no log of its own; stock's player keeps
+  `fiio_player.log`), the kernel's fatal-signal lines (`print-fatal-signals`),
+  the holders and waiters of stock's process lock (`/proc/locks`), processes in
+  uninterruptible sleep and stock's queues. The UI's output goes to
+  `/run/disc-boot/out`, a tmpfs of 1 MiB of its own: a full one refuses writes,
+  which no program dies of. The player's output stays where stock sends it: the
+  emulator waits for its network thread's line there.
 
 ### Process names
 

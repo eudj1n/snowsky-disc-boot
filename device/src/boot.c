@@ -610,9 +610,11 @@ static char **package_argv(const char *argv0, const manifest *m) {
 
 /* Standard input, output and error are the only descriptors a program of ours or a package gets:
    what else is open (the boot log, the copies dup2 leaves) is closed. */
-/* What the stock pair (or a package in its place) writes, for the boot log (owner's player,
-   2026-10-05/06: stock's UI died at every start after the menu in two boots, and kept no log of
-   its own). Platform mode only: its output goes to RUN_DIR/out, a tmpfs of its own, so it can never
+/* What stock's UI (or a package or the menu in its place) writes, for the boot log (owner's
+   player, 2026-10-05/06: stock's UI died at every start after the menu in two boots, and keeps no
+   log of its own). Stock's player keeps its own (fiio_player.log), and its output stays on the
+   console, where the emulator waits for its network thread's line. Platform mode only: the UI's
+   output goes to RUN_DIR/out, a tmpfs of its own, so it can never
    take more than 1 MiB of RAM (a full one refuses writes with ENOSPC, which no program dies of);
    the kernel prints the fatal signals of user programs. */
 static void capture_prepare(void) {
@@ -1512,7 +1514,6 @@ static int player_launcher(int argc, char **argv) {
     role_state rs;
     ui_choice c;
     manifest *m = malloc(sizeof(*m));
-    if (!read_boot() && !strcmp(mode, "platform")) capture_start("mq_player");
     if (!m || read_boot() || strcmp(mode, "platform") || exists(fallback) || read_choice(&c)) {
         player_status("stock", NULL, m ? "no ui package runs" : "out of memory");
         exec_stock_player(argv);

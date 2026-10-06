@@ -538,8 +538,10 @@ name ([observation](first-write-observation.md)).
     stock starts the player 2 s after the UI.
   - [x] The diagnostics and the candidate fix (2026-10-06, branch
     `diagnostics`): the boot log keeps the boot program's decisions (`plog`),
-    and in platform mode, at each start of the pair, the previous program's
-    last lines (its output in `/run/disc-boot/out`, a 1 MiB tmpfs), the
+    and in platform mode, at each start of the pair, the previous UI's last
+    lines (its output in `/run/disc-boot/out`, a 1 MiB tmpfs; the player's
+    output stays on the console, where the emulator waits for its network
+    thread's line, which a first try took away), the
     kernel's fatal-signal lines, the lock's holders and waiters from
     `/proc/locks`, processes in uninterruptible sleep and stock's queues; the
     console waits 90 s for the card and survives its remounts; after the
