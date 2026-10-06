@@ -562,6 +562,14 @@ name ([observation](first-write-observation.md)).
   diagnostic in TCSM skips the SPL and keeps its RAM pattern passes; a
   session stopped at the DDR diagnostic (before any NAND access) asks for a
   fresh entry and runs again. Not filed with diskOS (owner, 2026-10-05).
+  The fourth write (2026-10-06, image `c460b12e`) stopped the same way:
+  the write's session, the third SPL of the backup's entry (backup 38 min,
+  the read by digest 27 min, whose page ticks came back zero), failed the
+  DDR check (failure 30) before the writer, the player untouched. The
+  installer now asks for a fresh entry before each write (the candidate's
+  and stock's), and `install.py --resume RUN` goes on with such a run from
+  its backup (`test_usbboot`). Still open: the readback and the digest's
+  own entries, and the page ticks.
 - [x] The second write (image fc47ae4, 2026-10-05: write `46444d85` exact,
   the read by digest agreeing with the full backup and with stock) restarted
   without end too, card or no card: the fail-open wrappers were not the cause.

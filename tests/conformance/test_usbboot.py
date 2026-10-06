@@ -230,7 +230,7 @@ class ReviewedTests(unittest.TestCase):
         self.assertTrue(waiting and waiting[-1] > waiting[0], 'the wait moves the bar by the clock')
         self.assertTrue(all(f < 0.9 for f, t in seen if t < 1.4), 'the wait ahead is counted from the start')
 
-    def install(self, words=None, restore=False, run=None):
+    def install(self, words=None, restore=False, run=None, resume=None):
         """install.py's reviewed path with the tools replaced; words: what the owner types, in order
         (none: --yes, without questions)."""
         from unittest import mock
@@ -241,9 +241,10 @@ class ReviewedTests(unittest.TestCase):
             name='disc-menu', role='menu', version='9', profiles=['2.57'], bootApi=1, license='MIT', default=False,
             source=dict(url=None, sha256='0' * 64, size=1), verified=dict(date='2026-10-03', acceptance='test'))])))
         args = argparse.Namespace(dry_run=True, yes=words is None, plain=True, ota=None, image=str(self.image), emulator=None, card=None,
-                                  package=None, app=None, packages_from=[], download=False, work=str(self.root/('again' if run else 'run')),
+                                  package=None, app=None, packages_from=[], download=False, work=str(self.root/('again' if run or resume else 'run')),
                                   catalog=str(catalog), simulate=None, simulate_small=False, fault=None, restore=restore, guest=False,
-                                  history=str(self.root/'history.json'), diskos='/diskos', libusb='/libusb.dylib', run=run)
+                                  history=str(self.root/'history.json'), diskos='/diskos', libusb='/libusb.dylib', run=run,
+                                  resume=resume)
         tools = self.tools = Tools(self, getattr(self, 'tools_faults', ()))
         installer = flow.Installer(args, tui.Screen(look='plain', stream=io.StringIO()), runner=tools)
         installer.interactive = words is not None
@@ -341,6 +342,35 @@ class ReviewedTests(unittest.TestCase):
         code, installer, tools = self.install(['BACKUP', 'RESTORE', 'yes', 'stock is back', 'READ'], restore=True, run=str(self.root/'run'))
         self.assertEqual((code, installer.report['status']), (0, 'restored'))
         self.assertTrue((usb/'restore-backup/result.json').is_file())
+
+    def test_a_write_stopped_before_the_writer_goes_on_from_its_backup(self):
+        """install.py --resume (2026-10-06: the SPL's DDR check failed in the write's session, the
+        third of the backup's entry): the player holds what the backup read, so the backup stands,
+        compared again offline; the write and the readback each in a fresh entry."""
+        self.install()
+        usb = self.root/'run/usb'
+        for folder in ('read', 'history.json'):
+            shutil.rmtree(usb/folder) if (usb/folder).is_dir() else (usb/folder).unlink()
+        (usb/'write/result.json').write_text(json.dumps(dict(status='failed-before-writer', writer_execution_attempted=False,
+                                                              page_execution_attempted=False)))
+        code, installer, tools = self.install(['WRITE', 'yes', 'the menu, then stock', 'READ'], resume=str(self.root/'run'))
+        self.assertEqual((code, installer.report['status']), (0, 'prepared'))
+        acquired = [c for c in tools.calls if c.endswith('acquire')]
+        self.assertEqual(acquired, ['writer_transport.py acquire', 'collect_rootfs.py acquire'], 'no backup, no digest: the write, the readback')
+        player = next(s for s in installer.report['steps'] if s['step'] == 'player')
+        self.assertEqual((player['backup']['takenBy'], player['backup']['matches']), (str((self.root/'run').resolve()), 'combined.bin'))
+        again = self.root/'again/usb'
+        self.assertTrue((again/'backup/exact-review.json').is_file(), 'the backup compared again with the history\'s image')
+        self.assertTrue((again/'history.json').is_file())
+        # A write that reached the writer, or ended unknown, is no place to go on from.
+        shutil.rmtree(self.root/'again')
+        (usb/'write/result.json').write_text(json.dumps(dict(status='writer-outcome-unknown', writer_execution_attempted=True,
+                                                              page_execution_attempted=True)))
+        code, installer, tools = self.install([], resume=str(self.root/'run'))
+        self.assertEqual(code, 1)
+        self.assertIn('not a run whose write stopped before the writer', installer.report['status'])
+        self.assertFalse([c for c in tools.calls if c.endswith('acquire')])
+
 
 if __name__ == '__main__':
     unittest.main()
