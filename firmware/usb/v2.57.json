@@ -5,7 +5,7 @@
   "sd_mount": "/tmp/sdcard",
   "sd_source": "/dev/mmcblk0p1",
   "udc": "13500000.otg_new",
-  "startup_seconds": 30,
+  "startup_seconds": 90,
   "session_seconds": 900,
   "stock_files": {
     "usr/bin/mq_player": "a5a6740435758bb3f3d008a4306c93a463c6634318957bbf32086bd7b00fabbc",
@@ -13,8 +13,8 @@
   },
   "physical_qualified": false,
   "boot_report": {
-    "delay_seconds": 45,
-    "wait_seconds": 120,
+    "delay_seconds": 100,
+    "wait_seconds": 150,
     "max_bytes": 16384
   }
 }

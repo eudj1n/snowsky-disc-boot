@@ -135,15 +135,27 @@ class UsbConsoleTests(unittest.TestCase):
         (self.root/'run/disc-usb.stop').touch()
         self.finished(proc)
 
-    def test_marker_removal_mount_loss_unbind_and_stock_arrival_revoke(self):
-        for trigger in ('marker', 'mount', 'unbind', 'disconnect', 'stock'):
+    def test_an_unmounted_card_is_no_revocation(self):
+        """Stock's player unmounts the card and mounts it again at every start of the pair: the
+        session goes on through that, and ends when the card comes back without the marker."""
+        (self.root/'proc/mounts').write_text('/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
+        (self.root/'sys/class/udc/controller/state').write_text('configured\n')
+        proc = self.start(); self.running(proc)
+        (self.root/'proc/mounts').write_text('')
+        time.sleep(1.5)
+        self.assertIsNone(proc.poll(), 'the session ended while the card was only unmounted')
+        self.marker.unlink()
+        (self.root/'proc/mounts').write_text('/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
+        self.finished(proc)
+
+    def test_marker_removal_unbind_and_stock_arrival_revoke(self):
+        for trigger in ('marker', 'unbind', 'disconnect', 'stock'):
             with self.subTest(trigger=trigger):
                 self.marker.write_bytes(ACK)
                 (self.root/'proc/mounts').write_text('/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
                 (self.root/'sys/class/udc/controller/state').write_text('configured\n')
                 proc = self.start();self.running(proc)
                 if trigger == 'marker':self.marker.unlink()
-                if trigger == 'mount':(self.root/'proc/mounts').write_text('')
                 if trigger == 'unbind':(self.gadget/'UDC').write_text('\n')
                 if trigger == 'disconnect':(self.root/'sys/class/udc/controller/state').write_text('not attached\n')
                 if trigger == 'stock':(self.base/'uac_demo').mkdir()

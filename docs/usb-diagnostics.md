@@ -20,8 +20,9 @@ The reviewed USB profile is `firmware/usb/v2.57.json`, tied to the selected main
 profile's exact rootfs hash. It supplies the card source/mount, UDC, readiness and
 session budgets and stock binary/script fingerprints. Another release needs its
 own reviewed USB profile; there is no implicit inheritance or runtime version
-check. Current values are `/dev/mmcblk0p1`, `/tmp/sdcard`, `13500000.otg_new`, 30 seconds
-and 900 seconds. Stock also supports an unpartitioned card; this initial profile
+check. Current values are `/dev/mmcblk0p1`, `/tmp/sdcard`, `13500000.otg_new`, 90 seconds
+and 900 seconds (the startup was 30 s until 2026-10-06: stock's player, which mounts the card,
+waits up to 60 s for the boot menu's choice, and the console gave up before it). Stock also supports an unpartitioned card; this initial profile
 deliberately admits only the partitioned layout.
 
 The [first physical boot report](boot-report-observation.md) established the
@@ -51,7 +52,7 @@ The private project and outputs remain under ignored `work/usb-re/`.
 | Observed path in this exact binary | Consequence |
 | --- | --- |
 | `0x4c42b8`: card mount handling, partition then whole-device fallback | Wait for a matching `/proc/mounts` entry; a directory or fixed boot delay is insufficient |
-| `0x4e5af4`: stock USB mode loop, `uac_demo` / `storage_demo`, card unmount/remount | Refuse existing gadgets; revoke our session if a stock gadget appears or the card disappears |
+| `0x4e5af4`: stock USB mode loop, `uac_demo` / `storage_demo`, card unmount/remount | Refuse existing gadgets; revoke our session if a stock gadget appears or the card is mounted without the marker |
 | `0x4e6490`: serial worker checks byte `0x83a77e`, calls stock serial setup and serial-number service | Do not change the flag or assume the vendor service provides a root shell |
 | `0x475790` / `0x475a24`: serial-number service start/stop | Use a separate fixed supervisor instead of invoking the factory service |
 
@@ -84,8 +85,11 @@ bootstrap or permission to connect/flash the owner's device.
    second supervisor/rebind. There is no restart loop and no network listener.
    The console admits arbitrary local root commands; it is engineering access,
    not the read-only browser API or consumer authentication.
-5. Marker removal, mount loss, USB disconnect/unbind, another gadget, termination
-   signal, shell exit, explicit stop or the session deadline ends the session.
+5. The card mounted without the marker, USB disconnect/unbind, another gadget,
+   termination signal, shell exit, explicit stop or the session deadline ends the
+   session. A card that is only unmounted does not (2026-10-06): stock's player
+   unmounts and mounts it again at every start of the pair, which is when a session
+   matters most.
    The supervisor polls every 100 ms, allows two seconds for child termination
    and one further second after SIGKILL, then releases only its own gadget.
    It never waits indefinitely for a child stuck in kernel I/O, removes stock

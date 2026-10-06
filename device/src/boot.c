@@ -12,6 +12,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#if defined(__linux__) && !defined(DISC_BOOT_FIXTURE)
+#include <sys/klog.h>
+#include <sys/mount.h>
+#endif
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
@@ -34,7 +38,7 @@
 extern char **environ;
 /* Seconds; the fixture build shortens them. */
 /* The card is mounted after S99 (stock mounts it once mq_player runs): recovery waits up to 90 s. */
-static double t_confirm = 180, t_grace = 5, t_window = 600, t_backoff = 2, t_card = 90, t_ui_window = 120, t_menu = 60;
+static double t_confirm = 180, t_grace = 5, t_window = 600, t_backoff = 2, t_card = 90, t_ui_window = 120, t_menu = 60, t_pair = 2;
 static char profile[17], card[PATH_MAX] = "/tmp/sdcard", card_source[128] = "/dev/mmcblk0p1";
 /* The boot program itself, which a package runs as `verify` (contract, "Environment"); the fixture's own file. */
 static char program[PATH_MAX] = "/opt/disc-boot/disc-boot";
@@ -64,6 +68,7 @@ static void fixture_init(const char *argv0) {
             else if (!strcmp(item, "window")) t_window = v; else if (!strcmp(item, "backoff")) t_backoff = v;
             else if (!strcmp(item, "card")) t_card = v; else if (!strcmp(item, "ui")) t_ui_window = v;
             else if (!strcmp(item, "menu")) t_menu = v;
+            else if (!strcmp(item, "pair")) t_pair = v;
         }
     }
 #else
@@ -239,6 +244,7 @@ static void ui_extra(char *out, size_t cap) {
 
 static void role_status(const char *domain, const char *state, const manifest *m, const role_state *rs, int failures, const char *note) {
     const char *role = role_of(domain);
+    plog("%s %s%s%s%s%s", domain, state, m ? " " : "", m ? m->version : "", note && *note ? ": " : "", note ? note : "");
     char p[PATH_MAX], buf[SMALL_FILE], name[80], version[80], noted[300], request[260], previous[400] = "null", extra[3000] = "";
     bpath(p, RUN_DIR);
     mkdirs(p, 0755);
@@ -604,6 +610,185 @@ static char **package_argv(const char *argv0, const manifest *m) {
 
 /* Standard input, output and error are the only descriptors a program of ours or a package gets:
    what else is open (the boot log, the copies dup2 leaves) is closed. */
+/* What the stock pair (or a package in its place) writes, for the boot log (owner's player,
+   2026-10-05/06: stock's UI died at every start after the menu in two boots, and kept no log of
+   its own). Platform mode only: its output goes to RUN_DIR/out, a tmpfs of its own, so it can never
+   take more than 1 MiB of RAM (a full one refuses writes with ENOSPC, which no program dies of);
+   the kernel prints the fatal signals of user programs. */
+static void capture_prepare(void) {
+    char p[PATH_MAX];
+    bpath(p, RUN_DIR "/out");
+    if (mkdirs(p, 0755)) return;
+#if defined(__linux__) && !defined(DISC_BOOT_FIXTURE)
+    if (mount("disc-boot-out", p, "tmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC, "size=1m,mode=0755")) blog("capture: %s", strerror(errno));
+    int fd = open("/proc/sys/kernel/print-fatal-signals", O_WRONLY | O_CLOEXEC);
+    if (fd >= 0) { if (write(fd, "1\n", 2) != 2) blog("print-fatal-signals: %s", strerror(errno)); close(fd); }
+#endif
+}
+
+/* RUN_DIR/out is a file system of its own (the bound); the fixture has no mounts. */
+static int capture_bounded(void) {
+    char out[PATH_MAX], run[PATH_MAX];
+    struct stat a, b;
+    bpath(out, RUN_DIR "/out");
+    bpath(run, RUN_DIR);
+    if (lstat(out, &a) || !S_ISDIR(a.st_mode) || lstat(run, &b)) return 0;
+#ifdef DISC_BOOT_FIXTURE
+    return 1;
+#else
+    return a.st_dev != b.st_dev;
+#endif
+}
+
+/* Each line of a text in the boot log, after a prefix: at most `lines` of them, the last ones. */
+static void plog_lines(const char *prefix, char *text, int lines) {
+    int count = 0;
+    for (char *c = text; *c; c++) if (*c == '\n') count++;
+    char *line = text;
+    for (int k = 0; *line; k++) {
+        char *end = strchr(line, '\n');
+        if (end) *end = 0;
+        if (k >= count - lines && *line) {
+            for (char *c = line; *c; c++) if ((unsigned char)*c < ' ' && *c != '\t') *c = ' ';
+            plog("%s%.200s", prefix, line);
+        }
+        if (!end) break;
+        line = end + 1;
+    }
+}
+
+/* A process's name and state for the boot log ("mq_ui S"), or "?" when it is gone. */
+static void proc_brief(long pid, char *out, size_t cap) {
+    char p[PATH_MAX], buf[512];
+    size_t n = 0;
+    snprintf(out, cap, "?");
+    bpath(p, "/proc/%ld/stat", pid);
+    int fd = open(p, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return;
+    ssize_t r = read(fd, buf, sizeof(buf) - 1);
+    close(fd);
+    if (r <= 0) return;
+    n = (size_t)r; buf[n] = 0;
+    char *open_paren = strchr(buf, '('), *close_paren = strrchr(buf, ')');
+    if (!open_paren || !close_paren || close_paren < open_paren || close_paren[1] != ' ') return;
+    *close_paren = 0;
+    snprintf(out, cap, "%.20s %c", open_paren + 1, close_paren[2]);
+}
+
+/* Stock's pair locks /usr/data/fiio/process_lock.txt with flock (util.c's process_lock_segment,
+   a blocking LOCK_EX): who holds or waits for it, and every process in uninterruptible sleep (a
+   holder stuck on I/O keeps the lock past the pair's restarts). */
+static void capture_locks(void) {
+    char p[PATH_MAX], line[256], who[40];
+    struct stat lock;
+    bpath(p, "/usr/data/fiio/process_lock.txt");
+    if (!stat(p, &lock)) {
+        bpath(p, "/proc/locks");
+        FILE *f = fopen(p, "re");
+        if (f) {
+            char inode[32];
+            snprintf(inode, sizeof(inode), ":%llu ", (unsigned long long)lock.st_ino);
+            for (int k = 0; k < 64 && fgets(line, sizeof(line), f); k++) {
+                if (!strstr(line, inode)) continue;
+                long pid = 0;
+                char kind[16] = "", *c = line;
+                while (*c && *c != ' ') c++;                 /* "1:" */
+                while (*c == ' ') c++;
+                if (!strncmp(c, "-> ", 3)) { snprintf(kind, sizeof(kind), "waits"); c += 3; } else snprintf(kind, sizeof(kind), "holds");
+                if (sscanf(c, "%*s %*s %*s %ld", &pid) == 1) {
+                    proc_brief(pid, who, sizeof(who));
+                    plog("process_lock %s by %ld (%s)", kind, pid, who);
+                }
+            }
+            fclose(f);
+        }
+    }
+    bpath(p, "/proc");
+    DIR *d = opendir(p);
+    if (!d) return;
+    struct dirent *e;
+    int stuck = 0;
+    while ((e = readdir(d)) && stuck < 8) {
+        char *end;
+        long pid = strtol(e->d_name, &end, 10);
+        if (*end || pid <= 0) continue;
+        proc_brief(pid, who, sizeof(who));
+        size_t len = strlen(who);
+        if (len > 2 && who[len - 1] == 'D') { plog("uninterruptible %ld (%s)", pid, who); stuck++; }
+    }
+    closedir(d);
+}
+
+/* At each start of the pair in platform mode: the last lines the previous program of this name
+   wrote, the kernel's fatal-signal lines since the last look and stock's queues into the boot
+   log; then this program writes to a fresh file. Every failure leaves the program's output as
+   it was. */
+static void capture_start(const char *name) {
+    char out[PATH_MAX], said[PATH_MAX], text[1024];
+    if (!capture_bounded()) return;
+    bpath(out, RUN_DIR "/out/%s.log", name);
+    int fd = open(out, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (fd >= 0) {
+        off_t size = lseek(fd, 0, SEEK_END), from = size > 900 ? size - 900 : 0;
+        ssize_t n = pread(fd, text, sizeof(text) - 1, from);
+        close(fd);
+        if (n > 0) {
+            text[n] = 0;
+            snprintf(said, sizeof(said), "%s before said: ", name);
+            char *start = from && strchr(text, '\n') ? strchr(text, '\n') + 1 : text;
+            plog_lines(said, start, 6);
+        }
+        unlink(out);
+    }
+#if defined(__linux__) && !defined(DISC_BOOT_FIXTURE)
+    {
+        int len = klogctl(10, NULL, 0);   /* SYSLOG_ACTION_SIZE_BUFFER */
+        char *ring = len > 0 && len <= (1 << 20) ? malloc((size_t)len + 1) : NULL;
+        int got = ring ? klogctl(3, ring, len) : -1;   /* SYSLOG_ACTION_READ_ALL */
+        if (got > 0) {
+            ring[got] = 0;
+            char seen[PATH_MAX], buf[32];
+            bpath(seen, RUN_DIR "/out/fatal-seen");
+            long before = read_small(seen, buf, sizeof(buf), NULL) ? 0 : atol(buf), total = 0;
+            for (char *line = ring; line && *line; ) {
+                char *end = strchr(line, '\n');
+                if (end) *end = 0;
+                if (strstr(line, "fatal signal")) {
+                    if (++total > before) plog("kernel: %.200s", line);
+                }
+                line = end ? end + 1 : NULL;
+            }
+            int k = snprintf(buf, sizeof(buf), "%ld\n", total);
+            write_atomic(seen, buf, (size_t)k, 0644);
+        }
+        free(ring);
+    }
+#endif
+    {
+        char q[PATH_MAX], line[256];
+        bpath(q, "/dev/mqueue");
+        DIR *d = opendir(q);
+        if (d) {
+            struct dirent *e;
+            while ((e = readdir(d))) {
+                if (e->d_name[0] == '.') continue;
+                bpath(q, "/dev/mqueue/%s", e->d_name);
+                size_t n = 0;
+                if (read_small(q, line, sizeof(line), &n)) n = 0;
+                line[n] = 0;
+                for (char *c = line; *c; c++) if (*c == '\n' || *c == '\t') *c = ' ';
+                plog("mqueue %s %.120s", e->d_name, line);
+            }
+            closedir(d);
+        }
+    }
+    capture_locks();
+    fd = open(out, O_WRONLY | O_CREAT | O_APPEND | O_NOFOLLOW | O_CLOEXEC, 0644);
+    if (fd < 0) return;
+    if (dup2(fd, 1) < 0 || dup2(fd, 2) < 0) blog("capture %s: %s", name, strerror(errno));
+    close(fd);
+}
+
 static void only_standard_descriptors(void) {
     long most = sysconf(_SC_OPEN_MAX);
     if (most < 0 || most > 4096) most = 4096;
@@ -781,7 +966,7 @@ static void stop_running_ui(void) {
         if (!f) continue;
         int match = fgets(comm, sizeof(comm), f) && !strcmp(comm, "mq_ui\n");
         fclose(f);
-        if (match) kill((pid_t)pid, SIGTERM);
+        if (match) { plog("stock's UI %ld stopped for the installed UI", pid); kill((pid_t)pid, SIGTERM); }
     }
     closedir(d);
 }
@@ -902,6 +1087,7 @@ static int cmd_early(void) {
     bpath(p, RUN_DIR);
     mkdirs(p, 0755);
     int platform = !strcmp(chosen, "platform"), launch = 0;
+    if (platform) capture_prepare();
     /* This boot's UI. Nothing of a package runs yet, so what packages asked about the choice applies first. */
     if (platform) { apply_pending(); launch = decide_ui(1); }
     else { bpath(p, RUN_DIR "/ui/choice.json"); unlink(p); }
@@ -1045,6 +1231,7 @@ static void ui_watch(pid_t ui, const char *domain, const manifest *m, role_state
 
 static void exec_stock(char **argv) {
     char stock[PATH_MAX];
+    plog("mq_ui: stock's UI");
     bpath(stock, "/usr/bin/mq_ui");
     argv[0] = "mq_ui";
     execv(stock, argv);
@@ -1212,6 +1399,7 @@ static int launcher(int argc, char **argv) {
     char p[PATH_MAX], buf[32], err[200], fallback[PATH_MAX], domain[40], name[33] = "";
     fixture_init(argv[0]);
     if (read_boot()) exec_stock(argv);
+    if (!strcmp(mode, "platform")) capture_start("mq_ui");
     bpath(p, RUN_DIR "/ui");
     mkdirs(p, 0755);
     bpath(p, RUN_DIR "/ui/pid");
@@ -1223,6 +1411,7 @@ static int launcher(int argc, char **argv) {
     ui_choice c;
     if (!m) exec_stock(argv);
     if (read_choice(&c)) { role_status("ui", "fallback", NULL, NULL, 0, "no choice of UI for this boot"); exec_stock(argv); }
+    plog("mq_ui launcher %ld: choice %s by %s%s", (long)getpid(), c.ui, c.by[0] ? c.by : "default", c.menu ? ", the menu asks" : "");
     /* What ran last has exited: its requests apply, the chosen UI's and the menu's, then those
        about the choice that any package left. */
     if (strcmp(c.ui, "stock")) { ui_domain(domain, c.ui); handle_request(domain, c.ui); }
@@ -1289,6 +1478,7 @@ static int launcher(int argc, char **argv) {
 
 static void exec_stock_player(char **argv) {
     char stock[PATH_MAX];
+    plog("mq_player: stock's player");
     mark_player_ran();
     bpath(stock, "/usr/bin/mq_player");
     argv[0] = "mq_player";
@@ -1297,6 +1487,7 @@ static void exec_stock_player(char **argv) {
 }
 
 static void player_status(const char *launch, const manifest *m, const char *note) {
+    plog("player %s%s%s%s%s", launch, m ? " " : "", m ? m->name : "", note && *note ? ": " : "", note ? note : "");
     char p[PATH_MAX], buf[600], name[80], version[80], noted[300];
     bpath(p, RUN_DIR "/ui");
     mkdirs(p, 0755);
@@ -1321,6 +1512,7 @@ static int player_launcher(int argc, char **argv) {
     role_state rs;
     ui_choice c;
     manifest *m = malloc(sizeof(*m));
+    if (!read_boot() && !strcmp(mode, "platform")) capture_start("mq_player");
     if (!m || read_boot() || strcmp(mode, "platform") || exists(fallback) || read_choice(&c)) {
         player_status("stock", NULL, m ? "no ui package runs" : "out of memory");
         exec_stock_player(argv);
@@ -1333,6 +1525,11 @@ static int player_launcher(int argc, char **argv) {
         double until = mono() + t_menu + 10;
         while (mono() < until && !read_choice(&c) && c.menu) pause_s(0.2);
         if (read_choice(&c)) { player_status("stock", NULL, "no choice of UI for this boot"); exec_stock_player(argv); }
+        /* fiio_init.sh starts stock's player 2 s after its UI, and the two then share a flock of
+           /usr/data/fiio/process_lock.txt and their queues. After the menu's choice the UI starts at
+           once in the menu's process: the player keeps stock's order behind it (owner's player,
+           2026-10-05/06: stock's UI hung or died after the menu's choice in three starts). */
+        if (!c.menu) { plog("player follows the UI by %.0f s, as stock's loop starts them", t_pair); pause_s(t_pair); }
     }
     if (c.menu) { player_status("stock", NULL, "the menu is choosing"); exec_stock_player(argv); }
     if (!strcmp(c.ui, "stock")) { player_status("stock", NULL, "stock's UI was chosen"); exec_stock_player(argv); }
