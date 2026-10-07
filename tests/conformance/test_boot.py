@@ -693,10 +693,15 @@ exit 0
         self.launch().wait(timeout=10)
         self.assertEqual(self.runs(), ['menu', 'beta'])
         self.assertEqual(self.choice(), dict(schema=1, ui='beta', by='menu', menu=False, note=''))
-        self.assertEqual(self.status('menu')['state'], 'answered')
+        menu = self.status('menu')
+        self.assertEqual((menu['state'], menu['name'], menu['version']), ('answered', 'disc-menu', '1'), 'the status names the menu')
         self.assertTrue(self.role_state('menu')['confirmed'], 'a valid answer confirms a tentative menu')
+        # The last answer becomes the default (owner, 2026-10-07): the menu starts on it next time.
+        self.assertEqual(json.loads((self.data/'state.json').read_text())['ui'], 'beta')
         self.launch_player().wait(timeout=10)
         self.assertEqual(self.player_status()['note'], 'the ui package brings no player launcher')
+        self.early()
+        self.assertEqual(self.choice(), dict(schema=1, ui='beta', by='default', menu=True, note=''))
         # next skips the menu.
         self.set_global(next='alpha')
         self.early()

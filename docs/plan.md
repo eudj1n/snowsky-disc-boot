@@ -923,12 +923,16 @@ a write with all of it. Each item with its host tests and the guest.
   installation with Play"): its first answer no longer races the card.
 - [ ] The power key held in the menu switches the player off (stage 4b,
   "The power key in the menu").
-- [ ] The menu's status keeps the package's name and version once it has
+- [x] The menu's status keeps the package's name and version once it has
   answered (`menu.json` named neither on 2026-10-06, so the manager left
-  the menu out of "Player software").
-- [ ] The menu starts on the last choice made in it, and its countdown takes
-  that one (owner, 2026-10-07): no new setting, the last answer becomes the
-  default UI; an explicit default from the manager only if it is missed.
+  the menu out of "Player software"): the answer's status reads the menu's
+  manifest from its slot. `test_boot`.
+- [x] The menu starts on the last choice made in it, and its countdown takes
+  that one (owner, 2026-10-07): no new setting, a valid answer becomes the
+  default UI (`state.json`'s `ui`, logged as "default ui <name>"), which the
+  menu is offered as `default`. `test_boot` (the next start's choice and
+  the menu's `default`); an explicit default from the manager only if it is
+  missed (a package's `ui-default` request exists already).
 - [ ] The USB sessions' time (stage 4b), in this order: a timer that runs in
   USB Boot, settled offline; the settle after each batch from its
   measurement (the backup and the readback from 35-40 minutes to a few);

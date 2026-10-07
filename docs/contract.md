@@ -518,6 +518,11 @@ menu's `stock` entry is stock's UI with the `service` package running.
   and records the answer and starts the chosen UI at once. Everything the
   menu opened must close on that exec (`O_CLOEXEC`), its hold of `event0`
   with it.
+- A valid answer becomes the default UI (`state.json`'s `ui`; owner,
+  2026-10-07): the menu starts on it at the next power-on and its countdown
+  takes it, with no setting of its own; a package's `ui-default` request
+  still sets it too. `menu.json` keeps the menu package's name, version and
+  page once it has answered.
 - At the boot's first start of the pair no player has run yet, so no
   watchdog runs (stock's player starts it): `/sbin/mq_player` waits for
   the choice (at most the menu's 60 s and 10 more) and then starts the

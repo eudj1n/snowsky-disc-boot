@@ -1339,8 +1339,21 @@ static int menu_turn(ui_choice *c, manifest *m, char **argv) {
             write_choice(c);
             /* A valid answer confirms a tentative menu, and may be all this boot runs of ours. */
             confirm("menu");
+            /* The last answer becomes the default: the menu starts on it next time and its countdown
+               takes it (owner, 2026-10-07; no setting of its own). */
+            int lock = state_lock();
+            global_state g;
+            if (!gstate_read(&g) && strcmp(g.ui, wanted)) {
+                snprintf(g.ui, sizeof(g.ui), "%s", wanted);
+                gstate_write(&g);
+                plog("default ui %s: the menu's last answer", wanted);
+            }
+            state_unlock(lock);
+            /* The status names the menu's package, as while it asked. */
             rstate_read("menu", &rs);
-            role_status("menu", "answered", NULL, &rs, failures, wanted);
+            char dir[PATH_MAX], merr[160];
+            bpath(dir, DATA_DIR "/menu/%c", rs.current ? rs.current : 'a');
+            role_status("menu", "answered", rs.current && !manifest_load(dir, m, merr, sizeof(merr)) ? m : NULL, &rs, failures, wanted);
             return 1;
         }
         if (readable) snprintf(err, sizeof(err), "it answered %s, which is not installed", wanted);
