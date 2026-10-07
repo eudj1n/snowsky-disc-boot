@@ -1108,8 +1108,10 @@ a write with all of it. Each item with its host tests and the guest.
   24 min 11 s (794 batches, median 959 ms, no timeout; 38 min before), the
   write in 9 min 47 s (the image region's check 110.7 s, the sample's hash
   4.24 s, the writer 245.7 s, measured for the first time instead of a blind
-  15 minutes; 768 blocks, bad blocks 383 and 716 skipped, no retry). The
-  readback follows in a fresh entry.
+  15 minutes; 768 blocks, bad blocks 383 and 716 skipped, no retry), the
+  readback in 24 min 3 s, every byte the image's, both audits passed, the
+  owner's "it is ok": 58 minutes on the player against about 1 h 45 min
+  (`first-write-observation.md`, "The fifth write").
 - [ ] Found at its first starts (the player's boot log over the USB console,
   2026-10-07), each to fix with a test:
   - The installer left a package staged by an earlier run on the card: the
