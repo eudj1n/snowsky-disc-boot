@@ -155,12 +155,7 @@ holds this run's own image, known from the writer's completion, so a fresh entry
 rootfs straight away (`RESTORE`, no readback of the failed image), the owner looks at stock's start
 and a fresh entry reads it back. Each session shows a bar, the
 percentage and the time gone and left, counting its journal (two lines a call) against the
-plan's call limit less the completion asks a session that goes well rarely needs
-(`expected_calls`). The write checks the image region on the player with the `staging-check`
-payload (built beside the metadata payload and passed as `--staging-build` to the review, the
-transport and the audit), reads the image back, hashes a 1 MiB sample of it on the player, and
-asks the ROM every second until the writer returns instead of waiting 15 minutes
-([writer transport](writer-transport.md#the-hash-on-the-player)). Right after the backup, in the same entry, the rootfs is read again by digest
+plan's call limit. Right after the backup, in the same entry, the rootfs is read again by digest
 (only there since 2026-10-05: one run measures what a page takes, a second after the readback
 added about 27 minutes for nothing new) (`collect_rootfs.py --mode rootfs-digest`: 794 batches, 13,588 calls and
 8.9 MB against the full read's 42,220 calls and 227.5 MB); every page's SHA-256 must equal the full

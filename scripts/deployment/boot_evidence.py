@@ -118,17 +118,13 @@ def make_plan(base,cpu,reader,transport,policy,inputs):
     counts=[(s['end_page']-s['first_page'])//ppb for s in spans]
     batches=math.ceil(counts[0]*2/MAX_PAGES)+1+math.ceil(counts[0]*ppb/MAX_PAGES)+math.ceil(counts[1]*2/MAX_PAGES)
     p=ram.plan(base,cpu,reader,transport,{k:inputs[k] for k in ('spl','payload','build_sha256')},'ram-check')
-    # The collector's batches ask the ROM until it answers (plan, stage 4c): up to settle/poll asks, not one.
-    poll=transport.get('completion_poll_ms',0)
-    asks=math.ceil(transport['settle_ms']/poll)-1 if poll else 0
     p.update(operation='boot-evidence',policy_sha256=fingerprint(policy),scopes=spans,
              metadata_sha256=table['page_sha256'],payload_entry=reader['load_address'],
              payload_sha256={n:ram.sha(v) for n,v in inputs['payloads'].items()},
              payload_bytes={n:len(v) for n,v in inputs['payloads'].items()},
              batch_limit=batches,record_limit=sum(counts)*2+1+counts[0]*ppb,
              boot_main_bytes_limit=counts[0]*ppb*page['main_bytes'],
-             protocol_call_limit=160+batches*(53+asks),completion_poll_ms=poll,
-             session_budget_ms=policy['profile']['session_budget_ms'],
+             protocol_call_limit=160+batches*53,session_budget_ms=policy['profile']['session_budget_ms'],
              nand_commands=['0x9f','0x0f','0x13','0x0b'],writer_executions=0,
              steps=['one SPL; bounded RAM checks; compared partition-specific read payloads',
                     'paired boot markers; fresh metadata; all pages of good boot blocks',
