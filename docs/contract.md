@@ -551,8 +551,13 @@ menu's `stock` entry is stock's UI with the `service` package running.
   earlier in the boot), the menu takes `event0` for itself (`EVIOCGRAB`),
   since that player reads the same keys there and would otherwise change
   the volume or start playback; taking it when no player runs is harmless.
-  A key already down when it starts counts only after its release. The
-  touch panel (`event1`) is the UI's own and may choose as well.
+  A key already down when it starts counts only after its release. Stock's
+  key driver reports Play's gestures (single `0xfa`, double `0x10d`, hold
+  `0x10c`) when the key is let go, so after a start with Play (`boot.json`'s
+  reason `recovery`) Play's gestures in the first 2 s the menu can answer are
+  the recovery's release, not an answer (2026-10-07); Volume and the touch
+  panel are not held back. The touch panel (`event1`) is the UI's own and
+  may choose as well.
 - Its countdown to the default is its own; `disc-menu`'s is 5 s (owner,
   2026-10-03).
 
