@@ -579,6 +579,10 @@ menu's `stock` entry is stock's UI with the `service` package running.
   package).
 - The boot-loop count clears once the `service` package and the chosen UI
   are confirmed; the menu's answer is part of the boot, not a condition.
+  When both were confirmed before, it clears as soon as they are ready in
+  this start: only a package not yet confirmed keeps a start counting until
+  its confirmation (2026-10-07: quick restarts of a player whose packages
+  were all confirmed reached the guard).
 
 ### Recovery, environment and status
 

@@ -160,6 +160,28 @@ class BootTests(unittest.TestCase):
         # The key still chooses: Volume Up from the platform default means stock, Play means recovery.
         self.assertEqual(self.early('play')['mode'], 'platform')
 
+    def test_a_start_of_proven_packages_clears_the_count_once_they_are_ready(self):
+        """Packages confirmed before that are ready again make a healthy start: the count clears at
+        once, not after their confirmation time (2026-10-07: quick restarts of a player whose
+        packages were all confirmed reached the guard). A package not yet confirmed keeps it."""
+        self.env['DISC_BOOT_FIXTURE_TIMING'] = self.env['DISC_BOOT_FIXTURE_TIMING'].replace('confirm=1,', 'confirm=60,')
+        self.install('service', 'a', GOOD, confirmed=True)
+        self.early(); self.early()
+        self.assertEqual(self.global_state()['unconfirmed'], 2)
+        self.boot('start', check=True)
+        self.wait_status('service', 'ready')
+        deadline = time.monotonic() + 5
+        while self.global_state()['unconfirmed'] and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.assertEqual(self.global_state()['unconfirmed'], 0, 'cleared at ready, long before 60 s')
+        self.boot('stop', check=True)
+        self.install('service', 'b', GOOD, confirmed=False, previous='a')
+        self.early()
+        self.boot('start', check=True)
+        self.wait_status('service', 'ready')
+        time.sleep(1)
+        self.assertEqual(self.global_state()['unconfirmed'], 1, 'a tentative service keeps the count until its confirmation')
+
     # Manifests
 
     def verify(self, directory, role='service'):

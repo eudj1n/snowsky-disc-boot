@@ -302,6 +302,16 @@ static void maybe_clear_loop(void) {
     if (!gstate_read(&g) && g.unconfirmed) { g.unconfirmed = 0; gstate_write(&g); }
 }
 
+/* A start whose service and chosen UI were confirmed before and are ready now is a healthy one:
+   the boot-loop count clears at once, not after their confirmation time again (2026-10-07: quick
+   restarts of a player whose packages were all confirmed reached the guard). Only a package not
+   yet confirmed keeps it counting until its confirmation. */
+static void proven_ready(void) {
+    int lock = state_lock();
+    maybe_clear_loop();
+    state_unlock(lock);
+}
+
 static void confirm(const char *domain) {
     int lock = state_lock();
     role_state rs;
@@ -883,7 +893,7 @@ static void supervise_service(void) {
         while (!exited) {
             if (stopping) { stop_child(child); role_status("service", "stopped", m, &rs, failures, NULL); free(m); return; }
             if (waitpid(child, NULL, WNOHANG) == child) { exited = 1; break; }
-            if (!is_ready && exists(ready)) { is_ready = 1; ready_at = mono(); role_status("service", "ready", m, &rs, failures, NULL); }
+            if (!is_ready && exists(ready)) { is_ready = 1; ready_at = mono(); role_status("service", "ready", m, &rs, failures, NULL); proven_ready(); }
             if (!is_ready && mono() - started > m->ready) { stop_child(child); exited = timed_out = 1; break; }
             if (is_ready && !confirmed_now && mono() - ready_at >= t_confirm) {
                 confirm("service"); confirmed_now = 1; rs.confirmed = 1;
@@ -1342,6 +1352,7 @@ static void ui_watch(pid_t ui, const char *domain, const manifest *m, role_state
         pause_s(0.1);
     }
     role_status(domain, "ready", m, &rs, 0, NULL);
+    proven_ready();
     until = mono() + t_confirm;
     while (mono() < until) { if (!ui_alive(ui)) return; pause_s(0.1); }
     confirm(domain);
