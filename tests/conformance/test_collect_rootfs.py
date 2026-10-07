@@ -111,7 +111,8 @@ class CollectorTests(unittest.TestCase):
         self.policy = collect.ram.load_metadata_policy(self.base,self.reader)
         self.scope = load_collector_policy(self.base,self.reader,'rootfs-probe')
         self.inputs = dict(spl=bytes(8056),payload=b'synthetic payload',build_sha256='a'*64,
-                           page_policy=self.policy,collector_policy=self.scope)
+                           page_policy=self.policy,collector_policy=self.scope,
+                           completion=collect.ram.load_completion(self.base,self.config))
         fixture=test_kernel_review.KernelReviewTests();fixture.setUp();self.metadata=fixture.page()
         self.library=self.root/'lib';self.library.write_bytes(b'fake')
         self.index=0
@@ -164,6 +165,17 @@ class CollectorTests(unittest.TestCase):
                 self.assertEqual(result['status'],'failed')
                 self.assertEqual(len(fake.calls),position)
                 self.assertEqual(result['records_completed'],0)
+
+    def test_without_the_completion_profile_the_plan_is_as_before(self):
+        """A plan made without the completion profile has no asks and none of its fields, so a plan an
+        earlier session recorded is the same plan today."""
+        polled = self.plan()
+        del self.inputs['completion']
+        plain = self.plan()
+        self.assertNotIn('completion_poll_ms', plain); self.assertNotIn('completion_profile_sha256', plain)
+        self.assertLess(plain['protocol_call_limit'], polled['protocol_call_limit'])
+        self.assertEqual({k: v for k, v in polled.items() if k not in ('completion_poll_ms', 'completion_profile_sha256', 'protocol_call_limit')},
+                         {k: v for k, v in plain.items() if k != 'protocol_call_limit'})
 
     def test_a_running_batch_is_asked_until_the_rom_answers(self):
         """Completion polling (plan, stage 4c): CPU-info requests every completion_poll_ms after a batch's

@@ -130,7 +130,8 @@ class WriterTransportTests(unittest.TestCase):
                           page_policy=self.policy,writer=bytes(binary),metadata=fixture.page(),
                           image=b'hsqs'+bytes(2*131072-4),image_name='synthetic-candidate.bin',
                           target='candidate',image_review_sha256='b'*64,
-                          staging_payload=b'synthetic staging check code',staging_build_sha256='c'*64)
+                          staging_payload=b'synthetic staging check code',staging_build_sha256='c'*64,
+                          completion=ram.load_completion(self.base,self.transport))
         self.library = self.root/'fake-library'; self.library.write_bytes(b'not loaded')
         self.index = 0
         sync = patch.object(ram.os,'fsync'); sync.start(); self.addCleanup(sync.stop)
@@ -195,7 +196,7 @@ class WriterTransportTests(unittest.TestCase):
     def test_the_hash_on_the_player_is_measured_on_a_sample_of_the_image(self):
         """The staging check's code runs uncached, so the image is compared over USB as before and the
         player hashes only its first staging_sample_bytes, whose time the result keeps."""
-        self.layout['staging_sample_bytes'] = 65536
+        self.inputs['completion'] = {**self.inputs['completion'],'staging_sample_bytes':65536}
         fake = self.rom(); result,_ = self.run_rom(fake)
         self.assertEqual(result['status'],'writer-staging-verified',result.get('error'))
         image = self.layout['image_address']
@@ -354,14 +355,48 @@ class WriterTransportTests(unittest.TestCase):
         for key,value in [('writer_stack_bottom',self.reader['load_address']),('image_address',0xa2000000),
                           ('debug_address',0xa0a01000),('writer_stack_top',0xa0bfffe0),('writer_entry_offset',64),
                           ('dram_end',0xa1010000),('physical_write_admitted',1),('writer_wait_ms',True),
-                          ('page_policy_sha256','0'*64),('session_budget_ms',20000),('staging_sample_bytes',65536+64),
-                          ('staging_sample_bytes',0),('staging_sample_bytes',None),('staging_sample_ms',500),
-                          ('staging_check_ms',self.layout['staging_budget_ms']-self.layout['staging_sample_ms'])]:
+                          ('page_policy_sha256','0'*64),('session_budget_ms',20000)]:
             with self.subTest(key=key), self.assertRaises(writer.ram.probe.ProbeError):
                 self.layout = {**original,key:value}; self.plan()
         self.layout = original
         self.inputs['writer'] = b'changed'*200
         with self.assertRaises(writer.ram.probe.ProbeError): self.plan()
+
+    def test_the_profiles_an_installation_history_pins_stay_as_recorded(self):
+        """The transport profile and the installer's RAM contract are pinned by every installation's
+        recorded evidence (its boot and stock captures, its review): a change refuses the next
+        installation of every installed player until fresh evidence is taken. On 2026-10-07 a
+        polling setting added to the transport profile did that to the owner's player; these are the
+        fingerprints its history of 2026-10-06 pins."""
+        contract = writer.installation_review.layout_contract(self.layout_file())
+        self.assertEqual(writer.fingerprint(self.transport), '9aac8148f9d03898e74a9dcd62e16e6ee6b6f1a8b3711602b2329abc1251eb58')
+        self.assertEqual(writer.fingerprint(contract), '254adf51331ec062b0011e9a5b1d205e2c1c663dd50f33cbc5286d535ee4c5b9')
+
+    def layout_file(self):
+        return json.loads((ROOT/f'firmware/installers/v{self.base["version"]}.json').read_text())
+
+    def test_the_asks_come_from_the_completion_profile_apart_from_the_pinned_ones(self):
+        """How often and how long the ROM is asked lives in firmware/completion/ (plan, stage 4c): the
+        transport and installer profiles, which an installation's recorded evidence pins, stay as
+        they were, and a completion profile out of its bounds or for another transport is refused."""
+        ram = writer.ram
+        good = json.loads((ROOT/'firmware/completion/v2.57.json').read_text())
+        self.assertNotIn('completion_poll_ms', self.transport)
+        for key in ('writer_poll_ms','staging_check_ms','staging_poll_ms','staging_sample_ms','staging_sample_bytes'):
+            self.assertNotIn(key, self.layout)
+        plan = self.plan()
+        self.assertEqual(plan['completion_profile_sha256'], writer.fingerprint(self.inputs['completion']))
+        self.assertEqual((plan['writer_poll_ms'], plan['staging_poll_ms']), (good['writer_poll_ms'], good['staging_poll_ms']))
+        (self.root/'completion').mkdir()
+        for key, value in [('staging_sample_bytes',65536+64),('staging_sample_bytes',0),('staging_sample_bytes',None),
+                           ('staging_sample_ms',500),('writer_poll_ms',50),('completion_poll_ms',2000),
+                           ('transport_profile_sha256','0'*64),('version','9.99')]:
+            with self.subTest(key=key, value=value), self.assertRaises(ram.probe.ProbeError):
+                (self.root/'completion/v2.57.json').write_text(json.dumps({**good, key: value}))
+                ram.load_completion(self.base, self.transport, self.root)
+        # Its checks must fit the staging budget the installer profile sets.
+        self.inputs['completion'] = {**good, 'staging_check_ms': self.layout['staging_budget_ms']-good['staging_sample_ms']}
+        with self.assertRaises(ram.probe.ProbeError): self.plan()
 
     def test_future_version_rebinds_profiles_without_script_changes(self):
         self.base = {**self.base,'version':'9.99'}
@@ -440,7 +475,7 @@ class WriterTransportTests(unittest.TestCase):
 
     def test_the_write_audit_reconstructs_the_staging_check_and_the_asks(self):
         self.layout['physical_write_admitted'] = True
-        self.layout['staging_sample_bytes'] = 65536
+        self.inputs['completion'] = {**self.inputs['completion'],'staging_sample_bytes':65536}
         folders, subprocess = self.files()
         fake = self.rom(); result, output = self.run_rom(fake, 'write')
         self.assertEqual(result['status'], 'writer-completion-observed', result.get('error'))

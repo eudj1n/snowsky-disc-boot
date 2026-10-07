@@ -43,7 +43,7 @@ def make_plan(base, cpu, reader, config, inputs, metadata):
     layout = review_partitions(metadata, page['kernel'], page['chip'], page['writer'])
     # Reuse the exact reviewed ROM bootstrap fields; this is a distinct plan.
     bootstrap = ram.plan(base, cpu, reader, config, {k:v for k,v in inputs.items()
-                                                  if k not in ('page_policy', 'collector_policy')}, 'ram-check')
+                                                  if k not in ('page_policy', 'collector_policy', 'completion')}, 'ram-check')
     ppb = page['chip']['pages_per_block']
     scan = (scope['end_page']-scope['first_page'])//ppb
     markers, data = 2*scan, scope['logical_blocks']*ppb
@@ -53,13 +53,15 @@ def make_plan(base, cpu, reader, config, inputs, metadata):
     # Three calls a 64 KiB chunk (the request and the result written and compared, the result
     # read) and two to run the batch: 53 for the full result, 17 for a digest batch.
     per_batch = 3*(2*math.ceil(REQUEST_BYTES/65536)+3*math.ceil(result_bytes(scope)/65536))+2
-    # With completion polling (plan, stage 4c) a batch asks the ROM up to settle/poll times, not once.
-    poll = config.get('completion_poll_ms', 0)
+    # With completion polling (plan, stage 4c) a batch asks the ROM up to settle/poll times, not once;
+    # how often comes from the completion profile (ram_transport.load_completion), none without it.
+    completion = inputs.get('completion')
+    poll = completion['completion_poll_ms'] if completion else 0
     if poll:
         per_batch += math.ceil(config['settle_ms']/poll)-1
     bootstrap.update(operation=scope['mode'], collector_policy_sha256=fingerprint(scope),
         page_policy_sha256=fingerprint(page), metadata_sha256=layout['page_sha256'],
-        first_page=scope['first_page'], end_page_exclusive=scope['end_page'], completion_poll_ms=poll,
+        first_page=scope['first_page'], end_page_exclusive=scope['end_page'],
         logical_blocks=scope['logical_blocks'], pages_per_block=ppb,
         marker_reads=markers, data_reads=data, batch_limit=batches, batch_pages=MAX_PAGES,
         capture_bytes=(markers+data)*(48+(DIGEST_RECORD_BYTES if digest else 4428)),
@@ -79,6 +81,8 @@ def make_plan(base, cpu, reader, config, inputs, metadata):
     bootstrap['timeout_ms'] = dict(bootstrap['timeout_ms'], session_budget_ms=scope['session_budget_ms'])
     bootstrap['transport_sources_sha256'].update({name:ram.probe.digest(ram.ROOT/name) for name in (
         'scripts/deployment/collect_rootfs.py', 'scripts/deployment/collector_policy.py')})
+    if completion:
+        bootstrap.update(completion_poll_ms=poll, completion_profile_sha256=fingerprint(completion))
     return bootstrap
 
 
@@ -268,7 +272,8 @@ def acquire(plan, approved, base, cpu, reader, config, inputs, metadata, library
         ram.read_file(library, 16*1024*1024)
         ram.save_json(output/'dependency.json', dict(path=str(library.resolve()), sha256=ram.probe.digest(library)))
         journal.event(phase='usb-discovery-attempt')
-        limits = dict(config, session_budget_ms=inputs['collector_policy']['session_budget_ms'])
+        limits = dict(config, session_budget_ms=inputs['collector_policy']['session_budget_ms'],
+                      completion_poll_ms=plan.get('completion_poll_ms', 0))
         session = Session(ram.bind(loader(str(library))), cpu, limits, record, journal, clock, sleep)
         session.open()
         bootstrap(session, inputs, nonce, record)
@@ -304,6 +309,7 @@ def main():
         cpu, reader = ram.load_probe_profile(base), ram.load_reader_profile(base)
         config = ram.load_transport(base, reader)
         inputs = ram.prepare_inputs(base, cpu, reader, config, args.build, args.diskos, args.mode)
+        inputs['completion'] = ram.load_completion(base, config)
         metadata = ram.read_file(args.metadata_page, inputs['page_policy']['main_bytes'])
         plan = make_plan(base, cpu, reader, config, inputs, metadata)
         result = dict(plan=plan, plan_sha256=fingerprint(plan)) if args.action == 'plan' else acquire(

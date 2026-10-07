@@ -12,7 +12,6 @@
   "bulk_timeout_ms": 3000,
   "execution_timeout_ms": 5000,
   "settle_ms": 2000,
-  "completion_poll_ms": 50,
   "session_budget_ms": 60000,
   "physical_qualified": false
 }

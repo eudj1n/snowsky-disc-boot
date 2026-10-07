@@ -61,7 +61,8 @@ class BootTests(unittest.TestCase):
         fixture=test_kernel_review.KernelReviewTests();fixture.setUp()
         self.metadata=fixture.page({0:{1:2*131072}})
         self.inputs=dict(spl=bytes(8056),payload=b'boot payload',payloads={'uboot':b'boot payload','ota':b'ota! payload'},
-                         metadata=self.metadata,build_sha256='b'*64)
+                         metadata=self.metadata,build_sha256='b'*64,
+                         completion=boot.ram.load_completion(self.base,self.transport))
         self.library=self.root/'fake-lib';self.library.write_bytes(b'never loaded')
         self.index=0
         sync=patch.object(boot.os,'fsync');sync.start();self.addCleanup(sync.stop)
