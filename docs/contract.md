@@ -417,11 +417,11 @@ Besides the early hook's and the wrappers' lines, the boot program adds to
 
 - every change of a role's state (`menu asking`, `ui/<name> confirmed`,
   `service failed: …`), what the player's launcher starts and why, the choice
-  each UI launcher reads, each start of stock's UI or player, and each UI it
-  stops after an installation;
+  each UI launcher reads and each start of stock's UI or player;
 - in platform mode, at each start of the pair, the last lines the previous UI
   wrote (stock's UI keeps no log of its own; stock's player keeps
-  `fiio_player.log`), the kernel's fatal-signal lines (`print-fatal-signals`),
+  `fiio_player.log`), the kernel's fatal-signal lines (`print-fatal-signals`;
+  the last 8 new ones, with a count of those left out),
   the holders and waiters of stock's process lock (`/proc/locks`), processes in
   uninterruptible sleep and stock's queues. The UI's output goes to
   `/run/disc-boot/out`, a tmpfs of 1 MiB of its own: a full one refuses writes,

@@ -71,6 +71,16 @@ def asking():
     return status
 
 
+def keys_taken():
+    """The keys the menu took are gone for later readers. On the player a program that opens the
+    key device sees only the presses after it; the guest's device is a file the emulator's buttons
+    append to and a reader reads from its start (emptied at each power-on). Stock's player, which
+    now starts after the menu's answer, would take the menu's Volume - and Play again, and on the
+    guest it dies of them in its start, at every restart (2026-10-07). The player starts 2 s after
+    the answer; the release is written 0.12 s after the press the menu answers."""
+    (bg.ROOTFS/'dev/input/event0').write_bytes(b'')
+
+
 def power_on(hold=''):
     """Power on in the background: the emulator's power-on returns once a UI is ready, which with
     the menu is after its choice, so the test watches the menu while the boot goes on."""
@@ -124,6 +134,7 @@ def run(menu, output):
     moved = frame('volume-down')
     assert pixel(moved, 70, 180) == (0x3a, 0x35, 0x30) and pixel(moved, 70, 132) != (0x3a, 0x35, 0x30), 'the pill moved down'
     buttons.pulse(0xfa)
+    keys_taken()
     ui = bg.ui_runs(TWO)
     choice = bg.guest_json('/run/disc-boot/ui/choice.json')
     assert (choice['ui'], choice['by']) == (TWO, 'menu'), choice

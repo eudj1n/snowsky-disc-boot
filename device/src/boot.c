@@ -761,15 +761,20 @@ static void capture_start(const char *name) {
             ring[got] = 0;
             char seen[PATH_MAX], buf[32];
             bpath(seen, RUN_DIR "/out/fatal-seen");
-            long before = read_small(seen, buf, sizeof(buf), NULL) ? 0 : atol(buf), total = 0;
+            long before = read_small(seen, buf, sizeof(buf), NULL) ? 0 : atol(buf), total = 0, fresh = 0;
+            /* The last KERNEL_LINES new ones only: each boot log line is synced, and a ring full of
+               them (the guest shares its host's) would hold up the start. */
+            enum { KERNEL_LINES = 8 };
+            char *last[KERNEL_LINES];
             for (char *line = ring; line && *line; ) {
                 char *end = strchr(line, '\n');
                 if (end) *end = 0;
-                if (strstr(line, "fatal signal")) {
-                    if (++total > before) plog("kernel: %.200s", line);
-                }
+                if (strstr(line, "fatal signal") && ++total > before) last[fresh++ % KERNEL_LINES] = line;
                 line = end ? end + 1 : NULL;
             }
+            if (fresh > KERNEL_LINES) plog("kernel: %ld earlier fatal-signal lines left out", fresh - KERNEL_LINES);
+            for (long k = fresh > KERNEL_LINES ? fresh - KERNEL_LINES : 0; k < fresh; k++)
+                plog("kernel: %.200s", last[k % KERNEL_LINES]);
             int k = snprintf(buf, sizeof(buf), "%ld\n", total);
             write_atomic(seen, buf, (size_t)k, 0644);
         }
