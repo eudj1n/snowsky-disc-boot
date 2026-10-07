@@ -30,12 +30,12 @@
     {
       "name": "disc-server",
       "role": "service",
-      "version": "2.57.3",
+      "version": "2.57.4",
       "homepage": "https://github.com/eudj1n/snowsky-disc-server",
       "source": {
-        "url": "https://github.com/eudj1n/snowsky-disc-server/releases/download/v2.57.3/disc-server-2.57.3.zip",
-        "sha256": "5a3e63a82b1a8afea2a9b1e2a87267d41792833b0156f0838851ca31ed23df07",
-        "size": 838192
+        "url": "https://github.com/eudj1n/snowsky-disc-server/releases/download/v2.57.4/disc-server-2.57.4.zip",
+        "sha256": "4f53616da39424c53b29a3099d3bbf979725b262631de623334837cf2609845f",
+        "size": 838185
       },
       "profiles": [
         "2.57"
@@ -46,10 +46,10 @@
       "notes": "snowsky-disc-server's release variant; its catalog/apps.json offers the player page by default",
       "verified": {
         "date": "2026-10-07",
-        "boot": "ef056a6",
+        "boot": "b29581a",
         "emulator": "f1d5e33",
         "firmware": "2.57",
-        "acceptance": "2.57.2 to 2.57.3 through the manager on the guest and on the owner's player, confirmed; release 2.57.3 of snowsky-disc-server (its record says the rest)"
+        "acceptance": "2.57.3 to 2.57.4 through the manager on the guest (boot 2.57.3's image) and on the owner's player, confirmed; release 2.57.4 of snowsky-disc-server, the first tagged (its record says the rest)"
       }
     },
     {
