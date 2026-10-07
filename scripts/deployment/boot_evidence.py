@@ -118,23 +118,17 @@ def make_plan(base,cpu,reader,transport,policy,inputs):
     counts=[(s['end_page']-s['first_page'])//ppb for s in spans]
     batches=math.ceil(counts[0]*2/MAX_PAGES)+1+math.ceil(counts[0]*ppb/MAX_PAGES)+math.ceil(counts[1]*2/MAX_PAGES)
     p=ram.plan(base,cpu,reader,transport,{k:inputs[k] for k in ('spl','payload','build_sha256')},'ram-check')
-    # The collector's batches ask the ROM until it answers (plan, stage 4c): up to settle/poll asks, not
-    # one, how often from the completion profile; without it the plan is as before.
-    completion=inputs.get('completion');poll=completion['completion_poll_ms'] if completion else 0
-    asks=math.ceil(transport['settle_ms']/poll)-1 if poll else 0
     p.update(operation='boot-evidence',policy_sha256=fingerprint(policy),scopes=spans,
              metadata_sha256=table['page_sha256'],payload_entry=reader['load_address'],
              payload_sha256={n:ram.sha(v) for n,v in inputs['payloads'].items()},
              payload_bytes={n:len(v) for n,v in inputs['payloads'].items()},
              batch_limit=batches,record_limit=sum(counts)*2+1+counts[0]*ppb,
              boot_main_bytes_limit=counts[0]*ppb*page['main_bytes'],
-             protocol_call_limit=160+batches*(53+asks),
-             session_budget_ms=policy['profile']['session_budget_ms'],
+             protocol_call_limit=160+batches*53,session_budget_ms=policy['profile']['session_budget_ms'],
              nand_commands=['0x9f','0x0f','0x13','0x0b'],writer_executions=0,
              steps=['one SPL; bounded RAM checks; compared partition-specific read payloads',
                     'paired boot markers; fresh metadata; all pages of good boot blocks',
                     'paired first-page OTA reads only; classify selector without boot inference'])
-    if completion: p.update(completion_poll_ms=poll,completion_profile_sha256=fingerprint(completion))
     p['ram_regions'] += [dict(name='batch-request',address=policy['buffers']['request_address'],bytes=REQUEST_BYTES),
                          dict(name='batch-result',address=policy['buffers']['result_address'],bytes=RESULT_BYTES)]
     p['timeout_ms']['session_budget_ms']=p['session_budget_ms']
@@ -246,7 +240,7 @@ def acquire(plan,approved,base,cpu,reader,transport,policy,inputs,library,output
         ram.read_file(library,16*1024*1024)
         ram.save_json(output/'dependency.json',dict(path=str(library.resolve()),sha256=ram.probe.digest(library)))
         journal=collector.Journal(output,plan['protocol_call_limit']);journal.event(phase='usb-discovery-attempt')
-        session=collector.Session(ram.bind(loader(str(library))),cpu,dict(transport,session_budget_ms=plan['session_budget_ms'],completion_poll_ms=plan.get('completion_poll_ms',0)),record,journal,clock,sleep)
+        session=collector.Session(ram.bind(loader(str(library))),cpu,dict(transport,session_budget_ms=plan['session_budget_ms']),record,journal,clock,sleep)
         session.open();collector.bootstrap(session,inputs,nonce,record);capture(session,reader,policy,inputs,nonce,record)
     except (Exception,KeyboardInterrupt) as exc: record.update(status='failed',error=f'{type(exc).__name__}: {exc}')
     finally:
@@ -270,7 +264,6 @@ def main():
         if a.action=='build': result=build(base,reader,policy,a.diskos,a.output)
         else:
             inputs=prepare(base,cpu,reader,transport,policy,a.diskos,a.build,ram.read_file(a.metadata_page,policy['page_policy']['main_bytes']))
-            inputs['completion']=ram.load_completion(base,transport)
             plan=make_plan(base,cpu,reader,transport,policy,inputs)
             result=dict(plan=plan,plan_sha256=fingerprint(plan)) if a.action=='plan' else acquire(plan,a.approved_plan_sha256,
                 base,cpu,reader,transport,policy,inputs,a.libusb,a.output)

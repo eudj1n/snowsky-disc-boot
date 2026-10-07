@@ -43,7 +43,7 @@ def make_plan(base, cpu, reader, config, inputs, metadata):
     layout = review_partitions(metadata, page['kernel'], page['chip'], page['writer'])
     # Reuse the exact reviewed ROM bootstrap fields; this is a distinct plan.
     bootstrap = ram.plan(base, cpu, reader, config, {k:v for k,v in inputs.items()
-                                                  if k not in ('page_policy', 'collector_policy', 'completion')}, 'ram-check')
+                                                  if k not in ('page_policy', 'collector_policy')}, 'ram-check')
     ppb = page['chip']['pages_per_block']
     scan = (scope['end_page']-scope['first_page'])//ppb
     markers, data = 2*scan, scope['logical_blocks']*ppb
@@ -53,12 +53,6 @@ def make_plan(base, cpu, reader, config, inputs, metadata):
     # Three calls a 64 KiB chunk (the request and the result written and compared, the result
     # read) and two to run the batch: 53 for the full result, 17 for a digest batch.
     per_batch = 3*(2*math.ceil(REQUEST_BYTES/65536)+3*math.ceil(result_bytes(scope)/65536))+2
-    # With completion polling (plan, stage 4c) a batch asks the ROM up to settle/poll times, not once;
-    # how often comes from the completion profile (ram_transport.load_completion), none without it.
-    completion = inputs.get('completion')
-    poll = completion['completion_poll_ms'] if completion else 0
-    if poll:
-        per_batch += math.ceil(config['settle_ms']/poll)-1
     bootstrap.update(operation=scope['mode'], collector_policy_sha256=fingerprint(scope),
         page_policy_sha256=fingerprint(page), metadata_sha256=layout['page_sha256'],
         first_page=scope['first_page'], end_page_exclusive=scope['end_page'],
@@ -81,8 +75,6 @@ def make_plan(base, cpu, reader, config, inputs, metadata):
     bootstrap['timeout_ms'] = dict(bootstrap['timeout_ms'], session_budget_ms=scope['session_budget_ms'])
     bootstrap['transport_sources_sha256'].update({name:ram.probe.digest(ram.ROOT/name) for name in (
         'scripts/deployment/collect_rootfs.py', 'scripts/deployment/collector_policy.py')})
-    if completion:
-        bootstrap.update(completion_poll_ms=poll, completion_profile_sha256=fingerprint(completion))
     return bootstrap
 
 
@@ -99,19 +91,14 @@ class Journal(ram.Journal):
 
 
 class Session(ram.Session):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.ready_ms = []
-
     def execute_batch(self):
         check(self.record['batch_executions'] < self.record['plan']['batch_limit'], 'Batch budget exhausted')
         self.record['batch_executions'] += 1
         self.control(4, self.record['plan']['payload_entry'], 'page_execution_attempted')
-        # The ROM answers again once the batch has returned to it: asked every completion_poll_ms
-        # instead of the fixed settle, which also measures each batch (plan, stage 4c).
-        ready = self.wait_ready()
-        if ready is not None:
-            self.ready_ms.append(ready)
+        delay = self.config['settle_ms']/1000
+        check(self.clock()+delay < self.deadline, 'Insufficient batch settle budget')
+        self.sleep(delay)
+        self.control(0)
 
 
 def write_compare(session, address, data):
@@ -149,16 +136,6 @@ def tick_summary(ticks):
         return None
     ordered = sorted(ticks)
     return dict(pages=len(ordered), min=ordered[0], median=ordered[len(ordered)//2],
-                p99=ordered[min(len(ordered)-1, len(ordered)*99//100)], max=ordered[-1], total=sum(ordered))
-
-
-def ready_summary(values):
-    """How long each batch took until the ROM answered again (completion polling, plan, stage 4c):
-    the measure of what a batch costs on the player, in milliseconds as the host saw them."""
-    if not values:
-        return None
-    ordered = sorted(values)
-    return dict(batches=len(ordered), min=ordered[0], median=ordered[len(ordered)//2],
                 p99=ordered[min(len(ordered)-1, len(ordered)*99//100)], max=ordered[-1], total=sum(ordered))
 
 
@@ -272,8 +249,7 @@ def acquire(plan, approved, base, cpu, reader, config, inputs, metadata, library
         ram.read_file(library, 16*1024*1024)
         ram.save_json(output/'dependency.json', dict(path=str(library.resolve()), sha256=ram.probe.digest(library)))
         journal.event(phase='usb-discovery-attempt')
-        limits = dict(config, session_budget_ms=inputs['collector_policy']['session_budget_ms'],
-                      completion_poll_ms=plan.get('completion_poll_ms', 0))
+        limits = dict(config, session_budget_ms=inputs['collector_policy']['session_budget_ms'])
         session = Session(ram.bind(loader(str(library))), cpu, limits, record, journal, clock, sleep)
         session.open()
         bootstrap(session, inputs, nonce, record)
@@ -281,7 +257,6 @@ def acquire(plan, approved, base, cpu, reader, config, inputs, metadata, library
     except (Exception, KeyboardInterrupt) as exc:
         record.update(status='failed', error=f'{type(exc).__name__}: {exc}')
     finally:
-        if session and session.ready_ms: record['batch_ready_ms'] = ready_summary(session.ready_ms)
         if session and session.close(): record['status'] = 'failed'
         if journal: journal.file.close()
         record['finished_at'] = datetime.now(timezone.utc).isoformat()
@@ -309,7 +284,6 @@ def main():
         cpu, reader = ram.load_probe_profile(base), ram.load_reader_profile(base)
         config = ram.load_transport(base, reader)
         inputs = ram.prepare_inputs(base, cpu, reader, config, args.build, args.diskos, args.mode)
-        inputs['completion'] = ram.load_completion(base, config)
         metadata = ram.read_file(args.metadata_page, inputs['page_policy']['main_bytes'])
         plan = make_plan(base, cpu, reader, config, inputs, metadata)
         result = dict(plan=plan, plan_sha256=fingerprint(plan)) if args.action == 'plan' else acquire(
