@@ -972,6 +972,21 @@ a write with all of it. Each item with its host tests and the guest.
   write's own session.
 - [ ] One short device session for the timer (a minute or two, the owner's
   go-ahead), then the write of an image with all of the above.
+- [ ] The ROM asked while a payload runs (2026-10-07, the first backup with
+  the asks of the merged #11/#13, run `install-20261007-211055`): after the
+  first batch's execution the host asked for the CPU reply every 50 ms; 18
+  asks timed out and the 19th was answered (the batch took about 967 ms),
+  and the very next request (the result's address) timed out. The asks the
+  host abandoned stay with the ROM, which takes them after the payload
+  returns. Nothing was written (a backup only reads); the session stopped
+  without a retry. Before that the first try stopped at its review: the
+  asks' setting in the transport profile, which the recorded evidence pins
+  (#13 moved it out). Both reverted on 2.x for the write: the sessions are
+  the proven ones again (fixed settle, host passes, the writer's fixed 15
+  min). The work stays on branch `usb-speed-experiment` (the staging check
+  on the player, the completion profile). Next, in a read-only session with
+  the owner's go-ahead: one ask with the whole settle as its timeout, so no
+  request is ever abandoned.
 
 ## Stage 6 — the user's path (owner, 2026-10-06)
 
