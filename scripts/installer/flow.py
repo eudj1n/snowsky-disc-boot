@@ -327,13 +327,15 @@ class Installer:
                                       'and the USB console\'s marker.'], 'CARD')
         profile = load_profile()['version']
         staged = cards.stage_packages(folders, target, profile)
+        cleared = cards.clear_unchosen(target, staged)
         self.roles = {s['role'] for s in staged}
         with tempfile.TemporaryDirectory() as temp:
             placed = cards.stage_apps(apps, target, self.places, self.args.download, temp)
         marker = cards.write_marker(target)
         self.say('The card', [f'{s["role"]}: {s["name"]} {s["version"]}' for s in staged] +
-                 [f'app: {a["name"]} {a["version"]}' for a in placed] + [f'console marker: {marker.relative_to(target)}'])
-        self.done('card', card=str(target), packages=staged, apps=placed, marker=str(marker))
+                 [f'app: {a["name"]} {a["version"]}' for a in placed] + [f'console marker: {marker.relative_to(target)}'] +
+                 [f'no longer staged (an earlier run\'s, not chosen now): {path}' for path in cleared])
+        self.done('card', card=str(target), packages=staged, apps=placed, marker=str(marker), cleared=cleared)
         return target
 
     def faults(self):

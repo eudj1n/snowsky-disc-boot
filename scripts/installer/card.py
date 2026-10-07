@@ -38,6 +38,26 @@ def stage_packages(folders, card, profile):
     return [package.stage(folder, card, profile=profile) for folder in folders]
 
 
+def clear_unchosen(card, staged):
+    """What an earlier run staged and this one did not choose leaves the card, so that Play installs
+    only this run's choice (2026-10-07: a server staged by a run that stopped at its review was
+    installed by the next run's Play). Only folders under .disc/boot/install/; returns their paths."""
+    root = Path(card)/package.STAGING
+    keep = {('ui', s['name']) if s['role'] == 'ui' else (s['role'],) for s in staged}
+    found = [('service',), ('menu',)]
+    if (root/'ui').is_dir():
+        found += [('ui', p.name) for p in sorted((root/'ui').iterdir()) if p.is_dir() and not p.name.startswith('.')]
+    cleared = []
+    for place in found:
+        path = root.joinpath(*place)
+        if place not in keep and path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+            cleared.append(str(path.relative_to(card)))
+    if cleared:
+        os.sync()
+    return cleared
+
+
 def app_entries(server_folder):
     """The apps the chosen server offers (its package's catalog/apps.json)."""
     path = Path(server_folder)/'catalog/apps.json'
