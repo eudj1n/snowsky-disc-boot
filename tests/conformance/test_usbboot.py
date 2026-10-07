@@ -22,6 +22,7 @@ class Tools:
 
     def __init__(self, test, faults=()):
         self.test, self.faults, self.calls, self.admission_at_write = test, set(faults), [], None
+        self.commands = []
         self.pages = [bytes([1]) * 2048, bytes([2]) * 2048]
 
     def value(self, command, name):
@@ -29,6 +30,7 @@ class Tools:
 
     def __call__(self, command, cwd=None, capture_output=True, text=True):
         tool, args = Path(command[2]).name, command[3:]
+        self.commands.append([str(part) for part in command])
         self.calls.append(tool + (f' {args[0]}' if args and not args[0].startswith('--') else ''))
         out, stdout = Path(self.value(command, '--output')) if '--output' in command else None, ''
         if tool == 'build_identity.py':
@@ -126,12 +128,20 @@ class ReviewedTests(unittest.TestCase):
         written = reviewed.write()
         read = reviewed.readback()
         reviewed.audit()
-        self.assertEqual(tools.calls, ['build_identity.py', 'build_identity.py', 'build_identity.py', 'installation_review.py',
+        # Four payloads: the metadata read, the readback, the read by digest, the staging check (plan, stage 4c).
+        self.assertEqual(tools.calls, ['build_identity.py']*4 + ['installation_review.py',
                                        'collect_rootfs.py acquire', 'readback.py plan', 'readback.py verify',
                                        'writer_transport.py plan', 'writer_transport.py acquire',
                                        'collect_rootfs.py acquire', 'readback.py plan', 'readback.py verify',
                                        'audit_usb_write.py', 'audit_usb_readback.py'])
         self.assertEqual(backup['matches'], 'combined.bin', 'the backup is what the history says is installed')
+        # The staging check's build goes to the review, the write and its audit.
+        staging = str(self.root/'usb/build-staging')
+        for name in ('installation_review.py', 'writer_transport.py', 'audit_usb_write.py'):
+            for command in (c for c in tools.commands if Path(c[2]).name == name):
+                self.assertEqual(command[command.index('--staging-build') + 1], staging, name)
+        self.assertIn(['--mode', 'staging-check'], [c[c.index('--mode'):c.index('--mode')+2] for c in tools.commands
+                                                    if Path(c[2]).name == 'build_identity.py'])
         self.assertTrue(tools.admission_at_write, 'admission open for the write')
         profile = json.loads(self.profile.read_text())
         self.assertEqual((profile['physical_write_admitted'], profile['installation_review_sha256']), (False, 'new-pin'))
@@ -207,6 +217,11 @@ class ReviewedTests(unittest.TestCase):
         f = usbboot.session_fraction(1.0, 960, 900, writer_started=660)
         self.assertAlmostEqual(960 * (1 - f) / f, 600)
         self.assertEqual(usbboot.session_fraction(0.4, 100), 0.4, 'a read counts its calls')
+        # The asks a plan admits but a session that goes well rarely makes, two a run kept (stage 4c).
+        plan = dict(protocol_call_limit=10000, staging_poll_ms=200, staging_check_ms=600000, staging_sample_ms=60000,
+                    writer_poll_ms=1000, writer_wait_ms=900000)
+        self.assertEqual(usbboot.expected_calls(plan), 10000 - 2998 - 298 - 898)
+        self.assertEqual(usbboot.expected_calls(dict(protocol_call_limit=100)), 100)
         from unittest import mock
         tools = self.root/'tools'
         tools.mkdir()

@@ -66,7 +66,7 @@ def load_transport(base, reader, directory=PROFILES):
           'Unsupported SPL parameter/entry layout')
     for key, low, high in [('control_timeout_ms', 100, 5000), ('bulk_timeout_ms', 100, 5000),
                            ('execution_timeout_ms', 100, 10000), ('settle_ms', 100, 5000),
-                           ('session_budget_ms', 10000, 120000)]:
+                           ('completion_poll_ms', 0, 1000), ('session_budget_ms', 10000, 120000)]:
         check(type(p.get(key)) is int and low <= p[key] <= high, f'Invalid transport {key}')
     return p
 
@@ -80,11 +80,13 @@ def prepare_inputs(base, cpu, reader, transport, build, diskos, mode='identity')
           and m.get('reader_profile') == reader, 'Build profile mismatch')
     page_policy = load_metadata_policy(base, reader) if mode in ('metadata', 'rootfs-probe', 'rootfs', 'rootfs-digest') else None
     collector = load_collector_policy(base, reader, mode) if mode.startswith('rootfs') else None
+    # The staging check (plan, stage 4c) is memory only: no page policy, no collector, no NAND opcode.
+    staging = mode == 'staging-check'
     check(m.get('collector_policy') == collector, 'Build collector policy mismatch')
-    check(m.get('purpose', 'identity') == (mode if page_policy else 'identity')
+    check(m.get('purpose', 'identity') == (mode if page_policy or staging else 'identity')
           and m.get('page_policy') == page_policy, 'Build purpose/page policy mismatch')
     check(m.get('physical_qualified') is False and m.get('device_access_performed') is False
-          and m.get('nand_opcodes') == ['0x9f', '0x0f'] + (['0x13', '0x0b'] if page_policy else [])
+          and m.get('nand_opcodes') == ([] if staging else ['0x9f', '0x0f'] + (['0x13', '0x0b'] if page_policy else []))
           and m.get('entry') == reader['load_address'],
           'Wrong build scope/entry')
     check(set(m.get('source_sha256', {})) == set(source_paths()), 'Build source set changed')
@@ -165,6 +167,9 @@ def bind(lib):
         fn = getattr(lib, name)
         fn.restype, fn.argtypes = result, args
     return lib
+
+
+LIBUSB_ERROR_TIMEOUT = -7
 
 
 class Journal:
@@ -275,6 +280,48 @@ class Session:
         else:
             check(code == 0, f'Control {request} failed: {code}; outcome uncertain, no retry')
         return raw
+
+    def poll(self, timeout_ms, tolerant=False):
+        """A CPU-info request while a payload may still run: the ROM answers once the payload has
+        returned to it; a timeout (LIBUSB_ERROR_TIMEOUT) is the payload still running. Read-only.
+        tolerant: any other error is also no answer yet (the writer's wait: an ask changes nothing
+        on the player, and only the ROM's answer ends the wait)."""
+        timeout = min(timeout_ms, self.timeout('control_timeout_ms'))
+        data = (C.c_uint8 * 8)()
+        seq = self.journal.begin('control', request=0, parameter=0, timeout_ms=timeout, poll=True)
+        code = self.lib.libusb_control_transfer(self.handle, 0xc0, 0, 0, 0, data, 8, timeout)
+        if code == LIBUSB_ERROR_TIMEOUT or (tolerant and code < 0):
+            self.journal.finish(seq, code)
+            return False
+        raw = bytes(data[:max(0, min(code, 8))])
+        self.journal.finish(seq, code, raw)
+        probe.match_reply(self.cpu, code, raw.hex())
+        return True
+
+    def wait_ready(self, limit_ms=None, poll_ms=None, tolerant=False):
+        """After an execution: the ROM is asked every poll_ms (completion_poll_ms by default) until
+        it answers, at most limit_ms (settle_ms by default) in all, which also tells how long the
+        payload ran; with no poll, the fixed wait and one request, as before. Returns the
+        milliseconds, or None. An ask that fails at once waits out the rest of its interval, so the
+        limit is a time, not a count."""
+        poll = self.config.get('completion_poll_ms', 0) if poll_ms is None else poll_ms
+        limit = self.config['settle_ms'] if limit_ms is None else limit_ms
+        delay = limit/1000
+        # The whole wait must fit the session, polled or not: polling only ends it earlier.
+        check(self.clock() + delay < self.deadline, 'Insufficient settle budget')
+        if not poll:
+            self.sleep(delay)
+            self.control(0)
+            return None
+        started = self.clock()
+        for _ in range(math.ceil(limit/poll)):
+            asked = self.clock()
+            if self.poll(poll, tolerant):
+                return round((self.clock() - started)*1000)
+            rest = poll/1000 - (self.clock() - asked)
+            if rest > 0:
+                self.sleep(rest)
+        check(False, 'The payload did not return within the settle; no retry')
 
     def bulk(self, length, outgoing=None):
         check(type(length) is int and 0 < length <= 65536, 'Invalid bounded RAM transfer')

@@ -1,7 +1,7 @@
 """Independently reconstruct a saved postwrite USB trace; never opens USB."""
 import argparse,hashlib,json,struct,zlib
 from pathlib import Path
-from usb_trace_audit import compare
+from usb_trace_audit import compare, ready
 
 if not __debug__:
     raise RuntimeError('USB trace audits require Python assertions')
@@ -83,7 +83,10 @@ def expected():
   request=(struct.pack('<4I',0x3151424e,1,count,0)+b''.join(raw[k*4476:k*4476+48] for k in range(off,off+count))).ljust(3088,b'\0')
   assert request==(run/f'batch-{batch:04}-request.bin').read_bytes()
   result=(struct.pack('<4I',0x3152424e,1,count,0)+b''.join(framed[off:off+count])).ljust(283408,b'\0')
-  yield from compare_ram(collector['request_address'],request);yield from compare_ram(collector['result_address'],bytes(283408));yield from ctrl(4,reader['load_address']);yield from ctrl(0)
+  yield from compare_ram(collector['request_address'],request);yield from compare_ram(collector['result_address'],bytes(283408));yield from ctrl(4,reader['load_address'])
+  # The ROM asked until it answers when the plan polls for completion (plan, stage 4c), else once after the settle.
+  if p.get('completion_poll_ms'):yield ready(p['completion_poll_ms'],t['settle_ms'],b'X2000')
+  else:yield from ctrl(0)
   for where,part in chunks(collector['result_address'],result):yield from transfer(where,part,True)
  assert batch==r['batch_executions']==p['batch_limit']
 rows=[json.loads(l) for l in (run/'transfers.jsonl').read_text().splitlines()]

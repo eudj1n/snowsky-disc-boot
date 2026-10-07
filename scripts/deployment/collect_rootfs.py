@@ -53,9 +53,13 @@ def make_plan(base, cpu, reader, config, inputs, metadata):
     # Three calls a 64 KiB chunk (the request and the result written and compared, the result
     # read) and two to run the batch: 53 for the full result, 17 for a digest batch.
     per_batch = 3*(2*math.ceil(REQUEST_BYTES/65536)+3*math.ceil(result_bytes(scope)/65536))+2
+    # With completion polling (plan, stage 4c) a batch asks the ROM up to settle/poll times, not once.
+    poll = config.get('completion_poll_ms', 0)
+    if poll:
+        per_batch += math.ceil(config['settle_ms']/poll)-1
     bootstrap.update(operation=scope['mode'], collector_policy_sha256=fingerprint(scope),
         page_policy_sha256=fingerprint(page), metadata_sha256=layout['page_sha256'],
-        first_page=scope['first_page'], end_page_exclusive=scope['end_page'],
+        first_page=scope['first_page'], end_page_exclusive=scope['end_page'], completion_poll_ms=poll,
         logical_blocks=scope['logical_blocks'], pages_per_block=ppb,
         marker_reads=markers, data_reads=data, batch_limit=batches, batch_pages=MAX_PAGES,
         capture_bytes=(markers+data)*(48+(DIGEST_RECORD_BYTES if digest else 4428)),
@@ -91,14 +95,19 @@ class Journal(ram.Journal):
 
 
 class Session(ram.Session):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ready_ms = []
+
     def execute_batch(self):
         check(self.record['batch_executions'] < self.record['plan']['batch_limit'], 'Batch budget exhausted')
         self.record['batch_executions'] += 1
         self.control(4, self.record['plan']['payload_entry'], 'page_execution_attempted')
-        delay = self.config['settle_ms']/1000
-        check(self.clock()+delay < self.deadline, 'Insufficient batch settle budget')
-        self.sleep(delay)
-        self.control(0)
+        # The ROM answers again once the batch has returned to it: asked every completion_poll_ms
+        # instead of the fixed settle, which also measures each batch (plan, stage 4c).
+        ready = self.wait_ready()
+        if ready is not None:
+            self.ready_ms.append(ready)
 
 
 def write_compare(session, address, data):
@@ -136,6 +145,16 @@ def tick_summary(ticks):
         return None
     ordered = sorted(ticks)
     return dict(pages=len(ordered), min=ordered[0], median=ordered[len(ordered)//2],
+                p99=ordered[min(len(ordered)-1, len(ordered)*99//100)], max=ordered[-1], total=sum(ordered))
+
+
+def ready_summary(values):
+    """How long each batch took until the ROM answered again (completion polling, plan, stage 4c):
+    the measure of what a batch costs on the player, in milliseconds as the host saw them."""
+    if not values:
+        return None
+    ordered = sorted(values)
+    return dict(batches=len(ordered), min=ordered[0], median=ordered[len(ordered)//2],
                 p99=ordered[min(len(ordered)-1, len(ordered)*99//100)], max=ordered[-1], total=sum(ordered))
 
 
@@ -257,6 +276,7 @@ def acquire(plan, approved, base, cpu, reader, config, inputs, metadata, library
     except (Exception, KeyboardInterrupt) as exc:
         record.update(status='failed', error=f'{type(exc).__name__}: {exc}')
     finally:
+        if session and session.ready_ms: record['batch_ready_ms'] = ready_summary(session.ready_ms)
         if session and session.close(): record['status'] = 'failed'
         if journal: journal.file.close()
         record['finished_at'] = datetime.now(timezone.utc).isoformat()

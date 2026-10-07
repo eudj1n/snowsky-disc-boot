@@ -28,12 +28,15 @@ def source_paths():
         'scripts/deployment/collector_policy.py']
 
 
-def prepare(p, output, page_policy=None, collector=None):
+def prepare(p, output, page_policy=None, collector=None, staging=False):
     fields = {'STACK_TOP': 'stack_top', 'REQUEST': 'request_address', 'RESULT': 'result_address',
               'SFC_POLLS': 'sfc_polls', 'NAND_POLLS': 'nand_polls', 'EXTAL_MHZ': 'extal_mhz',
               'TARGET_MHZ': 'target_mhz', 'ID_ADDRESS_BYTES': 'id_address_bytes'}
     (output/'identity_layout.h').write_text(''.join(
         f'#define IDENTITY_{name} 0x{p[key]:x}\n' for name, key in fields.items()))
+    if staging:
+        with (output/'identity_layout.h').open('a') as header:
+            header.write('#define STAGING_CHECK 1\n')
     if page_policy is not None:
         with (output/'identity_layout.h').open('a') as header:
             if collector:
@@ -92,13 +95,15 @@ def inspect_elf(data, p):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--version')
-    parser.add_argument('--mode', choices=('identity', 'metadata', 'rootfs-probe', 'rootfs', 'rootfs-digest'), default='identity')
+    parser.add_argument('--mode', choices=('identity', 'metadata', 'rootfs-probe', 'rootfs', 'rootfs-digest', 'staging-check'),
+                        default='identity')
     parser.add_argument('--diskos', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     base = load_profile(args.version)
     p = load_reader_profile(base)
-    page_policy = load_metadata_policy(base, p) if args.mode != 'identity' else None
+    # The staging check (plan, stage 4c) reads no NAND: no page policy, no collector.
+    page_policy = load_metadata_policy(base, p) if args.mode not in ('identity', 'staging-check') else None
     collector = load_collector_policy(base, p, args.mode) if args.mode.startswith('rootfs') else None
     for name, sha in p['source_pins'].items():
         require(digest(args.diskos/name) == sha, f'External input changed: {name}')
@@ -106,7 +111,7 @@ def main():
     require(any(output.is_relative_to(ROOT/name) for name in ('build', 'work')),
             'Output must be inside ignored build/ or work/')
     output.mkdir(parents=True, exist_ok=False)
-    prepare(p, output, page_policy, collector)
+    prepare(p, output, page_policy, collector, staging=args.mode == 'staging-check')
     image = os.environ.get('DISC_TOOLCHAIN_IMAGE', 'diskos-ui-builder')
     image_id = subprocess.check_output(['docker', 'image', 'inspect', '--format', '{{.Id}}', image], text=True).strip()
     subprocess.run(['docker', 'run', '--rm', '--platform', 'linux/amd64', '--network', 'none',
@@ -120,7 +125,7 @@ def main():
               'source_sha256': {name: digest(ROOT/name) for name in source_paths()},
               'artifacts': {n: digest(output/n) for n in ('identity.elf', 'identity.bin', 'identity_layout.h', 'identity.ld')},
               'bytes': len(binary), 'entry': p['load_address'],
-              'nand_opcodes': ['0x9f', '0x0f'] + (['0x13', '0x0b'] if page_policy else []),
+              'nand_opcodes': [] if args.mode == 'staging-check' else ['0x9f', '0x0f'] + (['0x13', '0x0b'] if page_policy else []),
               'physical_qualified': False, 'device_access_performed': False}
     (output/'build.json').write_text(json.dumps(report, indent=2)+'\n')
     print(json.dumps({'output': str(output), 'bytes': len(binary), 'physical_qualified': False}))
