@@ -903,6 +903,39 @@ name ([observation](first-write-observation.md)).
   its way to exec; its rerun passed. `found_by_watch_loop` now reads again
   until the two agree, for at most two seconds (not yet run on the guest).
 
+## Stage 4c — the installation with Play, the menu and the faster write (owner, 2026-10-07)
+
+The order (owner, 2026-10-07): first what needs no device (the guest), then
+the USB sessions' time offline, one short device session for the timer, and
+a write with all of it. Each item with its host tests and the guest.
+
+- [ ] The boot log reaches the disk line by line (`fsync` after each line,
+  about twenty a start): two starts with Play lost their last seconds at a
+  power-off (2026-10-06).
+- [ ] The menu takes only a fresh Play press: a key held since power-on
+  (the installation's Play) answers nothing. The installer says to hold
+  Play until the logo and to press the power key briefly (a power key held
+  about ten seconds switches the player off).
+- [ ] The installation finishes before the menu offers anything, and the
+  menu shows its progress (the item of stage 4b, "The menu during an
+  installation with Play"): its first answer no longer races the card.
+- [ ] The power key held in the menu switches the player off (stage 4b,
+  "The power key in the menu").
+- [ ] The menu's status keeps the package's name and version once it has
+  answered (`menu.json` named neither on 2026-10-06, so the manager left
+  the menu out of "Player software").
+- [ ] The menu starts on the last choice made in it, and its countdown takes
+  that one (owner, 2026-10-07): no new setting, the last answer becomes the
+  default UI; an explicit default from the manager only if it is missed.
+- [ ] The USB sessions' time (stage 4b), in this order: a timer that runs in
+  USB Boot, settled offline; the settle after each batch from its
+  measurement (the backup and the readback from 35-40 minutes to a few);
+  the staged image's SHA-256 and the RAM check on the player; the writer's
+  wait from a measured writer; one SPL per entry with the check inside the
+  write's own session.
+- [ ] One short device session for the timer (a minute or two, the owner's
+  go-ahead), then the write of an image with all of the above.
+
 ## Stage 6 — the user's path (owner, 2026-10-06)
 
 The order (owner, 2026-10-06): the menu's failure and the diagnostics (a new
