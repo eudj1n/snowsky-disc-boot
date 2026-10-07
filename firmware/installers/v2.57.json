@@ -14,6 +14,11 @@
   "staging_budget_ms": 900000,
   "session_budget_ms": 1800000,
   "writer_wait_ms": 900000,
+  "writer_poll_ms": 1000,
+  "staging_check_ms": 600000,
+  "staging_sample_ms": 60000,
+  "staging_sample_bytes": 1048576,
+  "staging_poll_ms": 200,
   "physical_write_admitted": false,
   "installation_review_sha256": "cf36f06f6942bed226930d7023a732d3fbd6b07aa9ddd8f11ab201688231cbdd"
 }

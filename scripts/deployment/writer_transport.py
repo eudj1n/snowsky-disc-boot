@@ -60,15 +60,41 @@ def validate_layout(base, reader, transport, policy, layout):
         check(all(address+size <= a or a+n <= address for a,n in seen), f'Overlapping RAM: {name}')
         seen.append((address,size))
     for key, low, high in [('staging_budget_ms',10000,900000), ('session_budget_ms',20000,3600000),
-                           ('writer_wait_ms',1000,1800000)]:
+                           ('writer_wait_ms',1000,1800000), ('staging_check_ms',1000,600000),
+                           ('staging_sample_ms',1000,120000), ('staging_poll_ms',10,1000), ('writer_poll_ms',100,1000)]:
         check(type(layout.get(key)) is int and low <= layout[key] <= high, f'Invalid installer budget: {key}')
     check(layout['session_budget_ms'] >= layout['staging_budget_ms']+layout['writer_wait_ms'], 'Insufficient writer session budget')
+    check(layout['staging_check_ms']+layout['staging_sample_ms'] < layout['staging_budget_ms'], 'Insufficient staging budget for its checks')
+    sample = layout.get('staging_sample_bytes')
+    check(type(sample) is int and 0 < sample <= 16*1024*1024 and sample % 65536 == 0, 'Invalid staging hash sample')
     return regions
 
 
-def prepare(base, cpu, reader, transport, build, diskos, artifacts, target, metadata):
+STAGING_REQUEST, STAGING_RESULT, STAGING_PATTERN, STAGING_SHA256 = 0x51475453, 0x52475453, 1, 2
+STAGING_RESULT_BYTES = 80
+
+
+def staging_seed(nonce):
+    """The image region's pattern on the player (device/acquisition/staging.c): xorshift32 from a
+    seed of the session's nonce, never zero."""
+    return struct.unpack('<I', hashlib.shake_256(nonce+b'staging-pattern').digest(4))[0] or 1
+
+
+def staging_request(op, address, length, seed, nonce):
+    return struct.pack('<6I16s2I', STAGING_REQUEST, 1, op, address, length, seed, nonce, 0, 0)
+
+
+def staging_result(op, address, length, nonce, digest=bytes(32)):
+    """What the staging check answers when it passed: the pattern's words checked twice, or the hash."""
+    checked = 2*(length//4) if op == STAGING_PATTERN else length
+    return struct.pack('<4I16s4I32s', STAGING_RESULT, 1, op, 0, nonce, address, length, checked, 0, digest)
+
+
+def prepare(base, cpu, reader, transport, build, diskos, artifacts, target, metadata, staging_build):
     check(target in ('candidate', 'restore'), 'Unknown image target')
     inputs = ram.prepare_inputs(base,cpu,reader,transport,build,diskos,'metadata')
+    # The staging check (plan, stage 4c), run from the code region before the writer goes there.
+    staging = ram.prepare_inputs(base,cpu,reader,transport,staging_build,diskos,'staging-check')
     writer = inputs['page_policy']['writer']
     report = review.review(artifacts,diskos,base,writer)
     name = artifact_names(base,report['variant'])[target == 'restore']
@@ -78,7 +104,8 @@ def prepare(base, cpu, reader, transport, build, diskos, artifacts, target, meta
     check(ram.sha(binary) == writer['source_pins'][writer['writer_file']], 'Writer changed after review')
     review.writer_capacity(binary,writer)
     inputs.update(writer=binary,image=image,image_name=name,target=target,
-                  image_review_sha256=fingerprint(report),metadata=metadata)
+                  image_review_sha256=fingerprint(report),metadata=metadata,
+                  staging_payload=staging['payload'],staging_build_sha256=staging['build_sha256'])
     return inputs
 
 
@@ -95,6 +122,16 @@ def make_plan(base, cpu, reader, transport, layout, inputs, mode):
     review.writer_capacity(inputs['writer'],writer)
     check(inputs['target'] in ('candidate','restore'), 'Invalid writer target')
     binding=installation_review.validate_binding(inputs.get('installation_review'),base,cpu,reader,transport,layout,inputs) if mode=='write' else None
+    check(len(inputs['staging_payload']) <= reader['code_bytes'], 'Staging check payload exceeds the code region')
+    small = [(n,a,s) for n,a,s in regions if n != 'image']
+    image_chunks = math.ceil(capacity/65536)
+    # The host's patterns and contents for the small regions (18 calls a chunk, as before); the image
+    # written once and read back (6 a chunk); the staging check uploaded and compared, and run twice
+    # (request and result written and compared, the execution, its asks, the result read); the
+    # writer's asks.
+    staging_calls = (6*math.ceil(len(inputs['staging_payload'])/65536) +
+                     sum(12+1+math.ceil(layout[key]/layout['staging_poll_ms'])+3 for key in ('staging_check_ms','staging_sample_ms')))
+    writer_asks = math.ceil(layout['writer_wait_ms']/layout['writer_poll_ms'])
     return dict(schema_version=1, operation='writer-'+mode, version=base['version'],
                 firmware_profile_sha256=fingerprint(base), cpu_profile_sha256=fingerprint(cpu),
                 reader_profile_sha256=fingerprint(reader), transport_profile_sha256=fingerprint(transport),
@@ -102,13 +139,19 @@ def make_plan(base, cpu, reader, transport, layout, inputs, mode):
                 metadata_sha256=partitions['page_sha256'], writer_range=partitions['writer_range'],
                 build_sha256=inputs['build_sha256'], spl_sha256=ram.sha(inputs['spl']),
                 metadata_payload_sha256=ram.sha(inputs['payload']), writer_sha256=ram.sha(inputs['writer']),
+                staging_payload_sha256=ram.sha(inputs['staging_payload']), staging_build_sha256=inputs['staging_build_sha256'],
                 image_sha256=ram.sha(inputs['image']), image_bytes=capacity, target=inputs['target'],
                 image_name=inputs['image_name'], image_review_sha256=inputs['image_review_sha256'],
                 writer_entry=reader['load_address']+layout['writer_entry_offset'],
                 ram_regions=[dict(name=n,address=a,bytes=s) for n,a,s in regions],
                 pattern_passes=2, pattern='SHAKE256(nonce + chunk-address), then complement; write all before comparing all',
-                protocol_call_limit=136+18*sum(math.ceil(n/65536) for _,_,n in regions),
-                writer_wait_ms=layout['writer_wait_ms'],
+                image_check='the region on the player: xorshift32 words from a nonce seed, then their complement, '
+                            'written and compared by the staging check; the staged image read back and compared over '
+                            'USB, and its first staging_sample_bytes hashed on the player against their SHA-256',
+                staging_check_ms=layout['staging_check_ms'], staging_poll_ms=layout['staging_poll_ms'],
+                staging_sample_ms=layout['staging_sample_ms'], staging_sample_bytes=min(layout['staging_sample_bytes'],capacity),
+                protocol_call_limit=136+18*sum(math.ceil(n/65536) for _,_,n in small)+6*image_chunks+staging_calls+writer_asks,
+                writer_wait_ms=layout['writer_wait_ms'], writer_poll_ms=layout['writer_poll_ms'],
                 session_budget_ms=layout['session_budget_ms'] if mode == 'write' else layout['staging_budget_ms'],
                 transport_sources_sha256={name:ram.probe.digest(ram.ROOT/name) for name in (
                     'scripts/deployment/writer_transport.py','scripts/deployment/ram_transport.py',
@@ -130,6 +173,21 @@ class Session(ram.Session):
         self.control(4,address,field)
         self.wait_ms(self.config['settle_ms'])
         self.control(0)
+
+    def run_staging(self, reader, layout, op, address, length, seed, nonce, limit_key):
+        """One run of the staging check from the code region (plan, stage 4c): its request and a
+        zero result written and compared, the execution, the ROM asked until it answers (at most
+        layout[limit_key]), the result read for the caller to check against what a pass answers."""
+        q = staging_request(op, address, length, seed, nonce)
+        for where, data in ((reader['request_address'], q), (reader['result_address'], bytes(STAGING_RESULT_BYTES))):
+            self.write(where, data)
+            check(self.read(where, len(data)) == data, 'Staging check request/result comparison failed')
+        self.record['staging_executions'] = self.record.get('staging_executions', 0)+1
+        check(self.record['staging_executions'] <= 2, 'Repeated staging check')
+        self.control(4, reader['load_address'], 'staging_execution_attempted')
+        ms = self.wait_ready(layout[limit_key], layout['staging_poll_ms'])
+        raw = self.read(reader['result_address'], STAGING_RESULT_BYTES)
+        return ms, raw
 
     def wait_ms(self,duration):
         end = self.clock()+duration/1000
@@ -156,11 +214,37 @@ def stage(session, reader, layout, inputs, nonce):
     observed = (session.journal.output/'metadata-main.bin').read_bytes()
     check(observed == inputs['metadata'], 'Partition metadata changed; stop before staging writer')
     regions = [(r['name'],r['address'],r['bytes']) for r in record['plan']['ram_regions']]
+    small = [r for r in regions if r[0] != 'image']
+    _, image_address, image_bytes = next(r for r in regions if r[0] == 'image')
+    # The small regions as before: the host's two pattern passes over USB.
     for turn in range(2):
-        for _,address,size,_ in pieces(regions): session.write(address,pattern(nonce,address,size,turn))
-        for _,address,size,_ in pieces(regions):
+        for _,address,size,_ in pieces(small): session.write(address,pattern(nonce,address,size,turn))
+        for _,address,size,_ in pieces(small):
             check(session.read(address,size) == pattern(nonce,address,size,turn), 'Full staging RAM pattern mismatch')
-    record['full_staging_patterns_verified'] = True
+    # The image region on the player (plan, stage 4c): the staging check, from the code region,
+    # writes and compares its pattern and the complement there instead of 4 x 96 MiB over USB.
+    staging = inputs['staging_payload']
+    for _,address,size,offset in pieces([('code',reader['load_address'],len(staging))]):
+        session.write(address,staging[offset:offset+size])
+    for _,address,size,offset in pieces([('code',reader['load_address'],len(staging))]):
+        check(session.read(address,size) == staging[offset:offset+size], 'Staging check upload comparison failed')
+    ms, raw = session.run_staging(reader,layout,STAGING_PATTERN,image_address,image_bytes,staging_seed(nonce),nonce,'staging_check_ms')
+    check(raw == staging_result(STAGING_PATTERN,image_address,image_bytes,nonce), 'The image region failed its check on the player')
+    record.update(full_staging_patterns_verified=True, image_region_check_ms=ms)
+    # The image once over USB, all of it written before any is read back and compared.
+    image = inputs['image']
+    for _,address,size,offset in pieces([('image',image_address,image_bytes)]):
+        session.write(address,image[offset:offset+size])
+    for _,address,size,offset in pieces([('image',image_address,image_bytes)]):
+        check(session.read(address,size) == image[offset:offset+size], 'The staged image differs from the reviewed image')
+    record.update(image_ram_verified=True)
+    # The hash on the player, measured on a sample first: its code runs uncached (kseg1), so a
+    # whole image's hash there may take longer than the read back. Its time decides.
+    sample = record['plan']['staging_sample_bytes']
+    ms, raw = session.run_staging(reader,layout,STAGING_SHA256,image_address,sample,0,nonce,'staging_sample_ms')
+    check(raw == staging_result(STAGING_SHA256,image_address,sample,nonce,hashlib.sha256(image[:sample]).digest()),
+          'The staged image sample hashes differently on the player')
+    record.update(image_hash_sample_verified=True, image_hash_sample_ms=ms)
     poison = hashlib.shake_256(nonce+b'writer-debug').digest(1024)
     # Explicitly poison the signature/completion/result words, independent of nonce entropy.
     poison = bytearray(poison)
@@ -170,15 +254,14 @@ def stage(session, reader, layout, inputs, nonce):
         f.write(poison); f.flush(); ram.os.fsync(f.fileno())
     code = inputs['writer'].ljust(reader['code_bytes'],b'\0')
     def content(name,address,size,offset):
-        if name == 'image': return inputs['image'][offset:offset+size]
         if name == 'code': return code[offset:offset+size]
         if name == 'writer-debug': return poison[offset:offset+size]
         return pattern(nonce,address,size,1)
-    for item in pieces(regions): session.write(item[1],content(*item))
-    for item in pieces(regions):
-        check(session.read(item[1],item[2]) == content(*item), 'Staged image/writer/guard comparison failed')
-    record.update(status='writer-staging-verified',image_ram_verified=True,writer_ram_verified=True,
-                  completion_poison_verified=True)
+    # The writer over the staging check in the code region, the guard, the rest as before.
+    for item in pieces(small): session.write(item[1],content(*item))
+    for item in pieces(small):
+        check(session.read(item[1],item[2]) == content(*item), 'Staged writer/guard comparison failed')
+    record.update(status='writer-staging-verified',writer_ram_verified=True,completion_poison_verified=True)
 
 
 def invoke_writer(session, layout, inputs):
@@ -191,8 +274,10 @@ def invoke_writer(session, layout, inputs):
     check(session.clock()+layout['writer_wait_ms']/1000+5 < session.deadline, 'Insufficient writer completion budget')
     record['status'] = 'writer-outcome-unknown'
     session.control(4,record['plan']['writer_entry'],'writer_execution_attempted')
-    session.wait_ms(layout['writer_wait_ms'])
-    session.control(0)
+    # The ROM answers again once the writer has returned to it (plan, stage 4c): asked every
+    # writer_poll_ms, at most writer_wait_ms; an ask changes nothing on the player, so a failed ask
+    # is no outcome, only the ROM's answer is, and none in the whole wait leaves it unknown.
+    record['writer_ms'] = session.wait_ready(layout['writer_wait_ms'],layout['writer_poll_ms'],tolerant=True)
     record['writer_return_observed'] = True
     raw = session.read(layout['debug_address'],1024)
     with (session.journal.output/'writer-result.bin').open('xb') as f:
@@ -219,7 +304,8 @@ def acquire(plan,approved,base,cpu,reader,transport,layout,inputs,library,output
                   physical_device_accessed=False,spl_execution_attempted=False,page_execution_attempted=False,
                   writer_execution_attempted=False,writer_return_observed=False,ram_roundtrip_passed=False,
                   full_staging_patterns_verified=False,image_ram_verified=False,writer_ram_verified=False,
-                  completion_poison_verified=False,postwrite_verified=False,boot_verified=False,flash_ready=False)
+                  completion_poison_verified=False,staging_execution_attempted=False,image_hash_sample_verified=False,
+                  postwrite_verified=False,boot_verified=False,flash_ready=False)
     ram.save_json(output/'request.json',record)
     journal = session = None
     try:
@@ -254,7 +340,7 @@ def main():
     parser.add_argument('--mode',choices=('stage','write'),required=True)
     parser.add_argument('--target',choices=('candidate','restore'),required=True)
     parser.add_argument('--version')
-    for name in ('build','diskos','artifacts','metadata-page'): parser.add_argument('--'+name,type=Path,required=True)
+    for name in ('build','staging-build','diskos','artifacts','metadata-page'): parser.add_argument('--'+name,type=Path,required=True)
     parser.add_argument('--libusb',type=Path); parser.add_argument('--output',type=Path)
     parser.add_argument('--approved-plan-sha256')
     parser.add_argument('--installation-review',type=Path)
@@ -275,7 +361,7 @@ def main():
         transport = ram.load_transport(base,reader)
         policy = ram.load_metadata_policy(base,reader)
         inputs = prepare(base,cpu,reader,transport,args.build,args.diskos,args.artifacts,args.target,
-                         ram.read_file(args.metadata_page,policy['main_bytes']))
+                         ram.read_file(args.metadata_page,policy['main_bytes']),args.staging_build)
         layout = load_layout(base,reader,transport,inputs['page_policy'])
         if args.mode=='write':
             inputs['installation_review']=installation_review.load(args.installation_review)

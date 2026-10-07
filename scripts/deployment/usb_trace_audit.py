@@ -15,11 +15,12 @@ def require(condition, message):
         raise ValueError(message)
 
 
-def ready(poll_ms, settle_ms, answer):
-    """The expected ROM asked until it answers after a batch (completion polling, plan, stage 4c):
-    CPU-info requests of at most poll_ms each, timeouts without data, then one answer; at most
-    settle_ms/poll_ms asks in all."""
-    return ('ready', poll_ms, -(-settle_ms // poll_ms), answer)
+def ready(poll_ms, settle_ms, answer, tolerant=False):
+    """The expected ROM asked until it answers after an execution (completion polling, plan, stage
+    4c): CPU-info requests of at most poll_ms each, timeouts without data, then one answer; at most
+    settle_ms/poll_ms asks in all. tolerant (the writer's wait): any error without data is also no
+    answer yet."""
+    return ('ready', poll_ms, -(-settle_ms // poll_ms), answer, tolerant)
 
 
 def compare(rows, expected, run: Path, transport, call_limit, executions, connection):
@@ -56,12 +57,12 @@ def compare(rows, expected, run: Path, transport, call_limit, executions, connec
 
     for item in expected:
         if item[0] == 'ready':
-            _, poll, asks, answer = item
+            _, poll, asks, answer, tolerant = item
             for _ in range(asks):
                 calls, attempt, reply = take('control')
                 require(attempt.get('request') == 0 and attempt.get('parameter') == 0 and attempt.get('poll') is True
                         and 0 < attempt.get('timeout_ms', 0) <= poll, f'Completion poll {calls} differs')
-                if reply.get('code') == LIBUSB_ERROR_TIMEOUT:
+                if reply.get('code') == LIBUSB_ERROR_TIMEOUT or (tolerant and reply.get('code', 0) < 0):
                     require('file' not in reply, f'Unsolicited read file at call {calls}')
                     continue
                 require(reply.get('code') == len(answer), f'Completion poll {calls} answer differs')

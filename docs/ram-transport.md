@@ -107,8 +107,10 @@ other error, or no answer within the settle, stops the session as before. The
 plan admits up to `settle_ms / completion_poll_ms` requests a batch, the journal
 marks each one (`poll: true`), the readback's audit accepts timeouts and then one
 exact answer within that bound, and the result keeps how long the batches took
-(`batch_ready_ms`). The SPL's execution and the writer keep their fixed waits.
-`completion_poll_ms: 0` is the fixed settle as before.
+(`batch_ready_ms`). The SPL's execution keeps its fixed wait.
+`completion_poll_ms: 0` is the fixed settle as before. The write session asks
+the same way after its staging check and its writer
+([writer transport](writer-transport.md#completion-on-the-player)).
 
 Negative returns, zero progress, successful short transfers, excessive counts,
 comparison failures or deadline expiry stop the sequence. Even an error with

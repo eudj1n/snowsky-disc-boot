@@ -22,6 +22,7 @@ and a failed write never turns into a restore by itself.
 """
 import hashlib
 import json
+import math
 from pathlib import Path
 import subprocess
 import sys
@@ -85,6 +86,21 @@ def is_writer_start(line, entry):
     return row.get('phase') == 'attempt' and row.get('request') == 4 and row.get('parameter') == entry
 
 
+def expected_calls(plan):
+    """The calls a session that goes well makes, for its progress: the plan's limit less the
+    completion asks it admits but rarely needs (plan, stage 4c), a couple a run kept."""
+    calls = plan.get('protocol_call_limit', 0)
+    poll, settle = plan.get('completion_poll_ms') or 0, plan.get('timeout_ms', {}).get('settle_ms')
+    if poll and settle and plan.get('batch_limit'):
+        calls -= plan['batch_limit'] * max(0, math.ceil(settle / poll) - 2)
+    for key in ('staging_check_ms', 'staging_sample_ms'):
+        if plan.get('staging_poll_ms') and plan.get(key):
+            calls -= max(0, math.ceil(plan[key] / plan['staging_poll_ms']) - 2)
+    if plan.get('writer_poll_ms') and plan.get('writer_wait_ms'):
+        calls -= max(0, math.ceil(plan['writer_wait_ms'] / plan['writer_poll_ms']) - 2)
+    return max(1, calls)
+
+
 def writer_wait(plan):
     """The writer's entry and wait from an approved write plan, for the progress only; a plan
     without them is counted by its calls."""
@@ -113,6 +129,8 @@ class Reviewed:
         self.profile = Path(profile or ROOT/'firmware/installers'/f'v{version}.json')
         self.package, self.meta, self.readback_build = self.work/'package', self.work/'build-metadata', self.work/'build-readback'
         self.digest_build = self.work/'build-digest'
+        # The staging check (plan, stage 4c): the image region checked and the image hashed on the player.
+        self.staging_build = self.work/'build-staging'
         self.log = self.work/'commands.log'
         # progress(label, fraction, seconds) while a USB session runs (the installer's screen).
         self.progress = progress
@@ -174,14 +192,16 @@ class Reviewed:
 
     def prepare(self):
         # The digest payload (plan, stage 4b) is built beside the reviewed ones; it runs only beside a full read.
-        for mode, out in (('metadata', self.meta), ('rootfs', self.readback_build), ('rootfs-digest', self.digest_build)):
+        for mode, out in (('metadata', self.meta), ('rootfs', self.readback_build), ('rootfs-digest', self.digest_build),
+                          ('staging-check', self.staging_build)):
             self.need(self.tool('build_identity.py', '--version', self.version, '--mode', mode, '--diskos', self.diskos, '--output', out),
                       f'the {mode} payload')
         history = (['--previous-review', self.history['previousReview'], '--previous-image', self.history['previousImage'],
                     '--write-capture', self.history['writeCapture'], '--readback-capture', self.history['readbackCapture']]
                    if self.history.get('previousReview') else ['--stage-capture', self.history['stageCapture']])
         self.need(self.tool('installation_review.py', '--version', self.version, '--diskos', self.diskos, '--artifacts', self.artifacts,
-                            '--build', self.meta, '--readback-build', self.readback_build, '--boot-capture', self.history['bootCapture'],
+                            '--build', self.meta, '--staging-build', self.staging_build, '--readback-build', self.readback_build,
+                            '--boot-capture', self.history['bootCapture'],
                             '--stock-capture', self.history['stockCapture'], *history, '--libusb', self.libusb, '--output', self.package),
                   'the installation package')
         # The history this package binds, for a way back to stock from this run (install.py --restore --run).
@@ -196,7 +216,7 @@ class Reviewed:
     # 2, 4. A collection of the primary rootfs, compared with an image
 
     def collect(self, output, metadata_page, label='Reading the player'):
-        calls = load_json(self.package/'postwrite-collection-plan.json')['plan']['protocol_call_limit']
+        calls = expected_calls(load_json(self.package/'postwrite-collection-plan.json')['plan'])
         self.need(self.session('collect_rootfs.py', 'acquire', '--mode', 'rootfs', '--version', self.version, '--build', self.readback_build,
                                '--diskos', self.diskos, '--metadata-page', metadata_page, '--libusb', self.libusb,
                                '--approved-plan-sha256', self.plan_sha('postwrite-collection-plan.json'), '--output', output,
@@ -221,7 +241,7 @@ class Reviewed:
             self.need(self.session('collect_rootfs.py', 'acquire', '--mode', 'rootfs-digest', '--version', self.version,
                                    '--build', self.digest_build, '--diskos', self.diskos, '--metadata-page', metadata_page,
                                    '--libusb', self.libusb, '--approved-plan-sha256', plan['plan_sha256'], '--output', out,
-                                   output=out, calls=plan['plan']['protocol_call_limit'], label='Reading again, by digest'),
+                                   output=out, calls=expected_calls(plan['plan']), label='Reading again, by digest'),
                       'the digest read')
             result = load_json(out/'result.json')
             if result.get('status') != 'rootfs-digest-collected':
@@ -316,7 +336,8 @@ class Reviewed:
         name = folder('write', target)
         (self.work/f'{folder("installer-before", target)}.json').write_text(json.dumps(tracked, indent=2) + '\n')
         plan_file = f'{target}-write-plan.json'
-        args = ['--version', self.version, '--build', self.meta, '--diskos', self.diskos, '--artifacts', self.artifacts,
+        args = ['--version', self.version, '--build', self.meta, '--staging-build', self.staging_build, '--diskos', self.diskos,
+                '--artifacts', self.artifacts,
                 '--metadata-page', Path(self.history['bootCapture'])/'metadata-main.bin',
                 '--installation-review', self.package/'installation-review.json', '--readback-build', self.readback_build]
         self.profile.write_text(json.dumps(proposed, indent=2) + '\n')
@@ -330,7 +351,7 @@ class Reviewed:
             out = self.work/name
             self.session('writer_transport.py', 'acquire', '--mode', 'write', '--target', target, *args, '--confirm-reviewed-device-state',
                          '--libusb', self.libusb, '--approved-plan-sha256', approved['plan_sha256'], '--output', out,
-                         output=out, calls=approved['plan']['protocol_call_limit'],
+                         output=out, calls=expected_calls(approved['plan']),
                          label='Writing stock\'s rootfs' if target == 'restore' else 'Writing the image',
                          writer=writer_wait(approved['plan']))
         finally:
@@ -360,9 +381,10 @@ class Reviewed:
     def audit(self, target='candidate'):
         """Both journals reconstructed offline; the write's against the plan it carried out."""
         write, read = self.work/folder('write', target), self.work/folder('read', target)
-        for name, run, build in (('audit_usb_write.py', write, self.meta), ('audit_usb_readback.py', read, self.readback_build)):
+        for name, run, build, extra in (('audit_usb_write.py', write, self.meta, ['--staging-build', self.staging_build]),
+                                        ('audit_usb_readback.py', read, self.readback_build, [])):
             self.need(self.tool(name, '--run', run, '--package', self.package, '--artifacts', self.artifacts, '--build', build,
-                                '--diskos', self.diskos, '--target', target, '--output', run/'offline-review.json'), name)
+                                *extra, '--diskos', self.diskos, '--target', target, '--output', run/'offline-review.json'), name)
         return dict(write=str(write/'offline-review.json'), read=str(read/'offline-review.json'))
 
     def next_history(self, image, target='candidate'):

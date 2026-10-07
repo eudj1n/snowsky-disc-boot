@@ -1,5 +1,16 @@
-#include "identity.h"
 #include "identity_layout.h"
+#ifdef STAGING_CHECK
+/* The staging check (plan, stage 4c): memory only, no SFC or NAND code linked in. */
+#include "staging.h"
+void identity_main(void) {
+    struct staging_request request;
+    const volatile uint8_t *input = (const volatile uint8_t *)(uintptr_t)IDENTITY_REQUEST;
+    uint8_t *copy = (uint8_t *)&request;
+    for (unsigned i = 0; i < sizeof(request); i++) copy[i] = input[i];
+    staging_run(&request, (volatile struct staging_result *)(uintptr_t)IDENTITY_RESULT);
+}
+#else
+#include "identity.h"
 #include "batch.h"
 #ifdef ROOTFS_DIGEST
 #include "digest.h"
@@ -52,3 +63,4 @@ void identity_main(void) {
     identity_run(&s, &p, &request, (volatile struct nr_result *)(uintptr_t)IDENTITY_RESULT);
 #endif
 }
+#endif

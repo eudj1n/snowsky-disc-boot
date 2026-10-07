@@ -759,16 +759,40 @@ name ([observation](first-write-observation.md)).
     about 7 min), the image's upload (about 2 min), its read back for the
     comparison (about 2 min), then the writer's fixed 15 min, while
     programming 768 blocks takes about 1–1.5 min by the chip's timings.
-  - [ ] The staged image checked on the player: a SHA-256 of the image region
-    by a payload of ours (the digest payload's SHA-256), compared with the
-    image's, instead of reading 96 MiB back over USB (about 2 min to seconds).
-  - [ ] The RAM check on the player: the pattern passes run by a payload in
-    DRAM, only their verdict over USB, or one pass instead of two (3.5–7 min).
+  - [x] The RAM check on the player (2026-10-07, owner: "возражений нет"):
+    the staging check (`device/acquisition/staging.c`, the `staging-check`
+    payload, 2,032 bytes, no NAND opcodes) runs from the code region before
+    the writer goes there, writes xorshift32 words from a nonce seed over the
+    whole image region before reading any back, then their complement, and
+    only its 80-byte verdict crosses USB; the small regions keep the host's
+    passes. About 7 minutes of transfers become the payload's own time, asked
+    every 200 ms, at most 10 minutes (`staging_check_ms`).
+    `test_staging_payload` (the C code on the host), `test_writer_transport`,
+    [writer transport](writer-transport.md#the-hash-on-the-player).
+  - [ ] The staged image checked on the player: a SHA-256 of the image
+    region, compared with the image's, instead of reading 96 MiB back over
+    USB. The payload's code runs uncached (kseg1, every instruction fetched
+    from DRAM), and SHA-256 costs about 40 instructions a byte, so a whole
+    image's hash there may take longer than the read back's 2 minutes. For
+    now (2026-10-07) the image is read back as before and the player hashes
+    its first 1 MiB (`staging_sample_bytes`), compared with the host's and
+    timed (`image_hash_sample_ms`); the next write's measures decide. The
+    cached alias (kseg0) would make it seconds, after a review of the cache
+    state the ROM and the SPL leave.
+  - [x] The writer asked until it answers (2026-10-07, owner: "включи
+    сразу"): instead of the fixed 15 minutes, the host asks the ROM every
+    second while the writer runs; the ROM answers once the writer has
+    returned, so the wait ends then, and its length is the measured writer
+    (`writer_ms`). A failed ask is no outcome; no answer within the 15
+    minutes leaves it unknown as before. `test_writer_transport` (the wait
+    ended by the answer, failed asks, an interrupted wait, the audit with
+    every ask). With these, a write session from about 26 minutes to about
+    10: the region's check, the image's upload and read back (about 4), the
+    writer (about 1–1.5).
   - [ ] A measured writer: our reproducible build of `my_write5` with
     `my_write6`'s timing method in the write path (erase, program, verify
-    per block, the total), still waited 15 min; after a few writes the wait
-    comes from the measured maximum with a margin. With all three a write
-    session takes about 5–6 min instead of 26.
+    per block), for the time of each step. The total is now measured by the
+    asks above; this only tells where it goes.
 - [ ] With the next write of the boot layer (owner, 2026-10-05): the exact
   check by digest (stage "Later", the faster exact check), a SHA-256 of
   every logical block computed on the player by the reviewed reader
@@ -979,11 +1003,13 @@ a write with all of it. Each item with its host tests and the guest.
 - [ ] The USB sessions' time (stage 4b), in this order: ~~a timer that runs
   in USB Boot~~ the ROM asked until it answers after each batch (done, the
   item of stage 4b: the backup and the readback from 35-40 minutes to a
-  few, no device timer needed); the staged image's SHA-256 and the RAM
-  check on the player; the writer's wait from a measured writer; one SPL
+  few, no device timer needed); the RAM check on the player (done) and the
+  staged image's hash there (a 1 MiB sample, measured, the image still read
+  back: uncached code); the writer asked until it answers (done); one SPL
   per entry with the check inside the write's own session.
 - [ ] The next write confirms the asks on the player (its backup is the
-  first session that runs them), with the rest of the above.
+  first session that runs them), the region's check and the sample's hash
+  with their times, and the writer's time, with the rest of the above.
 
 ## Stage 6 — the user's path (owner, 2026-10-06)
 
