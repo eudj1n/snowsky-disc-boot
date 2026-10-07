@@ -141,32 +141,36 @@ def run(menu, output):
     assert menu_status()['state'] == 'answered'
     booted()
     bg.step('play installs and the keys choose', menu=status, choices=choices, choice=choice, ui=ui)
-    # 2. A plain power-on: the countdown starts the default; no player ran, so the pair is not restarted.
+    # 2. A plain power-on: the menu starts on its last answer, the second UI, and the countdown
+    #    starts it (owner, 2026-10-07); no player ran, so the pair is not restarted.
     restarts = bg.pair_restarts()
     bg.power('off')
     booted = power_on()
     asking()
+    choices = bg.guest_json('/run/disc-boot/ui/choices.json')
+    assert choices['default'] == TWO, choices
     counting = frame('countdown')
     assert pixel(counting, 352, 180) == (0xff, 0x79, 0x5a), 'the ring runs down from the right'
+    assert pixel(counting, 70, 180) == (0x3a, 0x35, 0x30), 'the last answer, in the second row, in the pill'
     # The player starts 2 s after the menu and waits for its choice.
     waited = soon(lambda: run_json('ui/player.json'), lambda p: p['launch'] in ('waiting', 'package'), 'the player starts', 10)
     assert waited['launch'] == 'waiting', waited
     booted()
-    ui = bg.ui_runs(ONE)
-    choice = bg.guest_json('/run/disc-boot/ui/choice.json')
-    assert (choice['ui'], choice['by']) == (ONE, 'menu'), choice
-    player = bg.wait(lambda: bg.guest_json('/run/disc-boot/ui/player.json'), lambda p: p['launch'] == 'package', 'the player after the choice', 120)
-    assert bg.pair_restarts() == restarts, ('stock restarted the pair', restarts, bg.pair_restarts())
-    bg.step('the countdown starts the default', choice=choice, player=player, ui=ui)
-    # 3. A touch on the second row picks it.
-    bg.power('off')
-    booted = power_on()
-    asking()
-    touch.tap(150, 180)
-    booted()
     ui = bg.ui_runs(TWO)
     choice = bg.guest_json('/run/disc-boot/ui/choice.json')
     assert (choice['ui'], choice['by']) == (TWO, 'menu'), choice
+    player = bg.wait(lambda: bg.guest_json('/run/disc-boot/ui/player.json'), lambda p: p['launch'] == 'package', 'the player after the choice', 120)
+    assert bg.pair_restarts() == restarts, ('stock restarted the pair', restarts, bg.pair_restarts())
+    bg.step('the countdown starts the last answer', choices=choices, choice=choice, player=player, ui=ui)
+    # 3. A touch on the first row picks it, away from the default.
+    bg.power('off')
+    booted = power_on()
+    asking()
+    touch.tap(150, 132)
+    booted()
+    ui = bg.ui_runs(ONE)
+    choice = bg.guest_json('/run/disc-boot/ui/choice.json')
+    assert (choice['ui'], choice['by']) == (ONE, 'menu'), choice
     bg.step('a touch chooses', choice=choice, ui=ui)
     bg.power('off')
     bg.evidence['status'] = 'passed'
