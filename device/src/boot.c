@@ -991,6 +991,21 @@ static int card_for_install(char *root, size_t cap, int *own) {
     }
 }
 
+/* Two files with the same bytes (both readable). */
+static int same_file(const char *a, const char *b) {
+    FILE *x = fopen(a, "rb"), *y = x ? fopen(b, "rb") : NULL;
+    int same = x && y;
+    char p[4096], q[4096];
+    while (same) {
+        size_t n = fread(p, 1, sizeof(p), x), k = fread(q, 1, sizeof(q), y);
+        if (n != k || memcmp(p, q, n)) same = 0;
+        else if (n == 0) break;
+    }
+    if (x) fclose(x);
+    if (y) fclose(y);
+    return same;
+}
+
 static int install(const char *domain, const char *staged, char *note, size_t cap) {
     manifest *m = malloc(sizeof(*m));
     char err[200], slot[PATH_MAX], src[PATH_MAX], dst[PATH_MAX];
@@ -1007,6 +1022,21 @@ static int install(const char *domain, const char *staged, char *note, size_t ca
     lock = state_lock();
     role_state rs;
     if (rstate_read(domain, &rs)) { snprintf(note, cap, "refused: the role's state is unreadable"); goto out; }
+    /* The package that runs already, byte for byte (its manifest names every file's digest): nothing
+       to install, and its slot keeps its confirmation (2026-10-07: reinstalling the running server
+       made it tentative, and quick restarts then fed the boot-loop guard). */
+    if (rs.current) {
+        bpath(dst, DATA_DIR "/%s/%c/package.json", domain, rs.current);
+        bpath(slot, DATA_DIR "/%s/%c", domain, rs.current);
+        /* Only when the running slot still checks: a damaged one is installed afresh. */
+        if (snprintf(src, sizeof(src), "%s/package.json", staged) < (int)sizeof(src) && same_file(src, dst)
+            && !package_verify(slot, m, 1, err, sizeof(err))) {
+            remove_tree(staged);
+            snprintf(note, cap, "already installed %s %s", m->name, m->version);
+            r = 0;
+            goto out;
+        }
+    }
     char target = rs.current ? other(rs.current) : 'a';
     bpath(slot, DATA_DIR "/%s/%c", domain, target);
     if (remove_tree(slot) || mkdirs(slot, 0755)) { snprintf(note, cap, "refused: cannot prepare the slot"); goto out; }

@@ -434,6 +434,32 @@ exit 0
         self.assertTrue(broken.exists(), 'a refused package stays on the card')
         self.assertEqual(oct((self.data/'service/a/bin/run').stat().st_mode & 0o777), '0o755')
 
+    def test_play_leaves_the_running_package_as_it_is(self):
+        """The package that runs already, byte for byte, is not installed again: its slot keeps its
+        confirmation (2026-10-07: a reinstalled server turned tentative and quick restarts then fed the
+        boot-loop guard). A damaged running slot is installed afresh."""
+        (self.root/'proc/mounts').write_text('/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
+        self.install('service', 'a', GOOD, confirmed=True, version='7')
+        self.package(self.staged('service'), GOOD, version='7')
+        self.early('play')
+        self.boot('start', check=True)
+        self.wait_status('service', 'confirmed')
+        result = json.loads((self.root/'tmp/sdcard/.disc/boot/result.json').read_text())
+        self.assertEqual(result['roles']['service'], dict(installed=True, note='already installed disc-server 7'))
+        self.assertEqual((self.role_state('service')['current'], self.role_state('service')['confirmed']), ('a', True))
+        self.assertFalse((self.data/'service/b/package.json').exists(), 'nothing installed into the other slot')
+        self.assertFalse(self.staged('service').exists(), 'taken off the card')
+        self.boot('stop', check=True)
+        # The running slot damaged: the same package goes into the other slot.
+        (self.data/'service/a/bin/run').write_text('#!/bin/sh\nexit 1\n')
+        self.package(self.staged('service'), GOOD, version='7')
+        self.early('play')
+        self.boot('start', check=True)
+        self.wait_status('service', 'confirmed')
+        result = json.loads((self.root/'tmp/sdcard/.disc/boot/result.json').read_text())
+        self.assertEqual(result['roles']['service']['note'], 'installed disc-server 7')
+        self.assertEqual(self.role_state('service')['current'], 'b')
+
     def test_play_with_a_ui_package_stops_no_running_ui(self):
         # With Play the launcher runs from the start and waits for the installation: a process named
         # mq_ui during it is that launcher, also before it marks its wait (the race seen on the

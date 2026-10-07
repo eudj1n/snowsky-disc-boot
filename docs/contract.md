@@ -641,8 +641,11 @@ service package starts with its own `PATH` and does not need it.
   system), copies it into the role's inactive slot, verifies the copy with
   modes, makes it the tentative current one, removes the staged folder and
   writes `.disc/boot/result.json` (per role, and per name under `ui`:
-  installed, or why not). A refused package stays on the card. Each step
-  reaches the boot log.
+  installed, or why not). A refused package stays on the card. The package
+  that runs already, byte for byte (the same `package.json`, its slot still
+  checking), is not installed again: its slot keeps its confirmation, the
+  staged folder leaves the card and the note says "already installed". Each
+  step reaches the boot log.
 - `/run/disc-boot/install.json` tells the progress:
   `{"state": "waiting"|"installing"|"done", "done", "total", "current"}`.
   With Play the UI launcher always runs (`ui-launch`). It waits for `done`
