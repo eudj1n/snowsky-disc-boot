@@ -89,5 +89,45 @@ class UsbTraceAuditTests(unittest.TestCase):
             self.check()
 
 
+    def polled(self, timeouts, answered=True, flagged=True, poll_timeout=50):
+        """The journal after the execution, with the completion poll (plan, stage 4c): `timeouts`
+        unanswered asks, then the ROM's answer."""
+        rows = copy.deepcopy(self.rows)
+        seq = len(self.expected)
+        for k in range(timeouts + (1 if answered else 0)):
+            seq += 1
+            attempt = {'phase': 'attempt', 'sequence': seq, 'kind': 'control', 'request': 0, 'parameter': 0,
+                       'timeout_ms': poll_timeout}
+            if flagged:
+                attempt['poll'] = True
+            reply = {'phase': 'return', 'sequence': seq, 'code': -7}
+            if answered and k == timeouts:
+                name = f'read-{seq:03}.bin'
+                (self.run/name).write_bytes(self.data)
+                reply.update(code=5, file=name, bytes=5, sha256=hashlib.sha256(self.data).hexdigest())
+            rows.extend((attempt, reply))
+        return rows
+
+    def test_a_completion_poll_takes_timeouts_then_the_answer(self):
+        expected = self.expected + [audit.ready(50, 200, self.data)]
+        report = audit.compare(self.polled(2), expected, self.run, self.transport, 7, [4096], self.connection)
+        self.assertEqual((report['calls'], report['raw_reads']), (7, 3))
+        (self.run/'read-007.bin').unlink()
+        report = audit.compare(self.polled(0), expected, self.run, self.transport, 5, [4096], self.connection)
+        self.assertEqual(report['calls'], 5)
+
+    def test_a_completion_poll_is_bounded_flagged_and_short(self):
+        expected = self.expected + [audit.ready(50, 200, self.data)]
+        for rows in (self.polled(4), self.polled(2, answered=False), self.polled(2, flagged=False),
+                     self.polled(2, poll_timeout=51)):
+            with self.subTest(rows=rows[-2:]), self.assertRaises(ValueError):
+                audit.compare(rows, expected, self.run, self.transport, 20, [4096], self.connection)
+        # An ask flagged as a poll where none is expected is refused too.
+        rows = copy.deepcopy(self.rows)
+        rows[2]['poll'] = True
+        with self.assertRaises(ValueError):
+            self.check(rows)
+
+
 if __name__ == '__main__':
     unittest.main()

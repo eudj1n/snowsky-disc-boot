@@ -709,17 +709,29 @@ name ([observation](first-write-observation.md)).
     2.07 s a batch, the host's fixed 2 s settle and the transfers; the
     device's own time a batch is under it. The installer no longer reads by
     digest beside the backup (owner, 2026-10-06).
-  - [ ] A timer that runs there, settled offline from the SoC's and the SPL's
-    sources (Count with Cause.DC cleared, or the OST), then one short
-    measurement in a session of its own (a payload timing a known loop and a
-    few page reads: a minute or two, with the owner's go-ahead), never again
-    a 27-minute read for it. The same timer serves the measured writer below.
-- [ ] The settle after each batch (owner's question, 2026-10-06): the backup
+  - [x] A timer that runs there: not needed for the reads (2026-10-07). The
+    host measures each batch by asking the ROM until it answers (the item
+    below), so no session of its own. Kept for the measured writer below:
+    the stock kernel's tree names the SoC's own timer, `core-ost` at
+    `0x12000000` (and `0x12100000` per core), beside clearing Cause.DC for
+    Count.
+- [x] The settle after each batch (owner's question, 2026-10-06): the backup
   and the readback take 35–40 minutes for 96 MiB that cross USB in about two:
   the host waits the transport's fixed 2 s after each of their batch
-  executions. A wait sized by the measured time (above), or a completion the
-  host can look for without an unknown outcome, would take each read to a
-  few minutes; the backup, the readback and the portions by digest alike.
+  executions. Done without a timer on the player (2026-10-07): the ROM does
+  not answer USB while a payload runs, so after each batch the host asks it
+  for the CPU reply every 50 ms (`completion_poll_ms`), a timeout being the
+  batch still running, until it answers, at most the 2 s settle; the plan
+  admits those requests, the journal marks them, the readback's audit
+  accepts timeouts then one exact answer, and the result keeps each batch's
+  time (`batch_ready_ms`), the measure the timer was for. Expected: each
+  full read from about 38 minutes to about 6 (794 batches of 277 KiB at
+  0.9 MB/s), the read by digest to about a minute. `test_collect_rootfs`
+  (asked until it answers; a timeout at the ask continues and nowhere else;
+  an error at an ask stops; past the settle stops), `test_usb_trace_audit`,
+  `ram-transport.md`. The ROM's behaviour under such asks is the player's to
+  confirm: the next backup does it, and if it stops, nothing was written
+  and `completion_poll_ms: 0` brings back the fixed settle.
 - [ ] The write session's waits (owner, 2026-10-05): the host sleeps a fixed
   15 min (`writer_wait_ms`) after starting the writer, since the ROM does not
   answer USB while it runs (diskOS waits the same for `my_write5`), while
@@ -964,14 +976,14 @@ a write with all of it. Each item with its host tests and the guest.
     start, so the player, which now starts after the answer, took them
     again. On the player a later reader sees only later presses;
     `menu_guest` empties the file once the menu has answered.
-- [ ] The USB sessions' time (stage 4b), in this order: a timer that runs in
-  USB Boot, settled offline; the settle after each batch from its
-  measurement (the backup and the readback from 35-40 minutes to a few);
-  the staged image's SHA-256 and the RAM check on the player; the writer's
-  wait from a measured writer; one SPL per entry with the check inside the
-  write's own session.
-- [ ] One short device session for the timer (a minute or two, the owner's
-  go-ahead), then the write of an image with all of the above.
+- [ ] The USB sessions' time (stage 4b), in this order: ~~a timer that runs
+  in USB Boot~~ the ROM asked until it answers after each batch (done, the
+  item of stage 4b: the backup and the readback from 35-40 minutes to a
+  few, no device timer needed); the staged image's SHA-256 and the RAM
+  check on the player; the writer's wait from a measured writer; one SPL
+  per entry with the check inside the write's own session.
+- [ ] The next write confirms the asks on the player (its backup is the
+  first session that runs them), with the rest of the above.
 
 ## Stage 6 — the user's path (owner, 2026-10-06)
 

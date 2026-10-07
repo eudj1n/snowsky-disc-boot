@@ -97,6 +97,19 @@ session budget 60,000 ms. At most 256 protocol calls may be journaled. OS/librar
 loading, enumeration/open/claim/release and filesystem operations do not have a
 hard interruptible wall-clock guarantee from this synchronous API.
 
+A batch of the rootfs collector (the backup, the readback, the read by digest)
+no longer sleeps the settle after its execution (plan, stage 4c): the ROM does
+not answer USB while a payload runs, so the host asks it for the CPU reply every
+`completion_poll_ms` (50 ms, each request with that timeout) until it answers,
+at most `settle_ms` in all. A timeout of such a request is the batch still
+running, the only negative return that continues, and it carries no data; any
+other error, or no answer within the settle, stops the session as before. The
+plan admits up to `settle_ms / completion_poll_ms` requests a batch, the journal
+marks each one (`poll: true`), the readback's audit accepts timeouts and then one
+exact answer within that bound, and the result keeps how long the batches took
+(`batch_ready_ms`). The SPL's execution and the writer keep their fixed waits.
+`completion_poll_ms: 0` is the fixed settle as before.
+
 Negative returns, zero progress, successful short transfers, excessive counts,
 comparison failures or deadline expiry stop the sequence. Even an error with
 partial bytes never causes continuation or replay. After an attempted execution,

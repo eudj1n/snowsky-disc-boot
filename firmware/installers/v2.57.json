@@ -3,7 +3,7 @@
   "version": "2.57",
   "firmware_profile_sha256": "9c24f384013ebd611f5527079196d8a8923453019efe354c137552774b847151",
   "page_policy_sha256": "f9342f7f8f685ef369c3e4f2cf1db344a6eb2bff9d62e7126335c066e08b9b6a",
-  "transport_profile_sha256": "9aac8148f9d03898e74a9dcd62e16e6ee6b6f1a8b3711602b2329abc1251eb58",
+  "transport_profile_sha256": "a674292ada14d977d94d67f8362a16a2695e82d53fe3c0a629e5e988f4560d4f",
   "writer_profile_sha256": "a87d83efe61d2da00ddebf5ef0dda45feec2b374632d83b7ad6106b25550ff65",
   "writer_entry_offset": 48,
   "writer_stack_bottom": 2696904704,

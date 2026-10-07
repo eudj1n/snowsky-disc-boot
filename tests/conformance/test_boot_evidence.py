@@ -117,13 +117,23 @@ class BootTests(unittest.TestCase):
                 self.assertFalse(r['active_boot_verified'])
 
     def test_all_collection_transfer_failures_stop_without_replay(self):
+        # Right after a batch's execution the host asks the ROM until it answers (plan, stage 4c): a
+        # timeout there is the batch still running and the session asks again; anywhere else it stops.
         _,_,baseline=self.run_rom(skip_bootstrap=True)
+        calls=baseline.calls
+        polls={i+1 for i in range(1,len(calls)) if calls[i][0]==calls[i-1][0]=='control_transfer'
+               and calls[i][1][2]==0 and calls[i-1][1][2]==4}
+        self.assertTrue(polls)
         for position in range(1,len(baseline.calls)+1):
             with self.subTest(position=position):
                 r,_,fake=self.run_rom('timeout',position,skip_bootstrap=True)
+                self.assertFalse(r['nand_writes'])
+                if position in polls:
+                    self.assertEqual(r['status'],'boot-evidence-collected',r.get('error'))
+                    self.assertEqual(len(fake.calls),len(baseline.calls)+1,'one more ask, nothing replayed')
+                    continue
                 self.assertEqual(r['status'],'failed')
                 self.assertEqual(len(fake.calls),position)
-                self.assertFalse(r['nand_writes'])
 
     def test_deadline_and_interruption_leave_partial_evidence(self):
         clock=FakeClock();original=clock.sleep

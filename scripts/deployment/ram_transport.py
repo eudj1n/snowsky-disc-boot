@@ -66,7 +66,7 @@ def load_transport(base, reader, directory=PROFILES):
           'Unsupported SPL parameter/entry layout')
     for key, low, high in [('control_timeout_ms', 100, 5000), ('bulk_timeout_ms', 100, 5000),
                            ('execution_timeout_ms', 100, 10000), ('settle_ms', 100, 5000),
-                           ('session_budget_ms', 10000, 120000)]:
+                           ('completion_poll_ms', 0, 1000), ('session_budget_ms', 10000, 120000)]:
         check(type(p.get(key)) is int and low <= p[key] <= high, f'Invalid transport {key}')
     return p
 
@@ -165,6 +165,9 @@ def bind(lib):
         fn = getattr(lib, name)
         fn.restype, fn.argtypes = result, args
     return lib
+
+
+LIBUSB_ERROR_TIMEOUT = -7
 
 
 class Journal:
@@ -275,6 +278,39 @@ class Session:
         else:
             check(code == 0, f'Control {request} failed: {code}; outcome uncertain, no retry')
         return raw
+
+    def poll(self, timeout_ms):
+        """A CPU-info request while a payload may still run: the ROM answers once the payload has
+        returned to it; a timeout (LIBUSB_ERROR_TIMEOUT) is the payload still running. Read-only."""
+        timeout = min(timeout_ms, self.timeout('control_timeout_ms'))
+        data = (C.c_uint8 * 8)()
+        seq = self.journal.begin('control', request=0, parameter=0, timeout_ms=timeout, poll=True)
+        code = self.lib.libusb_control_transfer(self.handle, 0xc0, 0, 0, 0, data, 8, timeout)
+        if code == LIBUSB_ERROR_TIMEOUT:
+            self.journal.finish(seq, code)
+            return False
+        raw = bytes(data[:max(0, min(code, 8))])
+        self.journal.finish(seq, code, raw)
+        probe.match_reply(self.cpu, code, raw.hex())
+        return True
+
+    def wait_ready(self):
+        """After a batch's execution: with completion_poll_ms the ROM is asked every that many ms
+        until it answers (at most settle_ms in all), which tells how long the payload ran; without
+        it, the fixed settle and one request, as before. Returns the milliseconds, or None."""
+        poll = self.config.get('completion_poll_ms', 0)
+        delay = self.config['settle_ms']/1000
+        # The whole settle must fit the session, polled or not: polling only ends it earlier.
+        check(self.clock() + delay < self.deadline, 'Insufficient settle budget')
+        if not poll:
+            self.sleep(delay)
+            self.control(0)
+            return None
+        started = self.clock()
+        for _ in range(math.ceil(self.config['settle_ms']/poll)):
+            if self.poll(poll):
+                return round((self.clock() - started)*1000)
+        check(False, 'The payload did not return within the settle; no retry')
 
     def bulk(self, length, outgoing=None):
         check(type(length) is int and 0 < length <= 65536, 'Invalid bounded RAM transfer')

@@ -23,11 +23,14 @@ import test_kernel_review
 
 
 class BatchRom(Rom):
-    def __init__(self, reader, config, scope, fault=None, at=0):
+    def __init__(self, reader, config, scope, fault=None, at=0, busy=0):
         super().__init__(reader, config, fault, at)
         self.scope = scope
         self.ram_bytes, self.sram = bytearray(0x300000), bytearray(0x8000)
         self.batch_count = 0
+        # A batch still running: the ROM leaves this many CPU-info requests after it unanswered (a
+        # timeout); 'poll-error' answers the first one with an I/O error instead.
+        self.busy, self.busy_left, self.polling = busy, 0, False
 
     def region(self, address):
         if 0xb2400000 <= address < 0xb2408000: return self.sram, address-0xb2400000
@@ -44,9 +47,19 @@ class BatchRom(Rom):
         return bytes(region[offset:offset+length])
 
     def call(self, name, args):
+        if name == 'control_transfer' and args[2] == 0 and self.polling:
+            if self.fault == 'poll-error':
+                self.calls.append((name,args)); self.events.append(name)
+                return -1
+            if self.busy_left:
+                self.calls.append((name,args)); self.events.append(name)
+                self.busy_left -= 1
+                return -7
+            self.polling = False
         if name == 'control_transfer' and args[2] == 4 and args[3]<<16 | args[4] == self.reader['load_address']:
             self.calls.append((name,args)); self.events.append(name)
             if len(self.calls) == self.at: return -7
+            self.polling, self.busy_left = True, self.busy
             self.execute_addresses.append(self.reader['load_address']); self.batch_count += 1
             raw = self.get(self.scope['profile']['request_address'], collect.REQUEST_BYTES)
             magic, version, count, reserved = struct.unpack_from('<4I', raw)
@@ -107,8 +120,8 @@ class CollectorTests(unittest.TestCase):
     def plan(self):
         return collect.make_plan(self.base,self.cpu,self.reader,self.config,self.inputs,self.metadata)
 
-    def run_fake(self, fault=None, at=0, skip_bootstrap=False):
-        fake=BatchRom(self.reader,self.config,self.scope,fault,at)
+    def run_fake(self, fault=None, at=0, skip_bootstrap=False, busy=0):
+        fake=BatchRom(self.reader,self.config,self.scope,fault,at,busy)
         plan=self.plan();clock=FakeClock();self.index+=1;output=self.root/str(self.index)
         def invoke():
             return collect.acquire(plan,collect.fingerprint(plan),self.base,self.cpu,self.reader,
@@ -124,7 +137,10 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(result['batch_executions'],3)
         self.assertEqual(result['records_completed'],132)
         self.assertEqual(len(fake.calls),297)
-        self.assertEqual(result['plan']['protocol_call_limit'],297)
+        # Each of the 3 batches may ask the ROM up to settle/poll (2000/50 = 40) times instead of once.
+        self.assertEqual(result['plan']['protocol_call_limit'],297+3*39)
+        self.assertEqual(result['plan']['completion_poll_ms'],50)
+        self.assertEqual(result['batch_ready_ms']['batches'],3)
         self.assertEqual(fake.execute_addresses,[self.config['spl_entry']]+[self.reader['load_address']]*3)
         expected=b''.join(struct.pack('<I',page)*512 for page in range(5120,5248))
         self.assertEqual((path/'logical-image.bin').read_bytes(),expected)
@@ -133,12 +149,47 @@ class CollectorTests(unittest.TestCase):
         self.assertFalse(result['image_match_verified']);self.assertFalse(result['flash_ready'])
 
     def test_every_batch_usb_boundary_stops_without_replay(self):
+        # The request right after a batch's execution is the completion poll: a timeout there is the
+        # batch still running, so the session asks again; anywhere else a timeout stops it.
+        _,_,clean=self.run_fake(skip_bootstrap=True)
+        polls={i+1 for i in range(1,len(clean.calls)) if clean.calls[i][1][2] == 0 and clean.calls[i-1][1][2] == 4}
+        self.assertIn(38,polls)
         for position in range(1,54):
             with self.subTest(position=position):
                 result,path,fake=self.run_fake('timeout',position,True)
+                if position in polls:
+                    self.assertEqual(result['status'],'rootfs-probe-collected')
+                    self.assertEqual(len(fake.calls),len(clean.calls)+1,'one more ask, nothing replayed')
+                    continue
                 self.assertEqual(result['status'],'failed')
                 self.assertEqual(len(fake.calls),position)
                 self.assertEqual(result['records_completed'],0)
+
+    def test_a_running_batch_is_asked_until_the_rom_answers(self):
+        """Completion polling (plan, stage 4c): CPU-info requests every completion_poll_ms after a batch's
+        execution, timeouts while it runs, then the ROM's answer; the fixed settle is not slept."""
+        result,path,fake=self.run_fake(busy=5)
+        self.assertEqual(result['status'],'rootfs-probe-collected')
+        self.assertEqual(len(fake.calls),297+3*5)
+        rows=[json.loads(line) for line in (path/'transfers.jsonl').read_text().splitlines()]
+        polls=[row for row in rows if row.get('poll')]
+        self.assertEqual(len(polls),3*6)
+        self.assertTrue(all(row['timeout_ms'] == 50 and row['request'] == 0 for row in polls))
+        self.assertEqual(sum(1 for row in rows if row.get('code') == -7),3*5)
+        self.assertEqual(result['batch_ready_ms']['batches'],3)
+
+    def test_a_poll_that_errs_stops_without_replay(self):
+        result,path,fake=self.run_fake('poll-error')
+        self.assertEqual(result['status'],'failed')
+        self.assertEqual(result['batch_executions'],1)
+        self.assertEqual(fake.calls[-1][1][2],0,'the failed ask is the last call')
+
+    def test_a_batch_that_runs_past_the_settle_stops(self):
+        result,path,fake=self.run_fake(busy=1000)
+        self.assertEqual(result['status'],'failed')
+        self.assertIn('did not return within the settle',result['error'])
+        rows=[json.loads(line) for line in (path/'transfers.jsonl').read_text().splitlines()]
+        self.assertEqual(sum(1 for row in rows if row.get('poll') and row.get('phase') == 'attempt'),40)
 
     def test_ddr_calibration_failure_preserves_raw_diagnostic_and_never_starts_reader(self):
         diagnostic=struct.pack('<5I',0xd1a6c0de,9,30,0x12,1)
