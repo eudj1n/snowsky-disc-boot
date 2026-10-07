@@ -1026,29 +1026,6 @@ out:
     return r;
 }
 
-/* Stock's running UI, found as stock's own watch loop finds it (pgrep -x mq_ui): by the process
-   name, so the UI stock started itself (the card, and with it the package, came after it) and one
-   the launcher started are both stopped; the watch loop then starts the launcher. */
-static void stop_running_ui(void) {
-    char dir[PATH_MAX];
-    bpath(dir, "/proc");
-    DIR *d = opendir(dir);
-    if (!d) return;
-    struct dirent *e;
-    while ((e = readdir(d))) {
-        char *end, p[PATH_MAX], comm[32];
-        long pid = strtol(e->d_name, &end, 10);
-        if (*end || pid <= 1 || pid == (long)getpid()) continue;
-        bpath(p, "/proc/%ld/comm", pid);
-        FILE *f = fopen(p, "r");
-        if (!f) continue;
-        int match = fgets(comm, sizeof(comm), f) && !strcmp(comm, "mq_ui\n");
-        fclose(f);
-        if (match) { plog("stock's UI %ld stopped for the installed UI", pid); kill((pid_t)pid, SIGTERM); }
-    }
-    closedir(d);
-}
-
 /* One role's line of result.json. */
 static int add_result(char *out, size_t cap, size_t *o, int first, const char *key, int ok, const char *note) {
     char quoted[300];
@@ -1147,19 +1124,12 @@ static void recovery(void) {
         write_atomic(dir, result, o, 0644);
     }
     if (ui_installed_now || menu_installed) {
-        /* This boot's choice again, with what was installed, and what a running menu offers. A
-           launcher that waited goes on with it; a UI that started before the installation (stock
-           mounted the card first) is stopped, so that stock's watch loop restarts the launcher. */
-        char p[PATH_MAX];
+        /* This boot's choice again, with what was installed, and what a running menu offers. Nothing
+           is stopped: with Play the launcher runs from the start (ui-launch) and waits for "done",
+           so a process named mq_ui here is that launcher, before or while it waits. */
         ui_choice c;
-        int run = decide_ui(0);
+        decide_ui(0);
         if (!read_choice(&c)) write_choices(&c);
-        bpath(p, RUN_DIR "/ui/install-wait");
-        if (run && !exists(p)) {
-            bpath(p, RUN_DIR "/ui-launch");
-            write_atomic(p, "ui\n", 3, 0644);
-            stop_running_ui();
-        }
     }
 #if defined(__linux__) && !defined(DISC_BOOT_FIXTURE)
     if (own) {

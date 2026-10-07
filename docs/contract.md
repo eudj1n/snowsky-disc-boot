@@ -650,9 +650,9 @@ service package starts with its own `PATH` and does not need it.
   settled with what was installed, stock's UI included; when a menu asks,
   the menu shows the installation, asks nothing until `done` (its 60 s run
   from then), and offers the list boot writes again after it. The player's
-  launcher waits for `done` too. A UI that started before the installation
-  (the card mounted by stock first) is stopped as before, so stock's loop
-  starts the launcher. The packages then run as in `platform` mode.
+  launcher waits for `done` too. The installation stops nothing: with Play
+  every `mq_ui` process is the launcher, also before it marks its wait
+  (`ui/install-wait`). The packages then run as in `platform` mode.
 - Without the gesture boot never installs or runs anything from the card.
 
 ## Environment of a package

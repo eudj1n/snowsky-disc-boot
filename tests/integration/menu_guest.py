@@ -71,14 +71,14 @@ def asking():
     return status
 
 
-def power_on():
+def power_on(hold=''):
     """Power on in the background: the emulator's power-on returns once a UI is ready, which with
     the menu is after its choice, so the test watches the menu while the boot goes on."""
     failure = []
 
     def boot():
         try:
-            bg.power('on')
+            bg.power('on', hold=hold)
         except Exception as error:      # noqa: BLE001 (reported by join)
             failure.append(error)
     thread = threading.Thread(target=boot)
@@ -109,10 +109,11 @@ def run(menu, output):
         for folder in probes(work):
             bg.package.stage(folder, root, profile=bg.PROFILE)
         bg.package.stage(menu, root, profile=bg.PROFILE)
-    # 1. Play installs both UIs and the menu. Stock's player ran before the card came, so it runs
-    #    beside the menu (which takes the keys); Volume - and Play choose the second UI, and the
-    #    pair restarts for its player launcher.
-    bg.power('on', hold='play')
+    # 1. Play installs both UIs and the menu before anything is offered (plan, stage 4c): the menu
+    #    then asks, no player having run, so the player waits for its choice; Volume - and Play
+    #    choose the second UI. The menu's first frame comes right after the installation, so the
+    #    test watches it while the power-on goes on, within its 5 s countdown.
+    booted = power_on('play')
     status = asking()
     first = frame('after-play')
     choices = bg.guest_json('/run/disc-boot/ui/choices.json')
@@ -127,6 +128,7 @@ def run(menu, output):
     choice = bg.guest_json('/run/disc-boot/ui/choice.json')
     assert (choice['ui'], choice['by']) == (TWO, 'menu'), choice
     assert menu_status()['state'] == 'answered'
+    booted()
     bg.step('play installs and the keys choose', menu=status, choices=choices, choice=choice, ui=ui)
     # 2. A plain power-on: the countdown starts the default; no player ran, so the pair is not restarted.
     restarts = bg.pair_restarts()

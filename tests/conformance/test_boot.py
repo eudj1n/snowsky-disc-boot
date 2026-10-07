@@ -434,22 +434,28 @@ exit 0
         self.assertTrue(broken.exists(), 'a refused package stays on the card')
         self.assertEqual(oct((self.data/'service/a/bin/run').stat().st_mode & 0o777), '0o755')
 
-    def test_play_with_a_ui_package_stops_the_ui_stock_started(self):
-        # The card comes after stock's UI: the recovery stops that UI by its name, as stock's watch
-        # loop finds it, so the loop starts the launcher (and with it the package).
+    def test_play_with_a_ui_package_stops_no_running_ui(self):
+        # With Play the launcher runs from the start and waits for the installation: a process named
+        # mq_ui during it is that launcher, also before it marks its wait (the race seen on the
+        # guest, 2026-10-07), so the installation stops nothing.
         (self.root/'proc/mounts').write_text('/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
         self.package(self.staged('ui/other-ui'), GOOD, role='ui', name='other-ui')
-        stock_ui = subprocess.Popen(['sleep', '60'])
-        self.addCleanup(stock_ui.kill)
+        launcher = subprocess.Popen(['sleep', '60'])
+        self.addCleanup(launcher.kill)
         other = subprocess.Popen(['sleep', '60'])
         self.addCleanup(other.kill)
-        for process, name in ((stock_ui, 'mq_ui'), (other, 'mq_player')):
+        for process, name in ((launcher, 'mq_ui'), (other, 'mq_player')):
             (self.root/f'proc/{process.pid}').mkdir()
             (self.root/f'proc/{process.pid}/comm').write_text(name + '\n')
         self.early('play')
+        self.assertTrue((self.run_dir/'ui-launch').exists(), 'Play grants the launcher before the installation')
         self.boot('start', check=True)
-        self.assertEqual(stock_ui.wait(timeout=15), -signal.SIGTERM)
-        self.assertIsNone(other.poll(), 'only the UI is stopped')
+        deadline = time.monotonic() + 15
+        while 'recovery: done' not in self.boot_log() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.assertIn('recovery: done, 1 of 1', self.boot_log())
+        self.assertIsNone(launcher.poll(), 'the waiting launcher keeps running')
+        self.assertIsNone(other.poll())
         self.assertTrue((self.run_dir/'ui-launch').exists())
         result = json.loads((self.root/'tmp/sdcard/.disc/boot/result.json').read_text())
         self.assertEqual(result['roles']['ui'], {'other-ui': dict(installed=True, note='installed other-ui 1')})
