@@ -112,15 +112,6 @@ exact answer within that bound, and the result keeps how long the batches took
 the same way after its staging check and its writer
 ([writer transport](writer-transport.md#completion-on-the-player)).
 
-These settings live in their own profile, `firmware/completion/v<version>.json`
-(`ram_transport.load_completion`, bound to the transport profile it is for),
-never in the transport or installer profile: every recorded session's
-evidence pins the transport profile byte for byte, and installations keep the
-installer's RAM contract identical, so a setting added there refuses the next
-installation of every installed player (it did on 2026-10-07, before any USB
-access). A plan made without the completion profile has none of its fields and
-no asks, as before.
-
 Negative returns, zero progress, successful short transfers, excessive counts,
 comparison failures or deadline expiry stop the sequence. Even an error with
 partial bytes never causes continuation or replay. After an attempted execution,

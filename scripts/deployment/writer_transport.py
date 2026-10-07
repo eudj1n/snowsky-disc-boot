@@ -60,9 +60,13 @@ def validate_layout(base, reader, transport, policy, layout):
         check(all(address+size <= a or a+n <= address for a,n in seen), f'Overlapping RAM: {name}')
         seen.append((address,size))
     for key, low, high in [('staging_budget_ms',10000,900000), ('session_budget_ms',20000,3600000),
-                           ('writer_wait_ms',1000,1800000)]:
+                           ('writer_wait_ms',1000,1800000), ('staging_check_ms',1000,600000),
+                           ('staging_sample_ms',1000,120000), ('staging_poll_ms',10,1000), ('writer_poll_ms',100,1000)]:
         check(type(layout.get(key)) is int and low <= layout[key] <= high, f'Invalid installer budget: {key}')
     check(layout['session_budget_ms'] >= layout['staging_budget_ms']+layout['writer_wait_ms'], 'Insufficient writer session budget')
+    check(layout['staging_check_ms']+layout['staging_sample_ms'] < layout['staging_budget_ms'], 'Insufficient staging budget for its checks')
+    sample = layout.get('staging_sample_bytes')
+    check(type(sample) is int and 0 < sample <= 16*1024*1024 and sample % 65536 == 0, 'Invalid staging hash sample')
     return regions
 
 
@@ -101,8 +105,7 @@ def prepare(base, cpu, reader, transport, build, diskos, artifacts, target, meta
     review.writer_capacity(binary,writer)
     inputs.update(writer=binary,image=image,image_name=name,target=target,
                   image_review_sha256=fingerprint(report),metadata=metadata,
-                  staging_payload=staging['payload'],staging_build_sha256=staging['build_sha256'],
-                  completion=ram.load_completion(base,transport))
+                  staging_payload=staging['payload'],staging_build_sha256=staging['build_sha256'])
     return inputs
 
 
@@ -126,12 +129,9 @@ def make_plan(base, cpu, reader, transport, layout, inputs, mode):
     # written once and read back (6 a chunk); the staging check uploaded and compared, and run twice
     # (request and result written and compared, the execution, its asks, the result read); the
     # writer's asks.
-    # How often and how long the ROM is asked: the completion profile (ram_transport.load_completion).
-    c = inputs['completion']
-    check(c['staging_check_ms']+c['staging_sample_ms'] < layout['staging_budget_ms'], 'Insufficient staging budget for its checks')
     staging_calls = (6*math.ceil(len(inputs['staging_payload'])/65536) +
-                     sum(12+1+math.ceil(c[key]/c['staging_poll_ms'])+3 for key in ('staging_check_ms','staging_sample_ms')))
-    writer_asks = math.ceil(layout['writer_wait_ms']/c['writer_poll_ms'])
+                     sum(12+1+math.ceil(layout[key]/layout['staging_poll_ms'])+3 for key in ('staging_check_ms','staging_sample_ms')))
+    writer_asks = math.ceil(layout['writer_wait_ms']/layout['writer_poll_ms'])
     return dict(schema_version=1, operation='writer-'+mode, version=base['version'],
                 firmware_profile_sha256=fingerprint(base), cpu_profile_sha256=fingerprint(cpu),
                 reader_profile_sha256=fingerprint(reader), transport_profile_sha256=fingerprint(transport),
@@ -148,11 +148,10 @@ def make_plan(base, cpu, reader, transport, layout, inputs, mode):
                 image_check='the region on the player: xorshift32 words from a nonce seed, then their complement, '
                             'written and compared by the staging check; the staged image read back and compared over '
                             'USB, and its first staging_sample_bytes hashed on the player against their SHA-256',
-                completion_profile_sha256=fingerprint(c),
-                staging_check_ms=c['staging_check_ms'], staging_poll_ms=c['staging_poll_ms'],
-                staging_sample_ms=c['staging_sample_ms'], staging_sample_bytes=min(c['staging_sample_bytes'],capacity),
+                staging_check_ms=layout['staging_check_ms'], staging_poll_ms=layout['staging_poll_ms'],
+                staging_sample_ms=layout['staging_sample_ms'], staging_sample_bytes=min(layout['staging_sample_bytes'],capacity),
                 protocol_call_limit=136+18*sum(math.ceil(n/65536) for _,_,n in small)+6*image_chunks+staging_calls+writer_asks,
-                writer_wait_ms=layout['writer_wait_ms'], writer_poll_ms=c['writer_poll_ms'],
+                writer_wait_ms=layout['writer_wait_ms'], writer_poll_ms=layout['writer_poll_ms'],
                 session_budget_ms=layout['session_budget_ms'] if mode == 'write' else layout['staging_budget_ms'],
                 transport_sources_sha256={name:ram.probe.digest(ram.ROOT/name) for name in (
                     'scripts/deployment/writer_transport.py','scripts/deployment/ram_transport.py',
@@ -178,7 +177,7 @@ class Session(ram.Session):
     def run_staging(self, reader, layout, op, address, length, seed, nonce, limit_key):
         """One run of the staging check from the code region (plan, stage 4c): its request and a
         zero result written and compared, the execution, the ROM asked until it answers (at most
-        the plan's limit_key), the result read for the caller to check against what a pass answers."""
+        layout[limit_key]), the result read for the caller to check against what a pass answers."""
         q = staging_request(op, address, length, seed, nonce)
         for where, data in ((reader['request_address'], q), (reader['result_address'], bytes(STAGING_RESULT_BYTES))):
             self.write(where, data)
@@ -186,8 +185,7 @@ class Session(ram.Session):
         self.record['staging_executions'] = self.record.get('staging_executions', 0)+1
         check(self.record['staging_executions'] <= 2, 'Repeated staging check')
         self.control(4, reader['load_address'], 'staging_execution_attempted')
-        plan = self.record['plan']
-        ms = self.wait_ready(plan[limit_key], plan['staging_poll_ms'])
+        ms = self.wait_ready(layout[limit_key], layout['staging_poll_ms'])
         raw = self.read(reader['result_address'], STAGING_RESULT_BYTES)
         return ms, raw
 
@@ -279,7 +277,7 @@ def invoke_writer(session, layout, inputs):
     # The ROM answers again once the writer has returned to it (plan, stage 4c): asked every
     # writer_poll_ms, at most writer_wait_ms; an ask changes nothing on the player, so a failed ask
     # is no outcome, only the ROM's answer is, and none in the whole wait leaves it unknown.
-    record['writer_ms'] = session.wait_ready(layout['writer_wait_ms'],record['plan']['writer_poll_ms'],tolerant=True)
+    record['writer_ms'] = session.wait_ready(layout['writer_wait_ms'],layout['writer_poll_ms'],tolerant=True)
     record['writer_return_observed'] = True
     raw = session.read(layout['debug_address'],1024)
     with (session.journal.output/'writer-result.bin').open('xb') as f:
@@ -368,7 +366,6 @@ def main():
         if args.mode=='write':
             inputs['installation_review']=installation_review.load(args.installation_review)
             ri=ram.prepare_inputs(base,cpu,reader,transport,args.readback_build,args.diskos,'rootfs')
-            ri['completion']=ram.load_completion(base,transport)
             inputs['readback_plan']=installation_review.collect_rootfs.make_plan(base,cpu,reader,transport,ri,inputs['metadata'])
         plan = make_plan(base,cpu,reader,transport,layout,inputs,args.mode)
         result = dict(plan=plan,plan_sha256=fingerprint(plan)) if args.action == 'plan' else acquire(

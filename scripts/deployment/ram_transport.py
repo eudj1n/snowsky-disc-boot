@@ -66,25 +66,8 @@ def load_transport(base, reader, directory=PROFILES):
           'Unsupported SPL parameter/entry layout')
     for key, low, high in [('control_timeout_ms', 100, 5000), ('bulk_timeout_ms', 100, 5000),
                            ('execution_timeout_ms', 100, 10000), ('settle_ms', 100, 5000),
-                           ('session_budget_ms', 10000, 120000)]:
+                           ('completion_poll_ms', 0, 1000), ('session_budget_ms', 10000, 120000)]:
         check(type(p.get(key)) is int and low <= p[key] <= high, f'Invalid transport {key}')
-    return p
-
-
-def load_completion(base, transport, directory=PROFILES):
-    """The host's asks after an execution (plan, stage 4c): how often the ROM is asked and for how
-    long. Apart from the transport profile, which every recorded session's evidence pins byte for
-    byte (an installation's history would no longer match it), and from the installer's RAM
-    contract, which installations keep identical."""
-    p = json.loads(read_file(directory/'completion'/f'v{base["version"]}.json', 8192))
-    check(p.get('schema_version') == 1 and p.get('version') == base['version']
-          and p.get('transport_profile_sha256') == fingerprint(transport), 'Completion profile mismatch')
-    for key, low, high in [('completion_poll_ms', 0, 1000), ('staging_poll_ms', 10, 1000),
-                           ('staging_check_ms', 1000, 600000), ('staging_sample_ms', 1000, 120000),
-                           ('writer_poll_ms', 100, 1000)]:
-        check(type(p.get(key)) is int and low <= p[key] <= high, f'Invalid completion {key}')
-    sample = p.get('staging_sample_bytes')
-    check(type(sample) is int and 0 < sample <= 16*1024*1024 and sample % 65536 == 0, 'Invalid staging hash sample')
     return p
 
 

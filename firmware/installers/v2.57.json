@@ -3,7 +3,7 @@
   "version": "2.57",
   "firmware_profile_sha256": "9c24f384013ebd611f5527079196d8a8923453019efe354c137552774b847151",
   "page_policy_sha256": "f9342f7f8f685ef369c3e4f2cf1db344a6eb2bff9d62e7126335c066e08b9b6a",
-  "transport_profile_sha256": "9aac8148f9d03898e74a9dcd62e16e6ee6b6f1a8b3711602b2329abc1251eb58",
+  "transport_profile_sha256": "a674292ada14d977d94d67f8362a16a2695e82d53fe3c0a629e5e988f4560d4f",
   "writer_profile_sha256": "a87d83efe61d2da00ddebf5ef0dda45feec2b374632d83b7ad6106b25550ff65",
   "writer_entry_offset": 48,
   "writer_stack_bottom": 2696904704,
@@ -14,6 +14,11 @@
   "staging_budget_ms": 900000,
   "session_budget_ms": 1800000,
   "writer_wait_ms": 900000,
+  "writer_poll_ms": 1000,
+  "staging_check_ms": 600000,
+  "staging_sample_ms": 60000,
+  "staging_sample_bytes": 1048576,
+  "staging_poll_ms": 200,
   "physical_write_admitted": false,
   "installation_review_sha256": "cf36f06f6942bed226930d7023a732d3fbd6b07aa9ddd8f11ab201688231cbdd"
 }
