@@ -1048,6 +1048,61 @@ a write with all of it. Each item with its host tests and the guest.
   2026-10-07: "ой как сложно у нас всё"): after the write, a review of what
   each piece of evidence pins, keeping what proves the right image goes to
   the right player.
+- [ ] A short identity check instead of the full backup (owner, 2026-10-07:
+  the way back is only ever stock, so the backup's bytes restore nothing).
+  The backup's one remaining job is to show that the player holds the
+  history's image before the write: a read of a few blocks (the probe's 2
+  blocks, about a minute, as on 2026-10-07) compared with that image, not
+  96 MiB (about 25 minutes with the held ask). What it no longer sees: a
+  rootfs changed elsewhere (a FiiO update) beyond those blocks; the write
+  replaces the whole rootfs anyway and the check after it proves the result.
+  The installer and its review change (the backup is part of the reviewed
+  flow): offline on the owner's history first, then on the guest.
+  Without a history (a first installation, owner's question, 2026-10-07)
+  the blocks are compared with stock of the reviewed version, which the
+  installer already builds from FiiO's update (the profile pins its rootfs,
+  `111e4dd7…`): the squashfs superblock and first blocks are unique to each
+  FiiO build, so another version or another system (diskOS) is refused
+  before any write, and the reviewed profiles can name which version it is.
+  Blocks inside the squashfs only: FiiO may leave the tail after it other
+  than `FF` (the pre-install review's rule). A first installation adds the
+  short read of the boot blocks (which rootfs the bootloader selects) to the
+  same session: one short read, then the write in a fresh entry.
+- [ ] The check after the write at the first start instead of the USB
+  readback (owner, 2026-10-07). The boot layer, at the first start after an
+  installation, reads the rootfs partition as the kernel presents it (the
+  view the system boots from, its bad blocks skipped by the kernel's
+  driver), computes its SHA-256 (seconds with the CPU's caches, against
+  about 25 minutes through the ROM) and compares it with the image's, which
+  the installer puts on the card; the outcome goes to the card and the boot
+  log, and the installer takes it there. Any corruption, the checking code
+  included, changes the hash; it guards against faulty writes, not against
+  a deliberate substitution, which the reviewed write path already excludes.
+  The writer already reads back and compares every block it programs
+  (`my_write5`, its record without a nonce). First: the kernel review, that
+  the root device presents the whole padded logical image (its `FF` tail
+  included); then the guest. The USB readback stays the way when the result
+  does not come back or differs. With both items an installation takes the
+  write (about 9 minutes) and a first start, against about an hour now.
+- [ ] One USB Boot entry for an installation, one session, one SPL (owner,
+  2026-10-07: easier for the user, as diskOS's single `usbboot` run of about
+  20 minutes, 18 of them a blind wait). What kept the readback out of the
+  write's entry was never the write: each of our sessions is its own tool
+  run and loads the SPL again, and a second SPL re-runs the DDR bring-up,
+  whose PHY training failed in 3 of 6 recorded re-runs (both after the
+  writer, one of four after a read; failure 30, `CALIB_DONE` `0x12`), the
+  first SPL of an entry clean in all 11 (`first-write-observation.md`, "The
+  second SPL of a USB Boot entry"). So the installation becomes one session:
+  the SPL and the metadata read; the short identity check of a few rootfs
+  blocks with the rootfs reader; the staging check, the image and its read
+  back, the sample's hash; the writer with its held ask; its record. Each
+  payload goes into the code region in turn, as the write session already
+  does, and DDR stays up. The proof then comes from the first start (the item
+  above); if it is wanted over USB, the readback can follow the writer in the
+  same session (no SPL), after a short read-only check that our reader works
+  on the NAND right after the writer in one session. A readback in a fresh
+  entry stays the fallback. One session also means one plan, one approval and
+  one audit of its journal.
 
 ## Stage 6 — the user's path (owner, 2026-10-06)
 
