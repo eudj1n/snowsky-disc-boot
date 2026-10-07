@@ -84,6 +84,10 @@ def load_completion(base, transport, directory=PROFILES):
         check(type(p.get(key)) is int and low <= p[key] <= high, f'Invalid completion {key}')
     sample = p.get('staging_sample_bytes')
     check(type(sample) is int and 0 < sample <= 16*1024*1024 and sample % 65536 == 0, 'Invalid staging hash sample')
+    # What the player took (2026-10-07), for an installation's progress only.
+    expected = p.get('expected_ms', {})
+    check(type(expected) is dict and set(expected) <= {'staging_check', 'staging_sample', 'writer'}
+          and all(type(v) is int and 0 < v <= 1800000 for v in expected.values()), 'Invalid completion expected_ms')
     return p
 
 

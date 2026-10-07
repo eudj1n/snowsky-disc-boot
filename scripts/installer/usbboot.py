@@ -112,6 +112,59 @@ def session_fraction(calls_done, seconds, wait=None, writer_started=None):
     return min(0.99, seconds / (writer_started + wait))
 
 
+LONG_ASK_MS = 10000
+
+
+def held_asks(plan, completion=None):
+    """The held asks a session waits on for long (plan, stage 4c), in their order, with the seconds
+    each is expected to take: the completion profile's measurement, else its limit. None for a
+    plan without asks (the fixed waits: counted as before)."""
+    if not plan.get('completion_ask'):
+        return None
+    expected = (completion or {}).get('expected_ms', {})
+    asks = []
+    if plan.get('staging_check_ms'):
+        asks += [expected.get('staging_check', plan['staging_check_ms']) / 1000,
+                 expected.get('staging_sample', plan['staging_sample_ms']) / 1000]
+    if plan.get('writer_executions'):
+        asks.append(expected.get('writer', plan['writer_wait_ms']) / 1000)
+    return asks
+
+
+class Progress:
+    """A session's share done: its calls by their pace, and each long held ask by the clock against
+    its expected time, since the ROM is silent while the payload runs (2026-10-07: the region's
+    check held the bar still for two minutes, and the writer was counted as 15 minutes)."""
+
+    def __init__(self, calls, asks):
+        self.calls, self.asks = max(1, calls), list(asks)
+        self.done, self.k, self.ask_at, self.asked = 0, 0, None, 0.0
+
+    def feed(self, lines, now):
+        for line in lines:
+            if b'"phase": "attempt"' in line:
+                self.done += 1
+                if self.ask_at is None and self.k < len(self.asks) and b'"poll": true' in line:
+                    try:
+                        if json.loads(line).get('timeout_ms', 0) >= LONG_ASK_MS:
+                            self.ask_at = now
+                    except ValueError:
+                        pass
+            elif self.ask_at is not None and b'"phase": "return"' in line:
+                self.asked += now - self.ask_at
+                self.ask_at, self.k = None, self.k + 1
+
+    def fraction(self, now):
+        current = now - self.ask_at if self.ask_at is not None else 0.0
+        calls_time = max(0.0, now - self.asked - current)
+        if not self.done or calls_time <= 0:
+            return 0.0
+        ahead = sum(self.asks[self.k:])
+        total = calls_time / self.done * self.calls + self.asked + ahead
+        expected_now = self.asks[self.k] if self.k < len(self.asks) else 0.0
+        return min(0.99, (calls_time + self.asked + min(current, 0.95 * expected_now)) / total)
+
+
 class Reviewed:
     def __init__(self, version, work, artifacts, diskos, libusb, history, run=subprocess.run, profile=None, progress=None):
         self.version, self.work, self.artifacts = version, Path(work), Path(artifacts)
@@ -125,6 +178,14 @@ class Reviewed:
         # progress(label, fraction, seconds) while a USB session runs (the installer's screen).
         self.progress = progress
 
+    def completion(self):
+        """The completion profile (the asks' expected times, for the progress), if there is one."""
+        path = ROOT/'firmware/completion'/f'v{self.version}.json'
+        try:
+            return json.loads(path.read_text())
+        except (OSError, ValueError):
+            return None
+
     # One reviewed tool, as the procedure runs it
 
     def tool(self, name, *args, stdout=None):
@@ -137,7 +198,7 @@ class Reviewed:
             Path(stdout).write_text(result.stdout)
         return result
 
-    def session(self, name, *args, output, calls, label, writer=None):
+    def session(self, name, *args, output, calls, label, writer=None, asks=None):
         """A USB session's tool in the background, its journal (two lines a call) counted against
         the plan's call limit, with the tool and its checks as they are. A write (writer: the
         approved plan's writer entry and wait) counts in two phases: the calls up to the writer's
@@ -151,6 +212,7 @@ class Reviewed:
             log.write(' '.join(command) + '\n')
         journal, lines, offset, started, partial = Path(output)/'transfers.jsonl', 0, 0, time.monotonic(), b''
         writer_started = None
+        held = Progress(calls, asks) if asks is not None else None
         process = subprocess.Popen(command, cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         while process.poll() is None:
             try:
@@ -160,12 +222,15 @@ class Reviewed:
                     offset += len(chunk)
                 *complete, partial = (partial + chunk).split(b'\n')
                 lines += len(complete)
+                if held:
+                    held.feed(complete, time.monotonic() - started)
                 if writer and writer_started is None and any(is_writer_start(line, writer[0]) for line in complete):
                     writer_started = time.monotonic() - started
             except OSError:
                 pass
             now = time.monotonic() - started
-            self.progress(label, session_fraction(lines / 2 / calls, now, writer and writer[1], writer_started), now)
+            share = held.fraction(now) if held else session_fraction(lines / 2 / calls, now, writer and writer[1], writer_started)
+            self.progress(label, share, now)
             time.sleep(1)
         out, err = process.communicate()
         self.progress(label, 1.0, time.monotonic() - started)
@@ -343,7 +408,7 @@ class Reviewed:
                          '--libusb', self.libusb, '--approved-plan-sha256', approved['plan_sha256'], '--output', out,
                          output=out, calls=expected_calls(approved['plan']),
                          label='Writing stock\'s rootfs' if target == 'restore' else 'Writing the image',
-                         writer=writer_wait(approved['plan']))
+                         writer=writer_wait(approved['plan']), asks=held_asks(approved['plan'], self.completion()))
         finally:
             self.close_admission(proposed)
         result = load_json(out/'result.json')

@@ -204,6 +204,32 @@ class ReviewedTests(unittest.TestCase):
         self.assertEqual(fractions[-1], 1.0)
         self.assertTrue(any(0 < f < 1 for f in fractions), 'seen on the way')
 
+    def test_a_held_ask_counts_by_its_expected_time(self):
+        """With held asks (plan, stage 4c) the ROM is silent while the payload runs: the bar counts
+        each long ask by the clock against its measured time, not the plan's limit (2026-10-07: the
+        region's check held the bar still for two minutes, and the writer was counted as 15)."""
+        plan = dict(completion_ask=True, staging_check_ms=600000, staging_sample_ms=60000, writer_executions=1, writer_wait_ms=900000)
+        completion = dict(expected_ms=dict(staging_check=111000, staging_sample=4300, writer=246000))
+        self.assertEqual(usbboot.held_asks(plan, completion), [111.0, 4.3, 246.0])
+        self.assertEqual(usbboot.held_asks(dict(plan, writer_executions=0), completion), [111.0, 4.3], 'staging alone')
+        self.assertIsNone(usbboot.held_asks(dict(plan, completion_ask=False)), 'the fixed waits as before')
+        call = b'{"phase": "attempt", "sequence": 1, "kind": "bulk"}'
+        ret = b'{"phase": "return", "sequence": 1, "code": 0}'
+        ask = b'{"phase": "attempt", "sequence": 2, "kind": "control", "request": 0, "timeout_ms": 600000, "poll": true}'
+        short = b'{"phase": "attempt", "sequence": 3, "kind": "control", "request": 0, "timeout_ms": 2000, "poll": true}'
+        progress = usbboot.Progress(1000, [100.0, 300.0])
+        progress.feed([call, ret] * 100, 10.0)             # 100 calls in 10 s: 100 s of calls in all
+        before = progress.fraction(10.0)
+        self.assertAlmostEqual(before, 10 / (100 + 400))
+        progress.feed([ask], 10.0)
+        during = [progress.fraction(t) for t in (40.0, 70.0, 100.0, 200.0)]
+        self.assertEqual(during, sorted(during), 'the bar moves while the ROM is silent')
+        self.assertLess(during[-1], (10 + 100) / 500 + 0.001, 'an ask past its expected time holds just short of it')
+        progress.feed([ret], 120.0)
+        progress.feed([short, ret] * 10, 121.0)
+        self.assertGreater(progress.fraction(121.0), during[-1], 'a short ask is a call')
+        self.assertLessEqual(progress.fraction(10 ** 6), 0.99)
+
     def test_a_write_counts_its_calls_then_the_writer_s_wait(self):
         """The writer's session (owner, 2026-10-05): staging by its calls, then the ROM's silence
         while the writer runs, counted by the clock from the writer's start in the journal."""
