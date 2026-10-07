@@ -547,6 +547,15 @@ name ([observation](first-write-observation.md)).
     console waits 90 s for the card and survives its remounts; after the
     menu's choice the player starts 2 s behind the UI, as stock's loop
     starts them. Host tests cover each; the guest and the player next.
+- [x] diskOS's screen after its own "Screen off" (owner, 2026-10-06/07: it
+  did not wake by the power key, twice, and the player was switched off and
+  on): diskOS 1.2.0 cuts the panel's rail itself (`bl_power=4`) after its
+  screensaver and screen-off times, and wakes it only on a touch, read on a
+  raw `event1` descriptor of its own; it ignores the player's signals for
+  waking by design ("random wake"), and the power key brings the panel back
+  only when the player itself blanked it (`ui/main.c`, PW-10). A touch woke
+  it on the owner's player. Not the boot layer's: the menu takes only
+  `event0`, never `event1`.
 - [ ] The power key in the menu (owner, 2026-10-06: the player could not be
   switched off while the menu asked). The key is on `event0` with the
   others (`x2000_key`, GPE31), whose driver sends gestures: `0x103` a press,
@@ -893,6 +902,76 @@ name ([observation](first-write-observation.md)).
   the other not, after 45 steady seconds of one player, a child caught on
   its way to exec; its rerun passed. `found_by_watch_loop` now reads again
   until the two agree, for at most two seconds (not yet run on the guest).
+
+## Stage 4c — the installation with Play, the menu and the faster write (owner, 2026-10-07)
+
+The order (owner, 2026-10-07): first what needs no device (the guest), then
+the USB sessions' time offline, one short device session for the timer, and
+a write with all of it. Each item with its host tests and the guest.
+
+- [x] The boot log reaches the disk line by line (`fsync` after each line,
+  about twenty a start, which also takes the wrappers' lines before it): two
+  starts with Play lost their last seconds at a power-off (2026-10-06).
+- [x] The keys at an installation: the menu already took a key held since
+  power-on only after its release (2026-10-03), and both starts were
+  answered by its countdown (5.4 s after it asked), not by Play; they ended
+  at about ten seconds of uptime, as a power key held that long switches the
+  player off. The installer now says to hold Play until the logo and to
+  press the power key briefly (`flow.py`, the contract's user path).
+- [x] The installation finishes before the menu offers anything, and the
+  menu shows its progress (the item of stage 4b, "The menu during an
+  installation with Play"): boot reads the card where stock mounted it or
+  mounts it itself (stock mounts it only once its player runs, which now
+  waits), writes `install.json`, and both launchers wait for it; the menu
+  shows "Installing", asks nothing until it is done (its 60 s from then) and
+  then offers what is installed. With Play the launcher always runs, so
+  stock's UI no longer starts before the installation, and nothing is
+  stopped after it. `test_boot` (the launchers waiting on a card of boot's
+  own mount, then the installed UI started with nothing stopped),
+  `test_menu` (the installation shown, no answer, then the new list).
+  On the guest boot mounted the card itself (`vfat`) at every start with
+  Play: stock mounts it only once its player runs.
+- [x] The power key held in the menu switches the player off (stage 4b,
+  "The power key in the menu"): the menu answers `poweroff` for `0x108`,
+  never while boot installs, and writes each key's code to its output;
+  boot syncs and powers off as stock's UI does. `test_menu`, `test_boot`.
+  The code is still to be seen on the player (the menu's output).
+- [x] The menu's status keeps the package's name and version once it has
+  answered (`menu.json` named neither on 2026-10-06, so the manager left
+  the menu out of "Player software"): the answer's status reads the menu's
+  manifest from its slot. `test_boot`.
+- [x] The menu starts on the last choice made in it, and its countdown takes
+  that one (owner, 2026-10-07): no new setting, a valid answer becomes the
+  default UI (`state.json`'s `ui`, logged as "default ui <name>"), which the
+  menu is offered as `default`. `test_boot` (the next start's choice and
+  the menu's `default`); an explicit default from the manager only if it is
+  missed (a package's `ui-default` request exists already).
+- [x] Accepted on the guest (2026-10-07, emulator `f1d5e33`, build
+  `2506f166236f`, image `e07dc099…`): `boot_guest` (16 steps),
+  `two_packages`, `menu_guest` (Play installs the menu and two UIs before
+  anything is offered and the keys choose; the countdown starts the last
+  answer; a touch chooses), the menu during the installation (it asked
+  before `done`, answered after it, nothing stopped), `boot_report`,
+  `boot_layer` and `install.py --guest`. Three findings on the way:
+  - The installation stopped the launcher it was waiting for: with Play
+    every `mq_ui` is the launcher, which `recovery()` took for stock's UI
+    before it marked its wait. It stops nothing now (`test_boot`).
+  - A start logged every fatal-signal line in the kernel's ring, each
+    synced: on the guest, which shares its host's ring, that held up the
+    launcher by a second. A start logs the last 8 new ones and a count.
+  - Stock's player died at every start after the menu took Volume - and
+    Play: the guest's key device is a file a new reader reads from its
+    start, so the player, which now starts after the answer, took them
+    again. On the player a later reader sees only later presses;
+    `menu_guest` empties the file once the menu has answered.
+- [ ] The USB sessions' time (stage 4b), in this order: a timer that runs in
+  USB Boot, settled offline; the settle after each batch from its
+  measurement (the backup and the readback from 35-40 minutes to a few);
+  the staged image's SHA-256 and the RAM check on the player; the writer's
+  wait from a measured writer; one SPL per entry with the check inside the
+  write's own session.
+- [ ] One short device session for the timer (a minute or two, the owner's
+  go-ahead), then the write of an image with all of the above.
 
 ## Stage 6 — the user's path (owner, 2026-10-06)
 

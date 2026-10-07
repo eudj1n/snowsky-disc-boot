@@ -19,6 +19,7 @@ void blog(const char *fmt, ...);
 /* One line in the persistent boot log (DATA_DIR/boot.log): the uptime, then the message; nothing
    once the log reaches BOOT_LOG_CAP (the early hook rotates it) or when it cannot be written. */
 #define BOOT_LOG_CAP 262144
+/* A line of the boot log with the uptime, on the disk before it returns (fsync); none at the cap. */
 void plog(const char *fmt, ...);
 
 int exists(const char *abs);

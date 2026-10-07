@@ -71,14 +71,24 @@ def asking():
     return status
 
 
-def power_on():
+def keys_taken():
+    """The keys the menu took are gone for later readers. On the player a program that opens the
+    key device sees only the presses after it; the guest's device is a file the emulator's buttons
+    append to and a reader reads from its start (emptied at each power-on). Stock's player, which
+    now starts after the menu's answer, would take the menu's Volume - and Play again, and on the
+    guest it dies of them in its start, at every restart (2026-10-07). The player starts 2 s after
+    the answer; the release is written 0.12 s after the press the menu answers."""
+    (bg.ROOTFS/'dev/input/event0').write_bytes(b'')
+
+
+def power_on(hold=''):
     """Power on in the background: the emulator's power-on returns once a UI is ready, which with
     the menu is after its choice, so the test watches the menu while the boot goes on."""
     failure = []
 
     def boot():
         try:
-            bg.power('on')
+            bg.power('on', hold=hold)
         except Exception as error:      # noqa: BLE001 (reported by join)
             failure.append(error)
     thread = threading.Thread(target=boot)
@@ -109,10 +119,11 @@ def run(menu, output):
         for folder in probes(work):
             bg.package.stage(folder, root, profile=bg.PROFILE)
         bg.package.stage(menu, root, profile=bg.PROFILE)
-    # 1. Play installs both UIs and the menu. Stock's player ran before the card came, so it runs
-    #    beside the menu (which takes the keys); Volume - and Play choose the second UI, and the
-    #    pair restarts for its player launcher.
-    bg.power('on', hold='play')
+    # 1. Play installs both UIs and the menu before anything is offered (plan, stage 4c): the menu
+    #    then asks, no player having run, so the player waits for its choice; Volume - and Play
+    #    choose the second UI. The menu's first frame comes right after the installation, so the
+    #    test watches it while the power-on goes on, within its 5 s countdown.
+    booted = power_on('play')
     status = asking()
     first = frame('after-play')
     choices = bg.guest_json('/run/disc-boot/ui/choices.json')
@@ -123,37 +134,43 @@ def run(menu, output):
     moved = frame('volume-down')
     assert pixel(moved, 70, 180) == (0x3a, 0x35, 0x30) and pixel(moved, 70, 132) != (0x3a, 0x35, 0x30), 'the pill moved down'
     buttons.pulse(0xfa)
+    keys_taken()
     ui = bg.ui_runs(TWO)
     choice = bg.guest_json('/run/disc-boot/ui/choice.json')
     assert (choice['ui'], choice['by']) == (TWO, 'menu'), choice
     assert menu_status()['state'] == 'answered'
+    booted()
     bg.step('play installs and the keys choose', menu=status, choices=choices, choice=choice, ui=ui)
-    # 2. A plain power-on: the countdown starts the default; no player ran, so the pair is not restarted.
+    # 2. A plain power-on: the menu starts on its last answer, the second UI, and the countdown
+    #    starts it (owner, 2026-10-07); no player ran, so the pair is not restarted.
     restarts = bg.pair_restarts()
     bg.power('off')
     booted = power_on()
     asking()
+    choices = bg.guest_json('/run/disc-boot/ui/choices.json')
+    assert choices['default'] == TWO, choices
     counting = frame('countdown')
     assert pixel(counting, 352, 180) == (0xff, 0x79, 0x5a), 'the ring runs down from the right'
+    assert pixel(counting, 70, 180) == (0x3a, 0x35, 0x30), 'the last answer, in the second row, in the pill'
     # The player starts 2 s after the menu and waits for its choice.
     waited = soon(lambda: run_json('ui/player.json'), lambda p: p['launch'] in ('waiting', 'package'), 'the player starts', 10)
     assert waited['launch'] == 'waiting', waited
     booted()
-    ui = bg.ui_runs(ONE)
-    choice = bg.guest_json('/run/disc-boot/ui/choice.json')
-    assert (choice['ui'], choice['by']) == (ONE, 'menu'), choice
-    player = bg.wait(lambda: bg.guest_json('/run/disc-boot/ui/player.json'), lambda p: p['launch'] == 'package', 'the player after the choice', 120)
-    assert bg.pair_restarts() == restarts, ('stock restarted the pair', restarts, bg.pair_restarts())
-    bg.step('the countdown starts the default', choice=choice, player=player, ui=ui)
-    # 3. A touch on the second row picks it.
-    bg.power('off')
-    booted = power_on()
-    asking()
-    touch.tap(150, 180)
-    booted()
     ui = bg.ui_runs(TWO)
     choice = bg.guest_json('/run/disc-boot/ui/choice.json')
     assert (choice['ui'], choice['by']) == (TWO, 'menu'), choice
+    player = bg.wait(lambda: bg.guest_json('/run/disc-boot/ui/player.json'), lambda p: p['launch'] == 'package', 'the player after the choice', 120)
+    assert bg.pair_restarts() == restarts, ('stock restarted the pair', restarts, bg.pair_restarts())
+    bg.step('the countdown starts the last answer', choices=choices, choice=choice, player=player, ui=ui)
+    # 3. A touch on the first row picks it, away from the default.
+    bg.power('off')
+    booted = power_on()
+    asking()
+    touch.tap(150, 132)
+    booted()
+    ui = bg.ui_runs(ONE)
+    choice = bg.guest_json('/run/disc-boot/ui/choice.json')
+    assert (choice['ui'], choice['by']) == (ONE, 'menu'), choice
     bg.step('a touch chooses', choice=choice, ui=ui)
     bg.power('off')
     bg.evidence['status'] = 'passed'

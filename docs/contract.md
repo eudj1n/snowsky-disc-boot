@@ -412,15 +412,16 @@ logo once and died at every start of the pair twice after the menu's choice).
 ### What the boot log keeps
 
 Besides the early hook's and the wrappers' lines, the boot program adds to
-`/usr/data/disc-boot/boot.log`, with the uptime:
+`/usr/data/disc-boot/boot.log`, with the uptime, each line on the disk
+(`fsync`) before it goes on, so a power-off loses none:
 
 - every change of a role's state (`menu asking`, `ui/<name> confirmed`,
   `service failed: …`), what the player's launcher starts and why, the choice
-  each UI launcher reads, each start of stock's UI or player, and each UI it
-  stops after an installation;
+  each UI launcher reads and each start of stock's UI or player;
 - in platform mode, at each start of the pair, the last lines the previous UI
   wrote (stock's UI keeps no log of its own; stock's player keeps
-  `fiio_player.log`), the kernel's fatal-signal lines (`print-fatal-signals`),
+  `fiio_player.log`), the kernel's fatal-signal lines (`print-fatal-signals`;
+  the last 8 new ones, with a count of those left out),
   the holders and waiters of stock's process lock (`/proc/locks`), processes in
   uninterruptible sleep and stock's queues. The UI's output goes to
   `/run/disc-boot/out`, a tmpfs of 1 MiB of its own: a full one refuses writes,
@@ -517,6 +518,16 @@ menu's `stock` entry is stock's UI with the `service` package running.
   and records the answer and starts the chosen UI at once. Everything the
   menu opened must close on that exec (`O_CLOEXEC`), its hold of `event0`
   with it.
+- The menu answers `{"ui": "poweroff"}` for the power key held (code
+  `0x108` from `event0`; owner, 2026-10-06), never while boot installs:
+  boot syncs the disks and switches the player off as stock's UI does
+  (`poweroff -f`, no init scripts). The menu writes each key's code to its
+  output.
+- A valid answer becomes the default UI (`state.json`'s `ui`; owner,
+  2026-10-07): the menu starts on it at the next power-on and its countdown
+  takes it, with no setting of its own; a package's `ui-default` request
+  still sets it too. `menu.json` keeps the menu package's name, version and
+  page once it has answered.
 - At the boot's first start of the pair no player has run yet, so no
   watchdog runs (stock's player starts it): `/sbin/mq_player` waits for
   the choice (at most the menu's 60 s and 10 more) and then starts the
@@ -620,17 +631,28 @@ service package starts with its own `PATH` and does not need it.
   and `.disc/boot/install/ui/<name>/` for each ui package, each with
   `package.json` and its files. The installer or the page puts them there
   (`scripts/package.py stage` places each by its role and name).
-- Boot waits up to 90 s for the card mounted from its expected device (the
-  card is mounted after the `S99` hooks run: stock mounts it once
-  `mq_player` is up),
-  verifies each staged package completely (modes do not count on the card's
-  file system), copies it into the role's inactive slot, verifies the copy
-  with modes, makes it the tentative current one, removes the staged folder
-  and writes `.disc/boot/result.json` (per role, and per name under `ui`:
-  installed, or why not). A refused package stays on the card. With a `ui`
-  or `menu` package newly installed, boot settles this boot's choice again
-  and, when the launcher has something to start, gives it the permission and
-  stock's running UI a SIGTERM, so stock's loop starts it. The packages then run as in `platform` mode.
+- The installation comes before the pair (owner, 2026-10-07): stock mounts
+  the card only once `mq_player` runs, and the player waits for the
+  installation, so boot reads the card where stock mounted it or, within
+  90 s, mounts the expected device itself at `/run/disc-boot/card` (`vfat`,
+  then `exfat`, `iocharset=utf8`, as stock; one superblock, so stock's own
+  mount later is unaffected) and unmounts it after a `sync`. It verifies
+  each staged package completely (modes do not count on the card's file
+  system), copies it into the role's inactive slot, verifies the copy with
+  modes, makes it the tentative current one, removes the staged folder and
+  writes `.disc/boot/result.json` (per role, and per name under `ui`:
+  installed, or why not). A refused package stays on the card. Each step
+  reaches the boot log.
+- `/run/disc-boot/install.json` tells the progress:
+  `{"state": "waiting"|"installing"|"done", "done", "total", "current"}`.
+  With Play the UI launcher always runs (`ui-launch`). It waits for `done`
+  (at most 180 s) when no menu asks, and then starts what this boot's choice
+  settled with what was installed, stock's UI included; when a menu asks,
+  the menu shows the installation, asks nothing until `done` (its 60 s run
+  from then), and offers the list boot writes again after it. The player's
+  launcher waits for `done` too. The installation stops nothing: with Play
+  every `mq_ui` process is the launcher, also before it marks its wait
+  (`ui/install-wait`). The packages then run as in `platform` mode.
 - Without the gesture boot never installs or runs anything from the card.
 
 ## Environment of a package
@@ -714,8 +736,10 @@ back (Volume Up for stock, USB Boot for the stock image).
 3. The installer copies the chosen packages (our server; `disc-menu`, chosen
    by default; the player into `Apps/`) into `.disc/boot/install/`, and the
    console marker.
-4. The user powers on holding Play; boot installs and starts the packages and
-   writes the result to the card; the page then shows the server's status.
+4. The user holds Play, presses the power key briefly and lets Play go once
+   the logo shows (a power key held about ten seconds switches the player off
+   in hardware); boot installs and starts the packages and writes the result
+   to the card; the page then shows the server's status.
 
 ## What changes against today
 

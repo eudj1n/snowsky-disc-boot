@@ -43,7 +43,7 @@ class BootTests(unittest.TestCase):
             (self.root/name).mkdir(parents=True, exist_ok=True)
         (self.root/'proc/mounts').write_text('/dev/root / squashfs ro 0 0\n')
         self.env = dict(os.environ, DISC_TEST_LEAK='1', DISC_BOOT_FIXTURE_ROOT=str(self.root),
-                        DISC_BOOT_FIXTURE_TIMING='confirm=1,grace=1,window=30,backoff=0.1,card=2,ui=30,menu=2,pair=0.3')
+                        DISC_BOOT_FIXTURE_TIMING='confirm=1,grace=1,window=30,backoff=0.1,card=2,ui=30,menu=2,pair=0.3,install=4')
         self.data = self.root/'usr/data/disc-boot'
         self.run_dir = self.root/'run/disc-boot'
         self.addCleanup(self.cleanup)
@@ -124,6 +124,11 @@ class BootTests(unittest.TestCase):
 
     def log(self):
         path = self.run_dir/'boot.log'
+        return path.read_text() if path.exists() else ''
+
+    def boot_log(self):
+        """The boot log that outlives a start (/usr/data/disc-boot/boot.log)."""
+        path = self.data/'boot.log'
         return path.read_text() if path.exists() else ''
 
     def global_state(self):
@@ -429,26 +434,93 @@ exit 0
         self.assertTrue(broken.exists(), 'a refused package stays on the card')
         self.assertEqual(oct((self.data/'service/a/bin/run').stat().st_mode & 0o777), '0o755')
 
-    def test_play_with_a_ui_package_stops_the_ui_stock_started(self):
-        # The card comes after stock's UI: the recovery stops that UI by its name, as stock's watch
-        # loop finds it, so the loop starts the launcher (and with it the package).
+    def test_play_with_a_ui_package_stops_no_running_ui(self):
+        # With Play the launcher runs from the start and waits for the installation: a process named
+        # mq_ui during it is that launcher, also before it marks its wait (the race seen on the
+        # guest, 2026-10-07), so the installation stops nothing.
         (self.root/'proc/mounts').write_text('/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
         self.package(self.staged('ui/other-ui'), GOOD, role='ui', name='other-ui')
-        stock_ui = subprocess.Popen(['sleep', '60'])
-        self.addCleanup(stock_ui.kill)
+        launcher = subprocess.Popen(['sleep', '60'])
+        self.addCleanup(launcher.kill)
         other = subprocess.Popen(['sleep', '60'])
         self.addCleanup(other.kill)
-        for process, name in ((stock_ui, 'mq_ui'), (other, 'mq_player')):
+        for process, name in ((launcher, 'mq_ui'), (other, 'mq_player')):
             (self.root/f'proc/{process.pid}').mkdir()
             (self.root/f'proc/{process.pid}/comm').write_text(name + '\n')
         self.early('play')
+        self.assertTrue((self.run_dir/'ui-launch').exists(), 'Play grants the launcher before the installation')
         self.boot('start', check=True)
-        self.assertEqual(stock_ui.wait(timeout=15), -signal.SIGTERM)
-        self.assertIsNone(other.poll(), 'only the UI is stopped')
+        deadline = time.monotonic() + 15
+        while 'recovery: done' not in self.boot_log() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.assertIn('recovery: done, 1 of 1', self.boot_log())
+        self.assertIsNone(launcher.poll(), 'the waiting launcher keeps running')
+        self.assertIsNone(other.poll())
         self.assertTrue((self.run_dir/'ui-launch').exists())
         result = json.loads((self.root/'tmp/sdcard/.disc/boot/result.json').read_text())
         self.assertEqual(result['roles']['ui'], {'other-ui': dict(installed=True, note='installed other-ui 1')})
         self.assertEqual(self.global_state()['ui'], 'other-ui', 'the first ui package installed becomes the default')
+
+    def test_play_installs_before_the_ui_from_a_card_of_its_own_mount(self):
+        """The installation comes first (owner, 2026-10-07): stock mounts the card only once its player
+        runs, which waits for it, so boot mounts it itself; the UI launcher and the player wait for
+        the installation and then start what was installed, without stopping anything."""
+        self.stock_ui(); self.stock_player()
+        self.package(self.staged('ui/alpha'), f'echo alpha >> "{self.root}/out/ui"\n: > "$DISC_BOOT_RUN/ready"\nsleep 2.5\n',
+                     role='ui', name='alpha')
+        self.early('play')
+        ui = self.launch()
+        player = self.launch_player()
+        time.sleep(1)
+        self.assertEqual(self.runs(), [], 'the launcher waits for the installation')
+        self.assertTrue((self.run_dir/'ui/install-wait').exists())
+        self.env['DISC_BOOT_FIXTURE_MOUNTABLE'] = '1'
+        self.boot('start', check=True)
+        ui.wait(timeout=20); player.wait(timeout=20)
+        self.assertEqual(self.runs(), ['alpha'], 'the installed UI starts at once, no stock UI before it')
+        progress = json.loads((self.run_dir/'install.json').read_text())
+        self.assertEqual((progress['state'], progress['done'], progress['total']), ('done', 1, 1))
+        result = json.loads((self.root/'tmp/sdcard/.disc/boot/result.json').read_text())
+        self.assertEqual(result['roles']['ui'], {'alpha': dict(installed=True, note='installed alpha 1')})
+        log = self.boot_log()
+        self.assertNotIn('stopped for the installed UI', log, 'nothing was stopped for a restart')
+        for line in ('mq_ui launcher', 'waits for the installation from the card', 'recovery: 1 staged on the card',
+                     'recovery ui alpha: installed alpha 1', 'recovery: done, 1 of 1'):
+            self.assertIn(line, log)
+        self.assertLess(log.index('recovery: done'), log.index('ui/alpha starting'), 'installed, then started')
+
+    def test_a_menu_that_answers_during_the_installation_starts_its_choice_after_it(self):
+        """The first start with Play after the image runs the menu installed before (2.57.2), which
+        knows nothing of the installation: its answer waits for the installation and stands."""
+        self.stock_ui(); self.stock_player()
+        self.two_uis()
+        self.menu('printf \'{"ui":"beta"}\' > "$DISC_BOOT_RUN/choice"\n', confirmed=True)
+        self.package(self.staged('ui/gamma'), GOOD, role='ui', name='gamma')
+        self.early('play')
+        self.launch().wait(timeout=10)
+        ui = self.launch()
+        player = self.launch_player()
+        time.sleep(1)
+        self.assertEqual(self.runs(), ['menu'], 'beta waits for the installation')
+        self.env['DISC_BOOT_FIXTURE_MOUNTABLE'] = '1'
+        self.boot('start', check=True)
+        ui.wait(timeout=20); player.wait(timeout=20)
+        self.assertEqual(self.runs(), ['menu', 'beta'])
+        self.assertEqual((self.choice()['ui'], self.choice()['by']), ('beta', 'menu'), "the menu's answer stands")
+        self.assertIn('recovery ui gamma: installed gamma 1', self.boot_log())
+        self.assertNotIn('stopped for the installed UI', self.boot_log())
+
+    def test_the_menu_answers_poweroff_with_the_power_key(self):
+        self.stock_ui(); self.stock_player()
+        self.two_uis()
+        self.menu('printf \'{"ui":"poweroff"}\' > "$DISC_BOOT_RUN/choice"\n')
+        self.early()
+        self.launch().wait(timeout=10)
+        self.launch().wait(timeout=10)
+        self.assertTrue((self.run_dir/'poweroff').exists(), 'switched off, as stock does it')
+        self.assertEqual(self.status('menu')['note'], 'poweroff')
+        self.assertIn('menu: the player switches off', self.boot_log())
+        self.assertEqual(self.runs(), ['menu'], 'no UI starts')
 
     def test_recovery_needs_the_expected_card(self):
         (self.root/'proc/mounts').write_text('/dev/other /tmp/sdcard exfat rw 0 0\n')
@@ -458,7 +530,8 @@ exit 0
         self.wait_status('service', 'absent')
         self.assertTrue(self.staged('service').exists())
         self.assertFalse((self.root/'tmp/sdcard/.disc/boot/result.json').exists())
-        self.assertIn('the card is not mounted', self.log())
+        self.assertIn('recovery: the card is not mounted', self.boot_log())
+        self.assertEqual(json.loads((self.run_dir/'install.json').read_text())['state'], 'done', 'the launchers go on')
 
     def test_nothing_is_taken_from_the_card_without_play(self):
         (self.root/'proc/mounts').write_text('/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
@@ -693,10 +766,15 @@ exit 0
         self.launch().wait(timeout=10)
         self.assertEqual(self.runs(), ['menu', 'beta'])
         self.assertEqual(self.choice(), dict(schema=1, ui='beta', by='menu', menu=False, note=''))
-        self.assertEqual(self.status('menu')['state'], 'answered')
+        menu = self.status('menu')
+        self.assertEqual((menu['state'], menu['name'], menu['version']), ('answered', 'disc-menu', '1'), 'the status names the menu')
         self.assertTrue(self.role_state('menu')['confirmed'], 'a valid answer confirms a tentative menu')
+        # The last answer becomes the default (owner, 2026-10-07): the menu starts on it next time.
+        self.assertEqual(json.loads((self.data/'state.json').read_text())['ui'], 'beta')
         self.launch_player().wait(timeout=10)
         self.assertEqual(self.player_status()['note'], 'the ui package brings no player launcher')
+        self.early()
+        self.assertEqual(self.choice(), dict(schema=1, ui='beta', by='default', menu=True, note=''))
         # next skips the menu.
         self.set_global(next='alpha')
         self.early()

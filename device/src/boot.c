@@ -15,6 +15,7 @@
 #if defined(__linux__) && !defined(DISC_BOOT_FIXTURE)
 #include <sys/klog.h>
 #include <sys/mount.h>
+#include <sys/reboot.h>
 #endif
 #include <sys/resource.h>
 #include <sys/stat.h>
@@ -40,7 +41,8 @@
 extern char **environ;
 /* Seconds; the fixture build shortens them. */
 /* The card is mounted after S99 (stock mounts it once mq_player runs): recovery waits up to 90 s. */
-static double t_confirm = 180, t_grace = 5, t_window = 600, t_backoff = 2, t_card = 90, t_ui_window = 120, t_menu = 60, t_pair = 2;
+static double t_confirm = 180, t_grace = 5, t_window = 600, t_backoff = 2, t_card = 90, t_ui_window = 120, t_menu = 60, t_pair = 2,
+              t_install = 180;
 static char profile[17], card[PATH_MAX] = "/tmp/sdcard", card_source[128] = "/dev/mmcblk0p1";
 /* The boot program itself, which a package runs as `verify` (contract, "Environment"); the fixture's own file. */
 static char program[PATH_MAX] = "/opt/disc-boot/disc-boot";
@@ -71,6 +73,7 @@ static void fixture_init(const char *argv0) {
             else if (!strcmp(item, "card")) t_card = v; else if (!strcmp(item, "ui")) t_ui_window = v;
             else if (!strcmp(item, "menu")) t_menu = v;
             else if (!strcmp(item, "pair")) t_pair = v;
+            else if (!strcmp(item, "install")) t_install = v;
         }
     }
 #else
@@ -758,15 +761,20 @@ static void capture_start(const char *name) {
             ring[got] = 0;
             char seen[PATH_MAX], buf[32];
             bpath(seen, RUN_DIR "/out/fatal-seen");
-            long before = read_small(seen, buf, sizeof(buf), NULL) ? 0 : atol(buf), total = 0;
+            long before = read_small(seen, buf, sizeof(buf), NULL) ? 0 : atol(buf), total = 0, fresh = 0;
+            /* The last KERNEL_LINES new ones only: each boot log line is synced, and a ring full of
+               them (the guest shares its host's) would hold up the start. */
+            enum { KERNEL_LINES = 8 };
+            char *last[KERNEL_LINES];
             for (char *line = ring; line && *line; ) {
                 char *end = strchr(line, '\n');
                 if (end) *end = 0;
-                if (strstr(line, "fatal signal")) {
-                    if (++total > before) plog("kernel: %.200s", line);
-                }
+                if (strstr(line, "fatal signal") && ++total > before) last[fresh++ % KERNEL_LINES] = line;
                 line = end ? end + 1 : NULL;
             }
+            if (fresh > KERNEL_LINES) plog("kernel: %ld earlier fatal-signal lines left out", fresh - KERNEL_LINES);
+            for (long k = fresh > KERNEL_LINES ? fresh - KERNEL_LINES : 0; k < fresh; k++)
+                plog("kernel: %.200s", last[k % KERNEL_LINES]);
             int k = snprintf(buf, sizeof(buf), "%ld\n", total);
             write_atomic(seen, buf, (size_t)k, 0644);
         }
@@ -917,6 +925,72 @@ static int card_mounted(void) {
     return ok;
 }
 
+/* The installation's progress (contract, "Recovery from the card"), which the menu shows and the
+   launchers wait on: waiting (for the card), installing (done of total, the current package), done. */
+static void install_progress(const char *state, int done, int total, const char *current) {
+    char p[PATH_MAX], buf[400], quoted[80] = "null";
+    if (current) json_str(quoted, sizeof(quoted), current);
+    int n = snprintf(buf, sizeof(buf), "{\"schema\":1,\"state\":\"%s\",\"done\":%d,\"total\":%d,\"current\":%s}\n",
+                     state, done, total, quoted);
+    bpath(p, RUN_DIR);
+    mkdirs(p, 0755);
+    bpath(p, RUN_DIR "/install.json");
+    if (n > 0 && n < (int)sizeof(buf)) write_atomic(p, buf, (size_t)n, 0644);
+}
+
+/* A start with Play whose installation has not finished (or not begun). */
+static int install_pending(void) {
+    if (strcmp(reason, "recovery")) return 0;
+    char p[PATH_MAX], buf[400], state[16] = "";
+    size_t len;
+    bpath(p, RUN_DIR "/install.json");
+    if (read_small(p, buf, sizeof(buf), &len)) return 1;
+    bjson j;
+    if (bjson_parse(&j, buf, len, 16)) return 1;
+    bjson_string(&j, bjson_find(&j, 0, "state"), state, sizeof(state));
+    bjson_free(&j);
+    return strcmp(state, "done") != 0;
+}
+
+/* A launcher holds its start until the installation is done (owner, 2026-10-07: the first answer
+   no longer races the card), at most t_install. */
+static void install_wait(const char *who) {
+    if (!install_pending()) return;
+    plog("%s waits for the installation from the card", who);
+    double until = mono() + t_install;
+    while (install_pending() && mono() < until && !stopping) pause_s(0.2);
+    if (install_pending()) plog("%s: the installation did not finish in %.0f s", who, t_install);
+}
+
+/* Where the staged packages are read: the card where stock mounted it, else a mount of the boot
+   layer's own of the same device (stock mounts it only once its player runs, which waits for the
+   installation; one superblock, so stock's own mount later is unaffected), at most t_card. */
+static int card_for_install(char *root, size_t cap, int *own) {
+    *own = 0;
+    double until = mono() + t_card;
+    for (;;) {
+        if (card_mounted()) { snprintf(root, cap, "%s", card); return 0; }
+#if defined(__linux__) && !defined(DISC_BOOT_FIXTURE)
+        char dir[PATH_MAX];
+        bpath(dir, RUN_DIR "/card");
+        mkdirs(dir, 0755);
+        static const char *const types[] = {"vfat", "exfat"};
+        for (size_t k = 0; k < sizeof(types) / sizeof(*types); k++)
+            if (!mount(card_source, dir, types[k], MS_NOSUID | MS_NODEV | MS_NOEXEC, "iocharset=utf8")) {
+                *own = 1;
+                snprintf(root, cap, "%s", RUN_DIR "/card");
+                plog("recovery: the card mounted for the installation (%s)", types[k]);
+                return 0;
+            }
+#elif defined(DISC_BOOT_FIXTURE)
+        /* The fixture's stand-in for the boot layer's own mount: the card's folder as it is. */
+        if (getenv("DISC_BOOT_FIXTURE_MOUNTABLE")) { *own = 1; snprintf(root, cap, "%s", card); return 0; }
+#endif
+        if (mono() >= until || stopping) return -1;
+        pause_s(0.5);
+    }
+}
+
 static int install(const char *domain, const char *staged, char *note, size_t cap) {
     manifest *m = malloc(sizeof(*m));
     char err[200], slot[PATH_MAX], src[PATH_MAX], dst[PATH_MAX];
@@ -957,29 +1031,6 @@ out:
     return r;
 }
 
-/* Stock's running UI, found as stock's own watch loop finds it (pgrep -x mq_ui): by the process
-   name, so the UI stock started itself (the card, and with it the package, came after it) and one
-   the launcher started are both stopped; the watch loop then starts the launcher. */
-static void stop_running_ui(void) {
-    char dir[PATH_MAX];
-    bpath(dir, "/proc");
-    DIR *d = opendir(dir);
-    if (!d) return;
-    struct dirent *e;
-    while ((e = readdir(d))) {
-        char *end, p[PATH_MAX], comm[32];
-        long pid = strtol(e->d_name, &end, 10);
-        if (*end || pid <= 1 || pid == (long)getpid()) continue;
-        bpath(p, "/proc/%ld/comm", pid);
-        FILE *f = fopen(p, "r");
-        if (!f) continue;
-        int match = fgets(comm, sizeof(comm), f) && !strcmp(comm, "mq_ui\n");
-        fclose(f);
-        if (match) { plog("stock's UI %ld stopped for the installed UI", pid); kill((pid_t)pid, SIGTERM); }
-    }
-    closedir(d);
-}
-
 /* One role's line of result.json. */
 static int add_result(char *out, size_t cap, size_t *o, int first, const char *key, int ok, const char *note) {
     char quoted[300];
@@ -992,39 +1043,56 @@ static int add_result(char *out, size_t cap, size_t *o, int first, const char *k
 static int name_order(const void *a, const void *b) { return strcmp((const char *)a, (const char *)b); }
 
 /* Play held at power-on: the packages staged on the card (contract, "Recovery from the card"):
-   install/service/, install/menu/ and one folder per ui package, install/ui/<name>/. */
+   install/service/, install/menu/ and one folder per ui package, install/ui/<name>/. It runs before
+   the pair (the launchers wait for it, the menu shows its progress), from the card where stock
+   mounted it or from a mount of the boot layer's own, and every step reaches the boot log. */
 static void recovery(void) {
-    double until = mono() + t_card;
-    while (!card_mounted() && mono() < until && !stopping) pause_s(0.5);
-    if (!card_mounted()) { blog("recovery: the card is not mounted"); return; }
-    char result[SMALL_FILE], dir[PATH_MAX], note[260];
-    size_t o = (size_t)snprintf(result, sizeof(result), "{\"schema\":1,\"roles\":{");
-    int any = 0, ui_installed_now = 0, menu_installed = 0;
-    static const char *SINGLE[] = {"service", "menu"};
-    for (size_t k = 0; k < sizeof(SINGLE) / sizeof(*SINGLE); k++) {
-        bpath(dir, "%s/.disc/boot/install/%s", card, SINGLE[k]);
-        if (!is_dir(dir)) continue;
-        int ok = install(SINGLE[k], dir, note, sizeof(note)) == 0;
-        if (ok && !strcmp(SINGLE[k], "menu")) menu_installed = 1;
-        add_result(result, sizeof(result), &o, !any, SINGLE[k], ok, note);
-        any = 1;
-        blog("recovery %s: %s", SINGLE[k], note);
+    install_progress("waiting", 0, 0, NULL);
+    char root[PATH_MAX], result[SMALL_FILE], dir[PATH_MAX], note[260];
+    int own = 0;
+    if (card_for_install(root, sizeof(root), &own)) {
+        plog("recovery: the card is not mounted");
+        install_progress("done", 0, 0, NULL);
+        return;
     }
-    bpath(dir, "%s/.disc/boot/install/ui", card);
+    static const char *SINGLE[] = {"service", "menu"};
+    char names[MAX_UIS][33];
+    int count = 0, loose = 0, total = 0, done = 0;
+    for (size_t k = 0; k < sizeof(SINGLE) / sizeof(*SINGLE); k++) {
+        bpath(dir, "%s/.disc/boot/install/%s", root, SINGLE[k]);
+        total += is_dir(dir);
+    }
+    bpath(dir, "%s/.disc/boot/install/ui", root);
     DIR *d = is_dir(dir) ? opendir(dir) : NULL;
     if (d) {
-        char names[MAX_UIS][33], first_ui[33] = "";
-        int count = 0, loose = 0;
         struct dirent *e;
         while ((e = readdir(d))) {
             if (!strcmp(e->d_name, "package.json")) loose = 1;
             if (!package_name_ok(e->d_name) || count >= MAX_UIS) continue;
             char sub[PATH_MAX];
-            bpath(sub, "%s/.disc/boot/install/ui/%s", card, e->d_name);
+            bpath(sub, "%s/.disc/boot/install/ui/%s", root, e->d_name);
             if (is_dir(sub)) snprintf(names[count++], sizeof(names[0]), "%.32s", e->d_name);
         }
         closedir(d);
         qsort(names, (size_t)count, sizeof(names[0]), name_order);
+    }
+    total += count;
+    plog("recovery: %d staged on the card", total);
+    size_t o = (size_t)snprintf(result, sizeof(result), "{\"schema\":1,\"roles\":{");
+    int any = 0, ui_installed_now = 0, menu_installed = 0;
+    for (size_t k = 0; k < sizeof(SINGLE) / sizeof(*SINGLE); k++) {
+        bpath(dir, "%s/.disc/boot/install/%s", root, SINGLE[k]);
+        if (!is_dir(dir)) continue;
+        install_progress("installing", done, total, SINGLE[k]);
+        int ok = install(SINGLE[k], dir, note, sizeof(note)) == 0;
+        done++;
+        if (ok && !strcmp(SINGLE[k], "menu")) menu_installed = 1;
+        add_result(result, sizeof(result), &o, !any, SINGLE[k], ok, note);
+        any = 1;
+        plog("recovery %s: %s", SINGLE[k], note);
+    }
+    if (d) {
+        char first_ui[33] = "";
         if (o < sizeof(result)) o += (size_t)snprintf(result + o, sizeof(result) - o, "%s\"ui\":{", any ? "," : "");
         any = 1;
         int first = 1;
@@ -1035,13 +1103,15 @@ static void recovery(void) {
         for (int k = 0; k < count; k++) {
             char domain[40], staged[PATH_MAX];
             ui_domain(domain, names[k]);
-            bpath(staged, "%s/.disc/boot/install/ui/%s", card, names[k]);
+            bpath(staged, "%s/.disc/boot/install/ui/%s", root, names[k]);
+            install_progress("installing", done, total, names[k]);
             int ok = install(domain, staged, note, sizeof(note)) == 0;
+            done++;
             if (ok && !first_ui[0]) snprintf(first_ui, sizeof(first_ui), "%.32s", names[k]);
             if (ok) ui_installed_now = 1;
             add_result(result, sizeof(result), &o, first, names[k], ok, note);
             first = 0;
-            blog("recovery ui %s: %s", names[k], note);
+            plog("recovery ui %s: %s", names[k], note);
         }
         if (o < sizeof(result)) o += (size_t)snprintf(result + o, sizeof(result) - o, "}");
         if (first_ui[0]) {
@@ -1053,18 +1123,30 @@ static void recovery(void) {
         }
     }
     if (o < sizeof(result)) o += (size_t)snprintf(result + o, sizeof(result) - o, "}}\n");
-    bpath(dir, "%s/.disc/boot", card);
+    bpath(dir, "%s/.disc/boot", root);
     if (o < sizeof(result) && mkdirs(dir, 0755) == 0) {
-        bpath(dir, "%s/.disc/boot/result.json", card);
+        bpath(dir, "%s/.disc/boot/result.json", root);
         write_atomic(dir, result, o, 0644);
     }
     if (ui_installed_now || menu_installed) {
-        /* This boot's choice again, with what was installed; stock's watch loop restarts the UI it
-           finds missing, and the launcher then runs the menu or the chosen package. */
-        char p[PATH_MAX];
-        bpath(p, RUN_DIR "/ui-launch");
-        if (decide_ui(0)) { write_atomic(p, "ui\n", 3, 0644); stop_running_ui(); }
+        /* This boot's choice again, with what was installed, and what a running menu offers. Nothing
+           is stopped: with Play the launcher runs from the start (ui-launch) and waits for "done",
+           so a process named mq_ui here is that launcher, before or while it waits. */
+        ui_choice c;
+        decide_ui(0);
+        if (!read_choice(&c)) write_choices(&c);
     }
+#if defined(__linux__) && !defined(DISC_BOOT_FIXTURE)
+    if (own) {
+        sync();
+        bpath(dir, RUN_DIR "/card");
+        if (umount(dir)) plog("recovery: the card's own mount stays: %s", strerror(errno));
+    }
+#else
+    (void)own;
+#endif
+    install_progress("done", done, total, NULL);
+    plog("recovery: done, %d of %d", done, total);
 }
 
 static int read_boot(void) {
@@ -1098,7 +1180,9 @@ static int cmd_early(void) {
     int platform = !strcmp(chosen, "platform"), launch = 0;
     if (platform) capture_prepare();
     /* This boot's UI. Nothing of a package runs yet, so what packages asked about the choice applies first. */
-    if (platform) { apply_pending(); launch = decide_ui(1); }
+    /* With Play the launcher runs whatever is installed: it waits for the installation from the card
+       and then starts what it chose, stock's UI included (owner, 2026-10-07). */
+    if (platform) { apply_pending(); launch = decide_ui(1) || !strcmp(why, "recovery"); }
     else { bpath(p, RUN_DIR "/ui/choice.json"); unlink(p); }
     role_state rs;
     int installed = launch || (!rstate_read("service", &rs) && rs.current);
@@ -1298,6 +1382,8 @@ static void menu_watch(pid_t menu) {
     ui_choice c;
     while (mono() < until) {
         if (!ui_alive(menu) || exists(answer) || read_choice(&c) || !c.menu) return;
+        /* While an installation from the card runs, the menu shows it and asks nothing yet. */
+        if (install_pending()) until = mono() + t_menu;
         pause_s(0.1);
     }
     if (exists(answer) || read_choice(&c) || !c.menu) return;
@@ -1310,6 +1396,19 @@ static void menu_watch(pid_t menu) {
     rstate_read("menu", &rs);
     role_status("menu", "failed", NULL, &rs, failures, "did not answer in time");
     kill(menu, SIGKILL);
+}
+
+/* Off, as stock's UI switches the player off (`poweroff -f`): the disks synced, no init scripts. */
+static void power_off(void) {
+    sync();
+#if defined(__linux__) && !defined(DISC_BOOT_FIXTURE)
+    reboot(RB_POWER_OFF);
+#else
+    char p[PATH_MAX];
+    bpath(p, RUN_DIR "/poweroff");
+    write_atomic(p, "\n", 1, 0644);
+#endif
+    _exit(0);
 }
 
 /* The menu's turn (contract, "The menu's turn"). The menu runs in the UI's place and exits with
@@ -1331,6 +1430,13 @@ static int menu_turn(ui_choice *c, manifest *m, char **argv) {
         if (readable) { readable = !bjson_string(&j, bjson_find(&j, 0, "ui"), wanted, sizeof(wanted)); bjson_free(&j); }
         unlink(answer);
         unlink(started);
+        if (readable && !strcmp(wanted, "poweroff")) {
+            /* The power key held in the menu (owner, 2026-10-06): switched off as stock's UI does it. */
+            rstate_read("menu", &rs);
+            role_status("menu", "answered", NULL, &rs, failures, "poweroff");
+            plog("menu: the player switches off");
+            power_off();
+        }
         if (readable && (!strcmp(wanted, "stock") || ui_installed(wanted))) {
             snprintf(c->ui, sizeof(c->ui), "%s", wanted);
             snprintf(c->by, sizeof(c->by), "menu");
@@ -1339,8 +1445,21 @@ static int menu_turn(ui_choice *c, manifest *m, char **argv) {
             write_choice(c);
             /* A valid answer confirms a tentative menu, and may be all this boot runs of ours. */
             confirm("menu");
+            /* The last answer becomes the default: the menu starts on it next time and its countdown
+               takes it (owner, 2026-10-07; no setting of its own). */
+            int lock = state_lock();
+            global_state g;
+            if (!gstate_read(&g) && strcmp(g.ui, wanted)) {
+                snprintf(g.ui, sizeof(g.ui), "%s", wanted);
+                gstate_write(&g);
+                plog("default ui %s: the menu's last answer", wanted);
+            }
+            state_unlock(lock);
+            /* The status names the menu's package, as while it asked. */
             rstate_read("menu", &rs);
-            role_status("menu", "answered", NULL, &rs, failures, wanted);
+            char dir[PATH_MAX], merr[160];
+            bpath(dir, DATA_DIR "/menu/%c", rs.current ? rs.current : 'a');
+            role_status("menu", "answered", rs.current && !manifest_load(dir, m, merr, sizeof(merr)) ? m : NULL, &rs, failures, wanted);
             return 1;
         }
         if (readable) snprintf(err, sizeof(err), "it answered %s, which is not installed", wanted);
@@ -1421,6 +1540,19 @@ static int launcher(int argc, char **argv) {
     if (!m) exec_stock(argv);
     if (read_choice(&c)) { role_status("ui", "fallback", NULL, NULL, 0, "no choice of UI for this boot"); exec_stock(argv); }
     plog("mq_ui launcher %ld: choice %s by %s%s", (long)getpid(), c.ui, c.by[0] ? c.by : "default", c.menu ? ", the menu asks" : "");
+    /* A start with Play: the installation from the card comes first (owner, 2026-10-07). With a menu,
+       the menu shows its progress and answers after it; without one, the launcher waits for it and
+       takes the choice made with what was installed. */
+    bpath(p, RUN_DIR "/ui/install-wait");
+    if (install_pending()) {
+        write_atomic(p, "\n", 1, 0644);
+        if (!c.menu) {
+            install_wait("mq_ui launcher");
+            unlink(p);
+            if (read_choice(&c)) { role_status("ui", "fallback", NULL, NULL, 0, "no choice of UI for this boot"); exec_stock(argv); }
+            plog("mq_ui launcher %ld: choice %s by %s%s", (long)getpid(), c.ui, c.by[0] ? c.by : "default", c.menu ? ", the menu asks" : "");
+        }
+    } else unlink(p);
     /* What ran last has exited: its requests apply, the chosen UI's and the menu's, then those
        about the choice that any package left. */
     if (strcmp(c.ui, "stock")) { ui_domain(domain, c.ui); handle_request(domain, c.ui); }
@@ -1432,6 +1564,14 @@ static int launcher(int argc, char **argv) {
     handle_request("menu", name);
     apply_pending();
     int answered = c.menu ? menu_turn(&c, m, argv) : 0;
+    if (answered && install_pending()) {
+        /* A menu that does not show the installation (before 2.57.3) may answer during it: what it
+           chose starts after the installation, its answer kept over the choice made with it. */
+        install_wait("mq_ui launcher");
+        write_choice(&c);
+        bpath(p, RUN_DIR "/ui/install-wait");
+        unlink(p);
+    }
     if (exists(fallback)) { role_status("ui", "fallback", NULL, NULL, 0, NULL); exec_stock(argv); }
     if (!strcmp(c.ui, "stock")) { role_status("ui", "stock-ui", NULL, NULL, 0, c.note[0] ? c.note : NULL); exec_stock(argv); }
     ui_domain(domain, c.ui);
@@ -1524,6 +1664,11 @@ static int player_launcher(int argc, char **argv) {
     if (!m || read_boot() || strcmp(mode, "platform") || exists(fallback) || read_choice(&c)) {
         player_status("stock", NULL, m ? "no ui package runs" : "out of memory");
         exec_stock_player(argv);
+    }
+    /* A start with Play: the player starts after the installation, as the UI it follows does. */
+    if (install_pending()) {
+        install_wait("player");
+        if (read_choice(&c)) { player_status("stock", NULL, "no choice of UI for this boot"); exec_stock_player(argv); }
     }
     if (c.menu && !player_ran()) {
         /* The first start of the pair in this boot: no player ran, so no watchdog runs yet. The player

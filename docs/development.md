@@ -96,6 +96,13 @@ python3 scripts/package.py describe --source work/<run>/menu --name disc-menu --
 python3 scripts/package.py zip --source work/<run>/menu --output work/<run>/disc-menu.zip
 ```
 
+Its screens, drawn by the menu itself through the fixture build (`python3
+scripts/menu_screens.py` after `scripts/build.sh host` writes them into `docs/assets/menu/`):
+
+| Choose | Reading the card | Installing | Starting | Switching off |
+| --- | --- | --- | --- | --- |
+| ![](assets/menu/choose.png) | ![](assets/menu/reading-the-card.png) | ![](assets/menu/installing.png) | ![](assets/menu/starting.png) | ![](assets/menu/switching-off.png) |
+
 The font header is generated, not edited: `python3 scripts/menu_font.py --font
 <Inter[opsz,wght].ttf> --output device/menu/font.h` (Pillow with FreeType; the source font's
 SHA-256 and the versions used are written into the header, docs/provenance.md).

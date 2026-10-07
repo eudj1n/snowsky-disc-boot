@@ -17,7 +17,7 @@ MENU = Path(os.environ.get('DISC_MENU_FIXTURE_BINARY', ROOT/'build/host/disc-men
 PRODUCTION = Path(os.environ.get('DISC_MENU_BINARY', ROOT/'build/host/disc-menu'))
 PANEL = 360
 GROUND, LINE, SELECTED, ACCENT = (0x18, 0x16, 0x14), (0x33, 0x30, 0x2c), (0x3a, 0x35, 0x30), (0xff, 0x79, 0x5a)
-VOLUME_UP, VOLUME_DOWN, PLAY = 0xfb, 0xfc, 0xfa
+VOLUME_UP, VOLUME_DOWN, PLAY, POWER_HOLD = 0xfb, 0xfc, 0xfa, 0x108
 
 
 def event(kind, code, value):
@@ -112,6 +112,34 @@ class MenuTests(unittest.TestCase):
         self.key(PLAY)
         self.assertEqual(menu.wait(timeout=10), 0)
         self.assertEqual(self.answer(), 'beta')
+
+    def install(self, state, done=0, total=0, current=None):
+        (self.root/'status/install.json').write_text(json.dumps(dict(schema=1, state=state, done=done, total=total, current=current)))
+
+    def test_an_installation_is_shown_and_then_what_it_installed_is_offered(self):
+        """A start with Play (owner, 2026-10-07): boot installs from the card first; the menu shows it,
+        asks nothing and counts nothing, then offers what is installed and counts down."""
+        self.install('installing', 0, 2, 'disc-server')
+        menu = self.start(countdown=300)
+        time.sleep(1.0)
+        self.key(PLAY)
+        self.key(POWER_HOLD)
+        time.sleep(0.5)
+        self.assertIsNone(menu.poll(), 'no answer while boot installs, keys or not')
+        self.assertIsNone(self.answer())
+        self.assertEqual(self.pixel(180, 30), GROUND)
+        self.choices(['alpha', 'beta', 'gamma'], 'gamma')
+        self.install('done', 2, 2)
+        self.assertEqual(menu.wait(timeout=10), 0)
+        self.assertEqual(self.answer(), 'gamma', 'the list and the default as boot offers them after the installation')
+
+    def test_the_power_key_held_answers_poweroff(self):
+        menu = self.start(countdown=60000)
+        time.sleep(0.3)
+        self.key(POWER_HOLD)
+        self.assertEqual(menu.wait(timeout=10), 0)
+        self.assertEqual(self.answer(), 'poweroff')
+        self.assertIn('disc-menu: key 0x108 1', menu.stderr.read(), 'each key in the output, to confirm the code on a player')
 
     def test_a_touch_chooses_its_row(self):
         menu = self.start(countdown=60000)
