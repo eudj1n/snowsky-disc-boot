@@ -1103,6 +1103,42 @@ a write with all of it. Each item with its host tests and the guest.
   on the NAND right after the writer in one session. A readback in a fresh
   entry stays the fallback. One session also means one plan, one approval and
   one audit of its journal.
+- [x] The fifth write (2026-10-07, run `install-20261007-215049`, image
+  `69d82c9d…`, boot release 2.57.3 with the held ask, #15): the backup in
+  24 min 11 s (794 batches, median 959 ms, no timeout; 38 min before), the
+  write in 9 min 47 s (the image region's check 110.7 s, the sample's hash
+  4.24 s, the writer 245.7 s, measured for the first time instead of a blind
+  15 minutes; 768 blocks, bad blocks 383 and 716 skipped, no retry). The
+  readback follows in a fresh entry.
+- [ ] Found at its first starts (the player's boot log over the USB console,
+  2026-10-07), each to fix with a test:
+  - The installer left a package staged by an earlier run on the card: the
+    first try of the day (stopped at its review) staged the menu, the server
+    and the page, the later ones only the menu, and Play installed the
+    server too. Staging clears `.disc/boot/install/` of what this run did
+    not choose (or names what is there and asks).
+  - Installing the version that runs already made the server tentative
+    again, and the boot-loop guard counts every start until it is confirmed
+    (3 minutes of running): six quick restarts while looking for the menu
+    turned the player to stock (`boot-loop`, five unconfirmed). The same
+    package (by its digest) already confirmed is skipped ("already
+    installed"); and the guard counts only starts that did not reach a
+    ready service and UI, not a person restarting.
+  - The menu took the release of the recovery gesture as an answer: the
+    stock key driver reports Play's gestures when the key is let go (single
+    `0xfa`, double `0x10d`, hold `0x10c`), after the menu has started, so
+    letting go of Play answered the default. After a start with Play the
+    menu takes no Play gesture until the key has been up for a moment after
+    it asked.
+  - (Not needed, owner: the first start after the image ran the menu
+    installed before, 2.57.2, which knows nothing of the installation; only
+    the owner's player ever had it, 2.57.2 was never tagged.)
+  - The default UI became stock: the old menu's answer at that first start
+    is now the last answer. Nothing wrong with the rule; the owner's way back
+    to the menu: a start with Play, then 3 minutes of running.
+  - The write's progress stood still while a held ask waited (the region's
+    check about 2 minutes) and counted the writer as 15 minutes: a held ask
+    counts by its expected time (the measured 111 s, 4 s and 246 s).
 
 ## Stage 6 — the user's path (owner, 2026-10-06)
 
