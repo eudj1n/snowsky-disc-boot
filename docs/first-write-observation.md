@@ -286,3 +286,38 @@ stopped stock's UI for them, asked again and started diskOS. To do with the fast
 (owner): the boot log synced line by line; the menu takes only a fresh Play press; the
 installer says to hold Play until the logo and press the power key briefly; the installation
 finishes before the menu offers anything.
+
+## The fifth write (boot release 2.57.3, the faster sessions)
+
+The owner wrote boot release 2.57.3 on 2026-10-07 (build `2506f166236f`, image `69d82c9d…`, the
+guest acceptance of PRs #10–#12): the installation with Play before the pair, the menu's
+progress and power key, its last answer, and the USB sessions of #15. The day's first tries
+stopped before any write: the review refused the asks' setting in the transport profile (#13
+moved it out), and the first backup with repeated asks stopped after its first batch (#14, #15).
+
+| Step (2026-10-07, UTC) | Observed |
+| --- | --- |
+| Backup with repeated asks | `80db9bc4`, from 16:13:58: after the first batch 18 asks of 50 ms timed out, the 19th was answered (967 ms), the next request (the result's address) timed out; nothing written |
+| Probe read, one held ask | `c1d49c2a`, 16:35:22–16:35:31, 2 blocks, 297 calls, batches of 185, 957 and 964 ms, no timeout |
+| Stage only, no writer | `b805faeb`, 16:37:29–16:43:10, 9,447 calls, no timeout: the image region's check 111 s, the 1 MiB sample's hash 4.2 s |
+| Backup | `2130dde8`, 16:52:19–17:16:30 (24 min 11 s; 38 before), 794 batches, median 959 ms, the history's image |
+| Write, a fresh entry | `5096608b`, 17:18:09–17:27:56 (9 min 47 s; 26 before): region check 110.7 s, sample hash 4.24 s, the writer 245.7 s (measured, not a blind 15 min); 768 blocks, bad blocks 383 and 716, no retry |
+| The owner's look | "it is ok": the new build ran, the menu and the server 2.57.3; Play installed the menu 2.57.3 and the server again (below) |
+| Readback, a fresh entry | `dae42fc7`, 17:48:51–18:12:54 (24 min 3 s), `saved-logical-readback-matches` against `69d82c9d…` |
+| Audits | `saved-candidate-write-trace-matches`, `saved-postwrite-trace-matches` |
+
+The installation's three sessions took 58 minutes on the player against about 1 h 45 min.
+
+### The first starts after it
+
+The boot log over the USB console told the rest. The first start with Play (`9fd15eab`) mounted
+the exFAT card itself and installed disc-server 2.57.3 and disc-menu 2.57.3 in 1.2 s, while the
+menu installed before (2.57.2), which knows nothing of the installation, was on the screen. The
+server came from the day's first try, which had staged it and stopped at its review; the later
+runs chose only the menu but left it on the card. Installing the server that ran already made
+it tentative, and the boot-loop count clears only at a confirmation, three minutes into every
+start: six quick restarts in search of the menu reached five and the player started in stock
+(`boot-loop`). The old menu's answer at the first start, stock, had become the default UI, and
+the release of the recovery's Play, reported by stock's key driver when the key is let go
+(`0x10d`, `0xfa`), answered the new menu's default. A start with Play and three minutes of
+running brought the menu back. The fixes are on branch `next-image` (plan, stage 4c).

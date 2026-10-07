@@ -1048,6 +1048,99 @@ a write with all of it. Each item with its host tests and the guest.
   2026-10-07: "ой как сложно у нас всё"): after the write, a review of what
   each piece of evidence pins, keeping what proves the right image goes to
   the right player.
+- [ ] A short identity check instead of the full backup (owner, 2026-10-07:
+  the way back is only ever stock, so the backup's bytes restore nothing).
+  The backup's one remaining job is to show that the player holds the
+  history's image before the write: a read of a few blocks (the probe's 2
+  blocks, about a minute, as on 2026-10-07) compared with that image, not
+  96 MiB (about 25 minutes with the held ask). What it no longer sees: a
+  rootfs changed elsewhere (a FiiO update) beyond those blocks; the write
+  replaces the whole rootfs anyway and the check after it proves the result.
+  The installer and its review change (the backup is part of the reviewed
+  flow): offline on the owner's history first, then on the guest.
+  Without a history (a first installation, owner's question, 2026-10-07)
+  the blocks are compared with stock of the reviewed version, which the
+  installer already builds from FiiO's update (the profile pins its rootfs,
+  `111e4dd7…`): the squashfs superblock and first blocks are unique to each
+  FiiO build, so another version or another system (diskOS) is refused
+  before any write, and the reviewed profiles can name which version it is.
+  Blocks inside the squashfs only: FiiO may leave the tail after it other
+  than `FF` (the pre-install review's rule). A first installation adds the
+  short read of the boot blocks (which rootfs the bootloader selects) to the
+  same session: one short read, then the write in a fresh entry.
+- [ ] The check after the write at the first start instead of the USB
+  readback (owner, 2026-10-07). The boot layer, at the first start after an
+  installation, reads the rootfs partition as the kernel presents it (the
+  view the system boots from, its bad blocks skipped by the kernel's
+  driver), computes its SHA-256 (seconds with the CPU's caches, against
+  about 25 minutes through the ROM) and compares it with the image's, which
+  the installer puts on the card; the outcome goes to the card and the boot
+  log, and the installer takes it there. Any corruption, the checking code
+  included, changes the hash; it guards against faulty writes, not against
+  a deliberate substitution, which the reviewed write path already excludes.
+  The writer already reads back and compares every block it programs
+  (`my_write5`, its record without a nonce). First: the kernel review, that
+  the root device presents the whole padded logical image (its `FF` tail
+  included); then the guest. The USB readback stays the way when the result
+  does not come back or differs. With both items an installation takes the
+  write (about 9 minutes) and a first start, against about an hour now.
+- [ ] One USB Boot entry for an installation, one session, one SPL (owner,
+  2026-10-07: easier for the user, as diskOS's single `usbboot` run of about
+  20 minutes, 18 of them a blind wait). What kept the readback out of the
+  write's entry was never the write: each of our sessions is its own tool
+  run and loads the SPL again, and a second SPL re-runs the DDR bring-up,
+  whose PHY training failed in 3 of 6 recorded re-runs (both after the
+  writer, one of four after a read; failure 30, `CALIB_DONE` `0x12`), the
+  first SPL of an entry clean in all 11 (`first-write-observation.md`, "The
+  second SPL of a USB Boot entry"). So the installation becomes one session:
+  the SPL and the metadata read; the short identity check of a few rootfs
+  blocks with the rootfs reader; the staging check, the image and its read
+  back, the sample's hash; the writer with its held ask; its record. Each
+  payload goes into the code region in turn, as the write session already
+  does, and DDR stays up. The proof then comes from the first start (the item
+  above); if it is wanted over USB, the readback can follow the writer in the
+  same session (no SPL), after a short read-only check that our reader works
+  on the NAND right after the writer in one session. A readback in a fresh
+  entry stays the fallback. One session also means one plan, one approval and
+  one audit of its journal.
+- [x] The fifth write (2026-10-07, run `install-20261007-215049`, image
+  `69d82c9d…`, boot release 2.57.3 with the held ask, #15): the backup in
+  24 min 11 s (794 batches, median 959 ms, no timeout; 38 min before), the
+  write in 9 min 47 s (the image region's check 110.7 s, the sample's hash
+  4.24 s, the writer 245.7 s, measured for the first time instead of a blind
+  15 minutes; 768 blocks, bad blocks 383 and 716 skipped, no retry), the
+  readback in 24 min 3 s, every byte the image's, both audits passed, the
+  owner's "it is ok": 58 minutes on the player against about 1 h 45 min
+  (`first-write-observation.md`, "The fifth write").
+- [ ] Found at its first starts (the player's boot log over the USB console,
+  2026-10-07), each to fix with a test:
+  - The installer left a package staged by an earlier run on the card: the
+    first try of the day (stopped at its review) staged the menu, the server
+    and the page, the later ones only the menu, and Play installed the
+    server too. Staging clears `.disc/boot/install/` of what this run did
+    not choose (or names what is there and asks).
+  - Installing the version that runs already made the server tentative
+    again, and the boot-loop guard counts every start until it is confirmed
+    (3 minutes of running): six quick restarts while looking for the menu
+    turned the player to stock (`boot-loop`, five unconfirmed). The same
+    package (by its digest) already confirmed is skipped ("already
+    installed"); and the guard counts only starts that did not reach a
+    ready service and UI, not a person restarting.
+  - The menu took the release of the recovery gesture as an answer: the
+    stock key driver reports Play's gestures when the key is let go (single
+    `0xfa`, double `0x10d`, hold `0x10c`), after the menu has started, so
+    letting go of Play answered the default. After a start with Play the
+    menu takes no Play gesture until the key has been up for a moment after
+    it asked.
+  - (Not needed, owner: the first start after the image ran the menu
+    installed before, 2.57.2, which knows nothing of the installation; only
+    the owner's player ever had it, 2.57.2 was never tagged.)
+  - The default UI became stock: the old menu's answer at that first start
+    is now the last answer. Nothing wrong with the rule; the owner's way back
+    to the menu: a start with Play, then 3 minutes of running.
+  - The write's progress stood still while a held ask waited (the region's
+    check about 2 minutes) and counted the writer as 15 minutes: a held ask
+    counts by its expected time (the measured 111 s, 4 s and 246 s).
 
 ## Stage 6 — the user's path (owner, 2026-10-06)
 
