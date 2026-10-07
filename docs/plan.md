@@ -918,11 +918,23 @@ a write with all of it. Each item with its host tests and the guest.
   at about ten seconds of uptime, as a power key held that long switches the
   player off. The installer now says to hold Play until the logo and to
   press the power key briefly (`flow.py`, the contract's user path).
-- [ ] The installation finishes before the menu offers anything, and the
+- [x] The installation finishes before the menu offers anything, and the
   menu shows its progress (the item of stage 4b, "The menu during an
-  installation with Play"): its first answer no longer races the card.
-- [ ] The power key held in the menu switches the player off (stage 4b,
-  "The power key in the menu").
+  installation with Play"): boot reads the card where stock mounted it or
+  mounts it itself (stock mounts it only once its player runs, which now
+  waits), writes `install.json`, and both launchers wait for it; the menu
+  shows "Installing", asks nothing until it is done (its 60 s from then) and
+  then offers what is installed. With Play the launcher always runs, so
+  stock's UI no longer starts before the installation, and nothing is
+  stopped after it. `test_boot` (the launchers waiting on a card of boot's
+  own mount, then the installed UI started with nothing stopped),
+  `test_menu` (the installation shown, no answer, then the new list).
+  The own mount needs the player: the guest's card is mounted before boot.
+- [x] The power key held in the menu switches the player off (stage 4b,
+  "The power key in the menu"): the menu answers `poweroff` for `0x108`,
+  never while boot installs, and writes each key's code to its output;
+  boot syncs and powers off as stock's UI does. `test_menu`, `test_boot`.
+  The code is still to be seen on the player (the menu's output).
 - [x] The menu's status keeps the package's name and version once it has
   answered (`menu.json` named neither on 2026-10-06, so the manager left
   the menu out of "Player software"): the answer's status reads the menu's

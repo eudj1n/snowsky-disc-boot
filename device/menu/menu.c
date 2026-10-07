@@ -1,7 +1,9 @@
 /* disc-menu: the boot menu (contract, "Several UIs and the boot menu"; plan, stage 3b).
    Runs in the UI's place at power-on: shows the UIs boot offers, counts 5 s down to the default,
    takes Volume +/- and Play (or a touch), answers in $DISC_BOOT_RUN/choice and hands over to the
-   UI launcher in its own process. Everything it opens closes on that exec. */
+   UI launcher in its own process. Everything it opens closes on that exec. While boot installs from
+   the card (a start with Play) it shows the installation and asks nothing; the power key held
+   answers "poweroff". */
 #define _XOPEN_SOURCE 700
 #define _DARWIN_C_SOURCE
 #include "boot_util.h"
@@ -36,6 +38,9 @@
 #define CODE_VOLUME_UP 0xfb
 #define CODE_VOLUME_DOWN 0xfc
 #define CODE_PLAY 0xfa
+/* The power key held: stock's UI switches the player off on it (snowsky-disc-qemu's reading of
+   stock; each key's code goes to the menu's output, so the player can confirm it). */
+#define CODE_POWER_HOLD 0x108
 #define EV_KEY_TYPE 1
 #define EV_ABS_TYPE 3
 #define BTN_TOUCH_CODE 0x14a
@@ -47,6 +52,9 @@ typedef struct { char ui[33], title[48], version[65]; } entry;
 static entry entries[MAX_ENTRIES];
 static int count, selected, chosen = -1, counting = 1, held[8], nheld;
 static long deadline, countdown_ms = COUNTDOWN_MS;
+/* boot's installation from the card ($DISC_BOOT_STATUS/install.json), and the power key's answer. */
+static int installing, inst_done, inst_total, off;
+static char inst_state[16], inst_current[48];
 static canvas frame;
 
 static long now_ms(void) {
@@ -84,6 +92,40 @@ static int load_choices(const char *status) {
     return count ? 0 : -1;
 }
 
+/* Whether boot is still installing from the card: the progress while it is, 0 once it is done. */
+static int read_install(const char *status) {
+    char p[PATH_MAX], buf[400];
+    size_t len;
+    installing = 0;
+    if (snprintf(p, sizeof(p), "%s/install.json", status) >= (int)sizeof(p) || read_small(p, buf, sizeof(buf), &len)) return 0;
+    bjson j;
+    if (bjson_parse(&j, buf, len, 16)) return 0;
+    long long v;
+    inst_state[0] = inst_current[0] = 0;
+    bjson_string(&j, bjson_find(&j, 0, "state"), inst_state, sizeof(inst_state));
+    bjson_string(&j, bjson_find(&j, 0, "current"), inst_current, sizeof(inst_current));
+    inst_done = !bjson_int(&j, bjson_find(&j, 0, "done"), &v) ? (int)v : 0;
+    inst_total = !bjson_int(&j, bjson_find(&j, 0, "total"), &v) ? (int)v : 0;
+    bjson_free(&j);
+    installing = inst_state[0] && strcmp(inst_state, "done") != 0;
+    return installing;
+}
+
+static void render_install(void) {
+    char line[96];
+    draw_fill(&frame, GROUND);
+    draw_ring(&frame, LINE, ACCENT, inst_total > 0 ? (unsigned)(inst_done * 65536 / inst_total) : 0);
+    draw_text(&frame, FACE_LABEL, 180, 74, ALIGN_MIDDLE, "INSTALLING", MUTED);
+    if (!strcmp(inst_state, "waiting")) {
+        draw_text(&frame, FACE_TITLE, 180, 172, ALIGN_MIDDLE, "Reading the card\xe2\x80\xa6", INK);
+        return;
+    }
+    draw_text(&frame, FACE_TITLE_BOLD, 180, 156, ALIGN_MIDDLE, inst_current[0] ? inst_current : "", INK);
+    snprintf(line, sizeof(line), "%d of %d", inst_done < inst_total ? inst_done + 1 : inst_total, inst_total);
+    draw_text(&frame, FACE_NOTE, 180, 196, ALIGN_MIDDLE, line, MUTED);
+    draw_text(&frame, FACE_SMALL, 180, 306, ALIGN_MIDDLE, "from the card", MUTED);
+}
+
 /* The screen: the ring's countdown, the list (three rows at a time around the selection) and
    what the keys do, or what starts. */
 static int first_row(void) {
@@ -94,7 +136,12 @@ static int first_row(void) {
 
 static void render(long now) {
     char line[96];
+    if (installing) { render_install(); return; }
     draw_fill(&frame, GROUND);
+    if (off) {
+        draw_text(&frame, FACE_TITLE, 180, 172, ALIGN_MIDDLE, "Switching off\xe2\x80\xa6", INK);
+        return;
+    }
     long left = counting && chosen < 0 ? deadline - now : 0;
     draw_ring(&frame, LINE, ACCENT, left > 0 && countdown_ms > 0 ? (unsigned)(left * 65536 / countdown_ms) : 0);
     draw_text(&frame, FACE_LABEL, 180, 74, ALIGN_MIDDLE, "START WITH", MUTED);
@@ -214,8 +261,10 @@ static int row_at(int x, int y) {
 }
 
 static void key(int code, int value) {
+    fprintf(stderr, "disc-menu: key 0x%x %d\n", code, value);
     if (value == 0) { let_go(code); return; }
-    if (value != 1 || is_held(code)) return;
+    if (value != 1 || is_held(code) || installing) return;
+    if (code == CODE_POWER_HOLD) { off = 1; return; }
     counting = 0;
     if (code == CODE_VOLUME_UP && selected > 0) selected--;
     else if (code == CODE_VOLUME_DOWN && selected < count - 1) selected++;
@@ -235,16 +284,16 @@ static void read_events(void) {
                 /* The panel's coordinates are the canvas turned 180 degrees. */
                 int row = row_at(PANEL - 1 - touch_x, PANEL - 1 - touch_y);
                 touching = 0;
-                if (row >= 0) { selected = row; chosen = row; }
+                if (row >= 0 && !installing) { selected = row; chosen = row; }
             }
         }
     }
 }
 
 /* The answer, then the hand-over to the UI launcher in this process. */
-static void answer(const char *run, const char *launcher) {
+static void answer(const char *run, const char *launcher, const char *ui) {
     char p[PATH_MAX], buf[64];
-    int n = snprintf(buf, sizeof(buf), "{\"ui\":\"%s\"}\n", entries[chosen].ui);
+    int n = snprintf(buf, sizeof(buf), "{\"ui\":\"%s\"}\n", ui);
     if (snprintf(p, sizeof(p), "%s/choice", run) < (int)sizeof(p)) write_atomic(p, buf, (size_t)n, 0644);
     if (launcher) {
         char *argv[] = {"mq_ui", NULL};
@@ -265,12 +314,36 @@ int main(void) {
     ring_prepare();
     fb_open(fb_path);
     input_open(keys, touch, status);
+    setvbuf(stderr, NULL, _IONBF, 0);
     deadline = now_ms() + countdown_ms;
-    long shown = -1;
-    int last_selected = -1, last_counting = -1;
+    long shown = -1, polled = 0;
+    int last_selected = -1, last_counting = -1, was_installing = read_install(status), last_done = -1;
     for (;;) {
         read_events();
         long now = now_ms();
+        if (now - polled >= 200) {
+            polled = now;
+            int was = installing;
+            read_install(status);
+            if (was && !installing) {
+                /* Installed: what boot offers now, and the countdown from the start. */
+                count = 0; selected = 0; chosen = -1; counting = 1;
+                load_choices(status);
+                deadline = now + countdown_ms;
+                last_selected = -1;
+            }
+        }
+        if (installing) {
+            deadline = now + countdown_ms;
+            if (!was_installing || inst_done != last_done || now - shown >= 500) {
+                render(now); show(); shown = now; last_done = inst_done;
+            }
+            was_installing = 1;
+            pause_s(0.05);
+            continue;
+        }
+        was_installing = 0;
+        if (off) { render(now); show(); answer(run, launcher, "poweroff"); }
         if (counting && now >= deadline) { chosen = selected; counting = 0; }
         /* A frame on every change, and ten a second while the ring runs down. */
         if (chosen >= 0 || selected != last_selected || counting != last_counting || (counting && now - shown >= 100)) {
@@ -278,7 +351,7 @@ int main(void) {
             show();
             shown = now; last_selected = selected; last_counting = counting;
         }
-        if (chosen >= 0) answer(run, launcher);
+        if (chosen >= 0) answer(run, launcher, entries[chosen].ui);
         pause_s(0.02);
     }
 }
