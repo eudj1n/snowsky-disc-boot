@@ -483,6 +483,27 @@ exit 0
             self.assertIn(line, log)
         self.assertLess(log.index('recovery: done'), log.index('ui/alpha starting'), 'installed, then started')
 
+    def test_a_menu_that_answers_during_the_installation_starts_its_choice_after_it(self):
+        """The first start with Play after the image runs the menu installed before (2.57.2), which
+        knows nothing of the installation: its answer waits for the installation and stands."""
+        self.stock_ui(); self.stock_player()
+        self.two_uis()
+        self.menu('printf \'{"ui":"beta"}\' > "$DISC_BOOT_RUN/choice"\n', confirmed=True)
+        self.package(self.staged('ui/gamma'), GOOD, role='ui', name='gamma')
+        self.early('play')
+        self.launch().wait(timeout=10)
+        ui = self.launch()
+        player = self.launch_player()
+        time.sleep(1)
+        self.assertEqual(self.runs(), ['menu'], 'beta waits for the installation')
+        self.env['DISC_BOOT_FIXTURE_MOUNTABLE'] = '1'
+        self.boot('start', check=True)
+        ui.wait(timeout=20); player.wait(timeout=20)
+        self.assertEqual(self.runs(), ['menu', 'beta'])
+        self.assertEqual((self.choice()['ui'], self.choice()['by']), ('beta', 'menu'), "the menu's answer stands")
+        self.assertIn('recovery ui gamma: installed gamma 1', self.boot_log())
+        self.assertNotIn('stopped for the installed UI', self.boot_log())
+
     def test_the_menu_answers_poweroff_with_the_power_key(self):
         self.stock_ui(); self.stock_player()
         self.two_uis()

@@ -1589,6 +1589,14 @@ static int launcher(int argc, char **argv) {
     handle_request("menu", name);
     apply_pending();
     int answered = c.menu ? menu_turn(&c, m, argv) : 0;
+    if (answered && install_pending()) {
+        /* A menu that does not show the installation (before 2.57.3) may answer during it: what it
+           chose starts after the installation, its answer kept over the choice made with it. */
+        install_wait("mq_ui launcher");
+        write_choice(&c);
+        bpath(p, RUN_DIR "/ui/install-wait");
+        unlink(p);
+    }
     if (exists(fallback)) { role_status("ui", "fallback", NULL, NULL, 0, NULL); exec_stock(argv); }
     if (!strcmp(c.ui, "stock")) { role_status("ui", "stock-ui", NULL, NULL, 0, c.note[0] ? c.note : NULL); exec_stock(argv); }
     ui_domain(domain, c.ui);
