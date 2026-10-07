@@ -929,7 +929,8 @@ a write with all of it. Each item with its host tests and the guest.
   stopped after it. `test_boot` (the launchers waiting on a card of boot's
   own mount, then the installed UI started with nothing stopped),
   `test_menu` (the installation shown, no answer, then the new list).
-  The own mount needs the player: the guest's card is mounted before boot.
+  On the guest boot mounted the card itself (`vfat`) at every start with
+  Play: stock mounts it only once its player runs.
 - [x] The power key held in the menu switches the player off (stage 4b,
   "The power key in the menu"): the menu answers `poweroff` for `0x108`,
   never while boot installs, and writes each key's code to its output;
@@ -945,6 +946,24 @@ a write with all of it. Each item with its host tests and the guest.
   menu is offered as `default`. `test_boot` (the next start's choice and
   the menu's `default`); an explicit default from the manager only if it is
   missed (a package's `ui-default` request exists already).
+- [x] Accepted on the guest (2026-10-07, emulator `f1d5e33`, build
+  `2506f166236f`, image `e07dc099…`): `boot_guest` (16 steps),
+  `two_packages`, `menu_guest` (Play installs the menu and two UIs before
+  anything is offered and the keys choose; the countdown starts the last
+  answer; a touch chooses), the menu during the installation (it asked
+  before `done`, answered after it, nothing stopped), `boot_report`,
+  `boot_layer` and `install.py --guest`. Three findings on the way:
+  - The installation stopped the launcher it was waiting for: with Play
+    every `mq_ui` is the launcher, which `recovery()` took for stock's UI
+    before it marked its wait. It stops nothing now (`test_boot`).
+  - A start logged every fatal-signal line in the kernel's ring, each
+    synced: on the guest, which shares its host's ring, that held up the
+    launcher by a second. A start logs the last 8 new ones and a count.
+  - Stock's player died at every start after the menu took Volume - and
+    Play: the guest's key device is a file a new reader reads from its
+    start, so the player, which now starts after the answer, took them
+    again. On the player a later reader sees only later presses;
+    `menu_guest` empties the file once the menu has answered.
 - [ ] The USB sessions' time (stage 4b), in this order: a timer that runs in
   USB Boot, settled offline; the settle after each batch from its
   measurement (the backup and the readback from 35-40 minutes to a few);
