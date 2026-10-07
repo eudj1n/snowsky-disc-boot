@@ -54,7 +54,8 @@ class Rom(FakeUsb):
         fail = len(self.calls) == self.at
         if name == 'control_transfer':
             _, direction, request, high, low, data, length, timeout = args
-            assert 0 < timeout <= 10000
+            # A held ask after an execution waits up to the whole wait (plan, stage 4c), other requests 10 s.
+            assert 0 < timeout <= (3600000 if request == 0 else 10000)
             assert request in (0, 1, 2, 4)
             parameter = high<<16 | low
             if fail: return -7

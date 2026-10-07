@@ -97,6 +97,32 @@ session budget 60,000 ms. At most 256 protocol calls may be journaled. OS/librar
 loading, enumeration/open/claim/release and filesystem operations do not have a
 hard interruptible wall-clock guarantee from this synchronous API.
 
+A batch of the rootfs collector (the backup, the readback, the read by digest)
+no longer sleeps the settle after its execution (plan, stage 4c): the ROM does
+not answer USB while a payload runs, so the host sends the batch's one CPU-info
+request right after the execution with the whole settle as its timeout: the
+controller holds it and the ROM answers it once the batch has returned, which
+ends the wait and measures the batch (`batch_ready_ms`). A request is never
+given up while the payload runs: on the player (2026-10-07) asks of 50 ms, 18 of
+them timed out, were all kept by the ROM and taken after the batch, and the next
+request then timed out. A timeout of the held request (the whole settle went by)
+or any other error stops the session as before. The calls are those of the
+fixed settle, the journal marks the request (`poll: true`) and the readback's
+audit accepts it with a timeout of at most the settle. Measured on the player:
+64-page batches of 957 and 964 ms, a marker batch of 185 ms, instead of 2 s
+each. The SPL's execution keeps its fixed wait. `completion_ask: false` is the
+fixed settle as before. The write session asks the same way after its staging
+check and its writer ([writer transport](writer-transport.md#completion-on-the-player)).
+
+These settings live in their own profile, `firmware/completion/v<version>.json`
+(`ram_transport.load_completion`, bound to the transport profile it is for),
+never in the transport or installer profile: every recorded session's
+evidence pins the transport profile byte for byte, and installations keep the
+installer's RAM contract identical, so a setting added there refuses the next
+installation of every installed player (it did on 2026-10-07, before any USB
+access). A plan made without the completion profile has none of its fields and
+no asks, as before.
+
 Negative returns, zero progress, successful short transfers, excessive counts,
 comparison failures or deadline expiry stop the sequence. Even an error with
 partial bytes never causes continuation or replay. After an attempted execution,

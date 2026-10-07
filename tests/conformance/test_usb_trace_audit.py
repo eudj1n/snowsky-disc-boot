@@ -89,5 +89,49 @@ class UsbTraceAuditTests(unittest.TestCase):
             self.check()
 
 
+    def asked(self, codes=(), answered=True, flagged=True, timeout=200):
+        """The journal after the execution with the held ask (plan, stage 4c): asks that returned
+        `codes` without an answer, then (answered) the ROM's answer."""
+        rows = copy.deepcopy(self.rows)
+        seq = len(self.expected)
+        for k, code in enumerate(list(codes) + ([5] if answered else [])):
+            seq += 1
+            attempt = {'phase': 'attempt', 'sequence': seq, 'kind': 'control', 'request': 0, 'parameter': 0,
+                       'timeout_ms': timeout}
+            if flagged:
+                attempt['poll'] = True
+            reply = {'phase': 'return', 'sequence': seq, 'code': code}
+            if code == 5:
+                name = f'read-{seq:03}.bin'
+                (self.run/name).write_bytes(self.data)
+                reply.update(file=name, bytes=5, sha256=hashlib.sha256(self.data).hexdigest())
+            rows.extend((attempt, reply))
+        return rows
+
+    def test_one_held_ask_is_answered(self):
+        expected = self.expected + [audit.ready(200, self.data)]
+        report = audit.compare(self.asked(), expected, self.run, self.transport, 5, [4096], self.connection)
+        self.assertEqual((report['calls'], report['raw_reads']), (5, 3))
+
+    def test_the_writer_s_ask_may_follow_one_that_failed_at_once(self):
+        expected = self.expected + [audit.ready(200, self.data, tolerant=True)]
+        report = audit.compare(self.asked([-1]), expected, self.run, self.transport, 7, [4096], self.connection)
+        self.assertEqual(report['calls'], 6)
+
+    def test_an_ask_is_never_given_up_and_asked_again(self):
+        for tolerant, rows in ((False, self.asked([-7])), (True, self.asked([-7])), (False, self.asked([-1])),
+                               (False, self.asked(answered=False)), (False, self.asked(flagged=False)),
+                               (False, self.asked(timeout=201)), (True, self.asked([-1, -1]))):
+            with self.subTest(tolerant=tolerant, rows=rows[-2:]), self.assertRaises(ValueError):
+                expected = self.expected + [audit.ready(200, self.data, tolerant=tolerant)]
+                audit.compare(rows, expected, self.run, self.transport, 20, [4096], self.connection)
+            for leftover in self.run.glob('read-00[6-9].bin'):
+                leftover.unlink()
+        # An ask flagged where none is expected is refused too.
+        rows = copy.deepcopy(self.rows)
+        rows[2]['poll'] = True
+        with self.assertRaises(ValueError):
+            self.check(rows)
+
 if __name__ == '__main__':
     unittest.main()

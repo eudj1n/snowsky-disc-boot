@@ -71,6 +71,22 @@ def load_transport(base, reader, directory=PROFILES):
     return p
 
 
+def load_completion(base, transport, directory=PROFILES):
+    """The host's ask after an execution (plan, stage 4c): whether the ROM is asked instead of the
+    fixed wait, and how long the staging check may run. Apart from the transport profile, which every recorded session's evidence pins byte for
+    byte (an installation's history would no longer match it), and from the installer's RAM
+    contract, which installations keep identical."""
+    p = json.loads(read_file(directory/'completion'/f'v{base["version"]}.json', 8192))
+    check(p.get('schema_version') == 1 and p.get('version') == base['version']
+          and p.get('transport_profile_sha256') == fingerprint(transport), 'Completion profile mismatch')
+    check(type(p.get('completion_ask')) is bool, 'Invalid completion completion_ask')
+    for key, low, high in [('staging_check_ms', 1000, 600000), ('staging_sample_ms', 1000, 120000)]:
+        check(type(p.get(key)) is int and low <= p[key] <= high, f'Invalid completion {key}')
+    sample = p.get('staging_sample_bytes')
+    check(type(sample) is int and 0 < sample <= 16*1024*1024 and sample % 65536 == 0, 'Invalid staging hash sample')
+    return p
+
+
 def prepare_inputs(base, cpu, reader, transport, build, diskos, mode='identity'):
     raw = read_file(build/'build.json', 65536)
     m = json.loads(raw)
@@ -80,11 +96,13 @@ def prepare_inputs(base, cpu, reader, transport, build, diskos, mode='identity')
           and m.get('reader_profile') == reader, 'Build profile mismatch')
     page_policy = load_metadata_policy(base, reader) if mode in ('metadata', 'rootfs-probe', 'rootfs', 'rootfs-digest') else None
     collector = load_collector_policy(base, reader, mode) if mode.startswith('rootfs') else None
+    # The staging check (plan, stage 4c) is memory only: no page policy, no collector, no NAND opcode.
+    staging = mode == 'staging-check'
     check(m.get('collector_policy') == collector, 'Build collector policy mismatch')
-    check(m.get('purpose', 'identity') == (mode if page_policy else 'identity')
+    check(m.get('purpose', 'identity') == (mode if page_policy or staging else 'identity')
           and m.get('page_policy') == page_policy, 'Build purpose/page policy mismatch')
     check(m.get('physical_qualified') is False and m.get('device_access_performed') is False
-          and m.get('nand_opcodes') == ['0x9f', '0x0f'] + (['0x13', '0x0b'] if page_policy else [])
+          and m.get('nand_opcodes') == ([] if staging else ['0x9f', '0x0f'] + (['0x13', '0x0b'] if page_policy else []))
           and m.get('entry') == reader['load_address'],
           'Wrong build scope/entry')
     check(set(m.get('source_sha256', {})) == set(source_paths()), 'Build source set changed')
@@ -165,6 +183,9 @@ def bind(lib):
         fn = getattr(lib, name)
         fn.restype, fn.argtypes = result, args
     return lib
+
+
+LIBUSB_ERROR_TIMEOUT = -7
 
 
 class Journal:
@@ -275,6 +296,54 @@ class Session:
         else:
             check(code == 0, f'Control {request} failed: {code}; outcome uncertain, no retry')
         return raw
+
+    def ask(self, timeout_ms, tolerant=False):
+        """A CPU-info request while a payload may still run, its timeout the whole wait: the
+        controller holds it and the ROM answers it once the payload has returned. Read-only. Returns
+        True for the answer, None for a timeout (the whole wait went by), False for another error
+        (tolerant only; otherwise it stops the session)."""
+        remaining = math.floor((self.deadline - self.clock())*1000)
+        check(remaining > 0, 'Session transfer deadline expired')
+        timeout = min(timeout_ms, remaining)
+        data = (C.c_uint8 * 8)()
+        seq = self.journal.begin('control', request=0, parameter=0, timeout_ms=timeout, poll=True)
+        code = self.lib.libusb_control_transfer(self.handle, 0xc0, 0, 0, 0, data, 8, timeout)
+        if code == LIBUSB_ERROR_TIMEOUT or (tolerant and code < 0):
+            self.journal.finish(seq, code)
+            return None if code == LIBUSB_ERROR_TIMEOUT else False
+        raw = bytes(data[:max(0, min(code, 8))])
+        self.journal.finish(seq, code, raw)
+        probe.match_reply(self.cpu, code, raw.hex())
+        return True
+
+    def wait_ready(self, limit_ms=None, ask=None, tolerant=False):
+        """After an execution: one CPU-info request whose timeout is the whole wait (limit_ms,
+        settle_ms by default), ended by the ROM's answer once the payload has returned, which also
+        tells how long it ran. Never a request given up while the payload runs: on the player the
+        ROM keeps every abandoned request and takes them after the payload, and the next request
+        then fails (2026-10-07: 18 asks of 50 ms, then the address request timed out). tolerant
+        (the writer's wait, where only the ROM's answer is an outcome): an ask that fails at once
+        is followed by the rest of the wait and one more request. ask False: the fixed wait and one
+        request, as before. Returns the milliseconds, or None."""
+        ask = self.config.get('completion_ask', False) if ask is None else ask
+        limit = self.config['settle_ms'] if limit_ms is None else limit_ms
+        # The whole wait must fit the session, asked or not: asking only ends it earlier.
+        check(self.clock() + limit/1000 < self.deadline, 'Insufficient settle budget')
+        if not ask:
+            self.sleep(limit/1000)
+            self.control(0)
+            return None
+        started = self.clock()
+        answer = self.ask(limit, tolerant)
+        if answer:
+            return round((self.clock() - started)*1000)
+        rest = limit/1000 - (self.clock() - started)
+        if answer is False and rest > 0.001:
+            # Failed at once: the rest of the wait, then one request as the fixed wait made it.
+            self.sleep(rest)
+            if self.ask(self.config['control_timeout_ms'], tolerant):
+                return round((self.clock() - started)*1000)
+        check(False, 'The payload did not return within the wait; no retry')
 
     def bulk(self, length, outgoing=None):
         check(type(length) is int and 0 < length <= 65536, 'Invalid bounded RAM transfer')

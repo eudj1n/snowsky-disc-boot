@@ -46,14 +46,26 @@ acquisition. A changed input requires a fresh plan and scope review.
    metadata reader once; check fresh chip identity, configuration, ECC, framing
    and partition extents. Require the metadata main page to match the planned
    saved page byte for byte. This does not identify the active boot path.
-3. Exercise every byte of all seven staging regions, including the complete
-   image area. Write address/nonce-derived SHAKE256 patterns to **all** chunks
-   before comparing **all** chunks, then repeat with their complement. This
-   detects aliases that an immediate write/read of each chunk could miss.
-4. Poison all 1 KiB of writer debug memory, explicitly invalidating its three
-   completion words. Stage the pinned writer, complete image and guard patterns
-   for the other regions; compare every byte again after all writes finish.
-5. Save `writer-staging-verified` and close USB. There is no writer invocation,
+3. Exercise every byte of the six small staging regions over USB. Write
+   address/nonce-derived SHAKE256 patterns to **all** chunks before comparing
+   **all** chunks, then repeat with their complement. This detects aliases
+   that an immediate write/read of each chunk could miss.
+4. Check the image region on the player (plan, stage 4c): upload the staging
+   check (`device/acquisition/staging.c`, built as the `staging-check` payload
+   with no NAND opcodes) into the code region and compare it, then run it once
+   for the region. It writes xorshift32 words from a seed of the session's nonce
+   to the whole region before reading any back, then their complement, and
+   answers with the words it checked; the host compares the whole 80-byte
+   result (nonce, address, length, count, no bad address).
+5. Upload the complete image, then read all of it back and compare it, as
+   before. Run the staging check again to hash the image's first
+   `staging_sample_bytes` (1 MiB) on the player and compare that with the
+   host's SHA-256 of the same bytes. See [the hash on the player](#the-hash-on-the-player).
+6. Poison all 1 KiB of writer debug memory, explicitly invalidating its three
+   completion words. Stage the pinned writer over the staging check and guard
+   patterns for the other small regions; compare every byte again after all
+   writes finish.
+7. Save `writer-staging-verified` and close USB. There is no writer invocation,
    NAND erase/program, host reset, reboot or automatic next stage.
 
 The metadata reader's NAND commands remain the reviewed read-only set. SPL
@@ -68,11 +80,43 @@ an experiment bound, not proof that all that RAM works on the physical unit.
 All regions are non-overlapping; code, reader stack/request/result, writer stack
 and debug are checked alongside the image. Bulk chunks are at most 64 KiB.
 
-The staging deadline is 900 seconds with a 27,892-call upper bound. Three full
-write/read passes transfer about 576 MiB of image bytes and retain about 288 MiB
-of image read evidence, plus small regions and journals. Have at least 1 GiB of
-free host disk before an authorized run. A timeout stops host activity; it does
-not silently reduce the tested image or skip a comparison.
+The staging deadline is 900 seconds. The write plan's upper bound is a few
+thousand calls fewer than before stage 4c (27,892): one held ask after each run
+of the staging check (at most `staging_check_ms` 600 s and `staging_sample_ms`
+60 s) and two for the writer.
+The image crosses USB twice (its upload and its read back, 192 MiB, about
+4 minutes at the observed 0.9 MB/s) instead of six times, and the session
+retains about 96 MiB of image read evidence. Have at least 1 GiB of free host
+disk before an authorized run. A timeout stops host activity; it does not
+silently reduce the tested image or skip a comparison.
+
+### The hash on the player
+
+The staging check, like every payload of this transport, runs from the code
+region's uncached address (kseg1): each instruction is fetched from DRAM. The
+region's pattern costs about a dozen instructions a word in each of its four
+passes; SHA-256 about 40 a byte, its schedule and constants uncached loads too,
+so a whole image's
+hash there may take longer than reading the image back (about 2 minutes). So
+the image is compared over USB as before, and the player hashes a 1 MiB sample:
+it checks the device's hash against the host's and its time
+(`image_hash_sample_ms`, with `image_region_check_ms` for the pattern) decides
+whether the whole image's hash replaces the read back. Running the payloads
+from the cached alias (kseg0) would make both checks a matter of seconds, but
+needs a review of the cache state the ROM and the SPL leave behind; the
+transport deliberately has no cache flush request.
+
+### Completion on the player
+
+The ROM does not answer USB while a payload runs. After each run of the
+staging check the host sends one CPU-info request held for at most
+`staging_check_ms` or `staging_sample_ms`, answered once the check returns
+(never a request given up: see [the RAM transport](ram-transport.md)); a
+timeout or any other error stops the session before the writer. The audit
+(`audit_usb_write.py`) reconstructs each ask. Measured on the player in a
+stage-only session (2026-10-07, 5 min 41 s in all): the region's check 111 s
+(about 7 minutes over USB before), the 1 MiB sample's hash 4.2 s (so the whole
+image would take about 6.7 minutes there, longer than its read back).
 
 ## Write mode and uncertainty
 
@@ -91,14 +135,20 @@ previous process's RAM result. After successful staging and a remaining-budget
 check, it journals one writer invocation before sending it. The current profile
 specifies a 900-second wait and a 1,800-second overall session budget, following
 the reviewed diskOS host wait. These bounds are not physically qualified writer
-timing. After waiting, require a valid ROM CPU reply and read exactly 1 KiB of
-completion; validate it with the existing strict writer-record checker.
+timing. Right after the invocation the host sends one CPU-info request held
+for the whole `writer_wait_ms` (plan, stage 4c); the ROM answers it only once
+the writer has returned, so the reply ends the wait and the result keeps the
+writer's time (`writer_ms`). An ask changes nothing on the player: one that
+fails at once is no outcome, and is followed by the rest of the wait and one
+more request, as the fixed wait made it; no answer within `writer_wait_ms`
+leaves the outcome unknown as before. After the reply, read exactly 1 KiB of completion; validate it with the
+existing strict writer-record checker.
 
-There is no host retry, polling during the write, reconnect or automatic restore.
-The pinned writer itself has up to six internal block attempts, explicitly
-included in the plan. Killing the host cannot cancel that RAM program. After an
-uncertain invocation, do not infer that writing stopped or power-cycle/retry
-without resolving the execution state.
+There is no host retry, reconnect or automatic restore, and an ask never
+repeats the invocation. The pinned writer itself has up to six internal block
+attempts, explicitly included in the plan. Killing the host cannot cancel that
+RAM program. After an uncertain invocation, do not infer that writing stopped
+or power-cycle/retry without resolving the execution state.
 
 | Result | Meaning |
 | --- | --- |
@@ -149,6 +199,17 @@ The fake ROM deliberately permits a timed-out execute to reach the device;
 the host retains uncertainty and never invokes again. Tests run through the
 existing GitHub Actions discovery, without libusb, firmware, a sibling checkout,
 a player or credentials.
+
+Since stage 4c, `test_writer_transport.py` has 16 tests: its fake ROM runs the
+staging check (the pattern through the region's own mapping, so an alias shows,
+and the hash) and stays busy for some asks after each run and after the
+writer. They add the sample's hash and its mismatch, the writer's wait ended by
+the ROM's answer, failed asks during the write as no outcome, and the audit
+reconstructing a write's journal with every ask (one ask removed is refused).
+`test_staging_payload.py` compiles `staging.c` for the host with the request's
+DRAM mapped into a buffer: the hash against `hashlib`, the pattern and its
+complement left in memory, and every request out of its rules refused without
+touching memory.
 
 ## Local validation — 2026-09-24
 
