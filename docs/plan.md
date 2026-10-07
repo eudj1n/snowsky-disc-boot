@@ -1007,9 +1007,24 @@ a write with all of it. Each item with its host tests and the guest.
   staged image's hash there (a 1 MiB sample, measured, the image still read
   back: uncached code); the writer asked until it answers (done); one SPL
   per entry with the check inside the write's own session.
+- [x] The asks' settings in a profile of their own (2026-10-07): the first
+  installation with them stopped at its review, before any USB access
+  ("Evidence firmware/reader/metadata mismatch"). `completion_poll_ms` had
+  gone into the transport profile, which the owner's recorded boot and stock
+  captures pin byte for byte, and the writer's settings into the installer
+  profile, whose RAM contract installations keep identical. Both profiles are
+  back as recorded; `firmware/completion/v2.57.json` holds the asks'
+  intervals and limits. The review now passes offline on the owner's own
+  history, and `test_writer_transport` pins the two fingerprints that
+  history holds. Before a device session, the review runs offline on the
+  player's history first.
 - [ ] The next write confirms the asks on the player (its backup is the
   first session that runs them), the region's check and the sample's hash
   with their times, and the writer's time, with the rest of the above.
+- [ ] Which pins guard the write and which only add friction (owner,
+  2026-10-07: "ой как сложно у нас всё"): after the write, a review of what
+  each piece of evidence pins, keeping what proves the right image goes to
+  the right player.
 
 ## Stage 6 — the user's path (owner, 2026-10-06)
 
@@ -1027,6 +1042,11 @@ layer and the emulator's checkout to build the image.
 - [ ] diskOS's writer and SPL fetched at their pinned revision, as the diskOS
   package already is (`catalog.py fetch --name diskos --download`, checked
   from a clean clone on 2026-10-06).
+- [ ] A first installation without a history (owner's question,
+  2026-10-07): the installer writes a player only with `--history`, whose
+  boot and stock captures were taken on the owner's player with earlier
+  tools. A new player's first installation takes its own: the boot evidence
+  and the stock read in the same entry before the write.
 - [ ] The computer's check explains libusb and Docker where they are missing.
 - [ ] The README's guide: what is installed, the risk, the way back, the
   packages.

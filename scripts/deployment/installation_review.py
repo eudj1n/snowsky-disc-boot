@@ -199,6 +199,7 @@ def main():
         layout=writer.load_layout(base,reader,transport,policy)
         metadata=ram.read_file(a.boot_capture/'metadata-main.bin',policy['main_bytes'])
         ri=ram.prepare_inputs(base,cpu,reader,transport,a.readback_build,a.diskos,'rootfs')
+        ri['completion']=ram.load_completion(base,transport)
         rp=collect_rootfs.make_plan(base,cpu,reader,transport,ri,metadata)
         inputs={k:writer.prepare(base,cpu,reader,transport,a.build,a.diskos,a.artifacts,k,metadata,a.staging_build)
                 for k in ('candidate','restore')}
