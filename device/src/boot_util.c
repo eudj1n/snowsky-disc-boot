@@ -71,6 +71,9 @@ void plog(const char *fmt, ...) {
     if (fd < 0) return;
     ssize_t w = write(fd, line, (size_t)n);
     (void)w;
+    /* On the disk before the next step (2026-10-06: two starts lost their last seconds at a power-off);
+       this also takes the wrappers' lines appended before it. About twenty a start. */
+    fsync(fd);
     close(fd);
 }
 

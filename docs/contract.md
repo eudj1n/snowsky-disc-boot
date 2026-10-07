@@ -412,7 +412,8 @@ logo once and died at every start of the pair twice after the menu's choice).
 ### What the boot log keeps
 
 Besides the early hook's and the wrappers' lines, the boot program adds to
-`/usr/data/disc-boot/boot.log`, with the uptime:
+`/usr/data/disc-boot/boot.log`, with the uptime, each line on the disk
+(`fsync`) before it goes on, so a power-off loses none:
 
 - every change of a role's state (`menu asking`, `ui/<name> confirmed`,
   `service failed: …`), what the player's launcher starts and why, the choice
@@ -714,8 +715,10 @@ back (Volume Up for stock, USB Boot for the stock image).
 3. The installer copies the chosen packages (our server; `disc-menu`, chosen
    by default; the player into `Apps/`) into `.disc/boot/install/`, and the
    console marker.
-4. The user powers on holding Play; boot installs and starts the packages and
-   writes the result to the card; the page then shows the server's status.
+4. The user holds Play, presses the power key briefly and lets Play go once
+   the logo shows (a power key held about ten seconds switches the player off
+   in hardware); boot installs and starts the packages and writes the result
+   to the card; the page then shows the server's status.
 
 ## What changes against today
 

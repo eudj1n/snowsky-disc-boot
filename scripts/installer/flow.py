@@ -634,9 +634,10 @@ class Installer:
     def first_boot(self):
         if self.args.guest:
             return self.first_boot_guest()
-        self.say('First boot', ['Disconnect the cable, put the card in and power the player on holding Play: the boot layer '
-                                'installs the packages from the card and writes .disc/boot/result.json; the player page then '
-                                'answers on the network.'])
+        self.say('First boot', ['Disconnect the cable and put the card in. Hold Play, press the power key briefly and let Play '
+                                'go once the logo shows (a power key held about ten seconds switches the player off): the boot '
+                                'layer installs the packages from the card and writes .disc/boot/result.json; the player page '
+                                'then answers on the network.'])
         self.done('first boot')
 
     def run(self):

@@ -909,13 +909,15 @@ The order (owner, 2026-10-07): first what needs no device (the guest), then
 the USB sessions' time offline, one short device session for the timer, and
 a write with all of it. Each item with its host tests and the guest.
 
-- [ ] The boot log reaches the disk line by line (`fsync` after each line,
-  about twenty a start): two starts with Play lost their last seconds at a
-  power-off (2026-10-06).
-- [ ] The menu takes only a fresh Play press: a key held since power-on
-  (the installation's Play) answers nothing. The installer says to hold
-  Play until the logo and to press the power key briefly (a power key held
-  about ten seconds switches the player off).
+- [x] The boot log reaches the disk line by line (`fsync` after each line,
+  about twenty a start, which also takes the wrappers' lines before it): two
+  starts with Play lost their last seconds at a power-off (2026-10-06).
+- [x] The keys at an installation: the menu already took a key held since
+  power-on only after its release (2026-10-03), and both starts were
+  answered by its countdown (5.4 s after it asked), not by Play; they ended
+  at about ten seconds of uptime, as a power key held that long switches the
+  player off. The installer now says to hold Play until the logo and to
+  press the power key briefly (`flow.py`, the contract's user path).
 - [ ] The installation finishes before the menu offers anything, and the
   menu shows its progress (the item of stage 4b, "The menu during an
   installation with Play"): its first answer no longer races the card.
