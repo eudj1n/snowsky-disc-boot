@@ -61,7 +61,8 @@ class BootTests(unittest.TestCase):
         fixture=test_kernel_review.KernelReviewTests();fixture.setUp()
         self.metadata=fixture.page({0:{1:2*131072}})
         self.inputs=dict(spl=bytes(8056),payload=b'boot payload',payloads={'uboot':b'boot payload','ota':b'ota! payload'},
-                         metadata=self.metadata,build_sha256='b'*64)
+                         metadata=self.metadata,build_sha256='b'*64,
+                         completion=boot.ram.load_completion(self.base,self.transport))
         self.library=self.root/'fake-lib';self.library.write_bytes(b'never loaded')
         self.index=0
         sync=patch.object(boot.os,'fsync');sync.start();self.addCleanup(sync.stop)
@@ -117,13 +118,15 @@ class BootTests(unittest.TestCase):
                 self.assertFalse(r['active_boot_verified'])
 
     def test_all_collection_transfer_failures_stop_without_replay(self):
+        # A timeout anywhere stops the session, the held ask after a batch's execution included
+        # (plan, stage 4c): it is never asked again.
         _,_,baseline=self.run_rom(skip_bootstrap=True)
         for position in range(1,len(baseline.calls)+1):
             with self.subTest(position=position):
                 r,_,fake=self.run_rom('timeout',position,skip_bootstrap=True)
+                self.assertFalse(r['nand_writes'])
                 self.assertEqual(r['status'],'failed')
                 self.assertEqual(len(fake.calls),position)
-                self.assertFalse(r['nand_writes'])
 
     def test_deadline_and_interruption_leave_partial_evidence(self):
         clock=FakeClock();original=clock.sleep

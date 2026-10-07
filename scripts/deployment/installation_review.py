@@ -49,6 +49,7 @@ def context(base,cpu,reader,transport,layout,inputs):
         build_sha256=inputs['build_sha256'],metadata_payload_sha256=ram.sha(inputs['payload']),
         metadata_sha256=ram.sha(inputs['metadata']),spl_sha256=ram.sha(inputs['spl']),
         writer_sha256=ram.sha(inputs['writer']),image_review_sha256=inputs['image_review_sha256'],
+        staging_build_sha256=inputs['staging_build_sha256'],staging_payload_sha256=ram.sha(inputs['staging_payload']),
         readback_plan_sha256=fingerprint(inputs['readback_plan']))
 
 
@@ -179,7 +180,7 @@ def assemble(base,cpu,reader,transport,layout,inputs,restore_path,captures,libus
 
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--version')
-    for n in ('diskos','artifacts','build','readback-build','boot-capture','stock-capture','libusb','output'):
+    for n in ('diskos','artifacts','build','staging-build','readback-build','boot-capture','stock-capture','libusb','output'):
         p.add_argument('--'+n,type=Path,required=True)
     p.add_argument('--stage-capture',type=Path)
     for n in ('previous-review','previous-image','write-capture','readback-capture'):
@@ -198,8 +199,10 @@ def main():
         layout=writer.load_layout(base,reader,transport,policy)
         metadata=ram.read_file(a.boot_capture/'metadata-main.bin',policy['main_bytes'])
         ri=ram.prepare_inputs(base,cpu,reader,transport,a.readback_build,a.diskos,'rootfs')
+        ri['completion']=ram.load_completion(base,transport)
         rp=collect_rootfs.make_plan(base,cpu,reader,transport,ri,metadata)
-        inputs={k:writer.prepare(base,cpu,reader,transport,a.build,a.diskos,a.artifacts,k,metadata) for k in ('candidate','restore')}
+        inputs={k:writer.prepare(base,cpu,reader,transport,a.build,a.diskos,a.artifacts,k,metadata,a.staging_build)
+                for k in ('candidate','restore')}
         for value in inputs.values():value['readback_plan']=rp
         bundle=assemble(base,cpu,reader,transport,layout,inputs,a.artifacts/inputs['restore']['image_name'],
                         dict(boot=a.boot_capture,stock=a.stock_capture,stage=a.stage_capture),a.libusb,

@@ -709,17 +709,31 @@ name ([observation](first-write-observation.md)).
     2.07 s a batch, the host's fixed 2 s settle and the transfers; the
     device's own time a batch is under it. The installer no longer reads by
     digest beside the backup (owner, 2026-10-06).
-  - [ ] A timer that runs there, settled offline from the SoC's and the SPL's
-    sources (Count with Cause.DC cleared, or the OST), then one short
-    measurement in a session of its own (a payload timing a known loop and a
-    few page reads: a minute or two, with the owner's go-ahead), never again
-    a 27-minute read for it. The same timer serves the measured writer below.
-- [ ] The settle after each batch (owner's question, 2026-10-06): the backup
+  - [x] A timer that runs there: not needed for the reads (2026-10-07). The
+    host measures each batch by asking the ROM until it answers (the item
+    below), so no session of its own. Kept for the measured writer below:
+    the stock kernel's tree names the SoC's own timer, `core-ost` at
+    `0x12000000` (and `0x12100000` per core), beside clearing Cause.DC for
+    Count.
+- [x] The settle after each batch (owner's question, 2026-10-06): the backup
   and the readback take 35–40 minutes for 96 MiB that cross USB in about two:
   the host waits the transport's fixed 2 s after each of their batch
-  executions. A wait sized by the measured time (above), or a completion the
-  host can look for without an unknown outcome, would take each read to a
-  few minutes; the backup, the readback and the portions by digest alike.
+  executions. Done without a timer on the player (2026-10-07): the ROM does
+  not answer USB while a payload runs, so after each batch the host asks it
+  for the CPU reply every 50 ms (`completion_poll_ms`), a timeout being the
+  batch still running, until it answers, at most the 2 s settle; the plan
+  admits those requests, the journal marks them, the readback's audit
+  accepts timeouts then one exact answer, and the result keeps each batch's
+  time (`batch_ready_ms`), the measure the timer was for. Expected: each
+  full read from about 38 minutes to about 6 (794 batches of 277 KiB at
+  0.9 MB/s), the read by digest to about a minute. `test_collect_rootfs`
+  (asked until it answers; a timeout at the ask continues and nowhere else;
+  an error at an ask stops; past the settle stops), `test_usb_trace_audit`,
+  `ram-transport.md`. The ROM's behaviour under such asks is the player's to
+  confirm: the next backup does it, and if it stops, nothing was written
+  and `completion_poll_ms: 0` brings back the fixed settle. On the player
+  the repeated asks failed and became one held request (2026-10-07, stage
+  4c below).
 - [ ] The write session's waits (owner, 2026-10-05): the host sleeps a fixed
   15 min (`writer_wait_ms`) after starting the writer, since the ROM does not
   answer USB while it runs (diskOS waits the same for `my_write5`), while
@@ -747,16 +761,40 @@ name ([observation](first-write-observation.md)).
     about 7 min), the image's upload (about 2 min), its read back for the
     comparison (about 2 min), then the writer's fixed 15 min, while
     programming 768 blocks takes about 1–1.5 min by the chip's timings.
-  - [ ] The staged image checked on the player: a SHA-256 of the image region
-    by a payload of ours (the digest payload's SHA-256), compared with the
-    image's, instead of reading 96 MiB back over USB (about 2 min to seconds).
-  - [ ] The RAM check on the player: the pattern passes run by a payload in
-    DRAM, only their verdict over USB, or one pass instead of two (3.5–7 min).
+  - [x] The RAM check on the player (2026-10-07, owner: "возражений нет"):
+    the staging check (`device/acquisition/staging.c`, the `staging-check`
+    payload, 2,032 bytes, no NAND opcodes) runs from the code region before
+    the writer goes there, writes xorshift32 words from a nonce seed over the
+    whole image region before reading any back, then their complement, and
+    only its 80-byte verdict crosses USB; the small regions keep the host's
+    passes. About 7 minutes of transfers become the payload's own time, asked
+    every 200 ms, at most 10 minutes (`staging_check_ms`).
+    `test_staging_payload` (the C code on the host), `test_writer_transport`,
+    [writer transport](writer-transport.md#the-hash-on-the-player).
+  - [ ] The staged image checked on the player: a SHA-256 of the image
+    region, compared with the image's, instead of reading 96 MiB back over
+    USB. The payload's code runs uncached (kseg1, every instruction fetched
+    from DRAM), and SHA-256 costs about 40 instructions a byte, so a whole
+    image's hash there may take longer than the read back's 2 minutes. For
+    now (2026-10-07) the image is read back as before and the player hashes
+    its first 1 MiB (`staging_sample_bytes`), compared with the host's and
+    timed (`image_hash_sample_ms`); the next write's measures decide. The
+    cached alias (kseg0) would make it seconds, after a review of the cache
+    state the ROM and the SPL leave.
+  - [x] The writer asked until it answers (2026-10-07, owner: "включи
+    сразу"): instead of the fixed 15 minutes, the host asks the ROM every
+    second while the writer runs; the ROM answers once the writer has
+    returned, so the wait ends then, and its length is the measured writer
+    (`writer_ms`). A failed ask is no outcome; no answer within the 15
+    minutes leaves it unknown as before. `test_writer_transport` (the wait
+    ended by the answer, failed asks, an interrupted wait, the audit with
+    every ask). With these, a write session from about 26 minutes to about
+    10: the region's check, the image's upload and read back (about 4), the
+    writer (about 1–1.5).
   - [ ] A measured writer: our reproducible build of `my_write5` with
     `my_write6`'s timing method in the write path (erase, program, verify
-    per block, the total), still waited 15 min; after a few writes the wait
-    comes from the measured maximum with a margin. With all three a write
-    session takes about 5–6 min instead of 26.
+    per block), for the time of each step. The total is now measured by the
+    asks above; this only tells where it goes.
 - [ ] With the next write of the boot layer (owner, 2026-10-05): the exact
   check by digest (stage "Later", the faster exact check), a SHA-256 of
   every logical block computed on the player by the reviewed reader
@@ -964,29 +1002,52 @@ a write with all of it. Each item with its host tests and the guest.
     start, so the player, which now starts after the answer, took them
     again. On the player a later reader sees only later presses;
     `menu_guest` empties the file once the menu has answered.
-- [ ] The USB sessions' time (stage 4b), in this order: a timer that runs in
-  USB Boot, settled offline; the settle after each batch from its
-  measurement (the backup and the readback from 35-40 minutes to a few);
-  the staged image's SHA-256 and the RAM check on the player; the writer's
-  wait from a measured writer; one SPL per entry with the check inside the
-  write's own session.
-- [ ] One short device session for the timer (a minute or two, the owner's
-  go-ahead), then the write of an image with all of the above.
-- [ ] The ROM asked while a payload runs (2026-10-07, the first backup with
-  the asks of the merged #11/#13, run `install-20261007-211055`): after the
-  first batch's execution the host asked for the CPU reply every 50 ms; 18
-  asks timed out and the 19th was answered (the batch took about 967 ms),
-  and the very next request (the result's address) timed out. The asks the
-  host abandoned stay with the ROM, which takes them after the payload
-  returns. Nothing was written (a backup only reads); the session stopped
-  without a retry. Before that the first try stopped at its review: the
-  asks' setting in the transport profile, which the recorded evidence pins
-  (#13 moved it out). Both reverted on 2.x for the write: the sessions are
-  the proven ones again (fixed settle, host passes, the writer's fixed 15
-  min). The work stays on branch `usb-speed-experiment` (the staging check
-  on the player, the completion profile). Next, in a read-only session with
-  the owner's go-ahead: one ask with the whole settle as its timeout, so no
-  request is ever abandoned.
+- [ ] The USB sessions' time (stage 4b), in this order: ~~a timer that runs
+  in USB Boot~~ the ROM asked until it answers after each batch (done, the
+  item of stage 4b: the backup and the readback from 35-40 minutes to a
+  few, no device timer needed); the RAM check on the player (done) and the
+  staged image's hash there (a 1 MiB sample, measured, the image still read
+  back: uncached code); the writer asked until it answers (done); one SPL
+  per entry with the check inside the write's own session.
+- [x] The asks' settings in a profile of their own (2026-10-07): the first
+  installation with them stopped at its review, before any USB access
+  ("Evidence firmware/reader/metadata mismatch"). `completion_poll_ms` had
+  gone into the transport profile, which the owner's recorded boot and stock
+  captures pin byte for byte, and the writer's settings into the installer
+  profile, whose RAM contract installations keep identical. Both profiles are
+  back as recorded; `firmware/completion/v2.57.json` holds the asks'
+  intervals and limits. The review now passes offline on the owner's own
+  history, and `test_writer_transport` pins the two fingerprints that
+  history holds. Before a device session, the review runs offline on the
+  player's history first.
+- [x] One held request instead of repeated asks (2026-10-07). The first
+  backup with the asks (run `install-20261007-211055`) asked every 50 ms
+  after the first batch: 18 asks timed out, the 19th was answered (the batch
+  took about 967 ms) and the very next request (the result's address) timed
+  out. The ROM keeps every request the host gives up and takes them after
+  the payload. Nothing was written (a backup only reads); 2.x went back to
+  the proven sessions for a moment (#14). Now the host sends the one CPU
+  request right after an execution, held for the whole wait (the settle,
+  `staging_check_ms`, `staging_sample_ms`, `writer_wait_ms`) and answered
+  once the payload returns: no request is ever given up, the calls are those
+  of the fixed wait, and the answer measures the payload
+  (`completion_ask` in the completion profile; `false` is the fixed wait).
+  On the player, with the owner: a read-only probe (2 blocks, 3 batches, 297
+  calls, no timeout; batches of 185, 957 and 964 ms) and a stage-only write
+  session (no writer, 9,447 calls, no timeout, 5 min 41 s in all: the image
+  region's check 111 s instead of about 7 minutes over USB, the 1 MiB
+  sample's hash 4.2 s, so a whole image's hash there would take about 6.7
+  minutes and the read back stays). Expected now: the backup and the
+  readback about 25 minutes each, the write about 9. `test_collect_rootfs`,
+  `test_boot_evidence`, `test_writer_transport` (fake ROMs that keep an
+  abandoned request and break the next one), `test_usb_trace_audit`.
+- [ ] The next write confirms the asks on the player (its backup is the
+  first session that runs them), the region's check and the sample's hash
+  with their times, and the writer's time, with the rest of the above.
+- [ ] Which pins guard the write and which only add friction (owner,
+  2026-10-07: "ой как сложно у нас всё"): after the write, a review of what
+  each piece of evidence pins, keeping what proves the right image goes to
+  the right player.
 
 ## Stage 6 — the user's path (owner, 2026-10-06)
 
@@ -1004,6 +1065,11 @@ layer and the emulator's checkout to build the image.
 - [ ] diskOS's writer and SPL fetched at their pinned revision, as the diskOS
   package already is (`catalog.py fetch --name diskos --download`, checked
   from a clean clone on 2026-10-06).
+- [ ] A first installation without a history (owner's question,
+  2026-10-07): the installer writes a player only with `--history`, whose
+  boot and stock captures were taken on the owner's player with earlier
+  tools. A new player's first installation takes its own: the boot evidence
+  and the stock read in the same entry before the write.
 - [ ] The computer's check explains libusb and Docker where they are missing.
 - [ ] The README's guide: what is installed, the risk, the way back, the
   packages.

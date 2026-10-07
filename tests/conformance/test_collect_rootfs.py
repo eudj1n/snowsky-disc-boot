@@ -23,11 +23,15 @@ import test_kernel_review
 
 
 class BatchRom(Rom):
-    def __init__(self, reader, config, scope, fault=None, at=0):
+    def __init__(self, reader, config, scope, fault=None, at=0, busy=0):
         super().__init__(reader, config, fault, at)
         self.scope = scope
         self.ram_bytes, self.sram = bytearray(0x300000), bytearray(0x8000)
         self.batch_count = 0
+        # A batch runs busy ms: an ask held at least that long is answered, a shorter one times out
+        # and, as on the player (2026-10-07), the ROM then takes the abandoned request before the
+        # next one, which times out; 'poll-error' answers the ask with an I/O error instead.
+        self.busy, self.polling, self.abandoned = busy, False, False
 
     def region(self, address):
         if 0xb2400000 <= address < 0xb2408000: return self.sram, address-0xb2400000
@@ -44,9 +48,22 @@ class BatchRom(Rom):
         return bytes(region[offset:offset+length])
 
     def call(self, name, args):
+        if self.abandoned and name == 'control_transfer':
+            self.calls.append((name,args)); self.events.append(name)
+            return -7
+        if name == 'control_transfer' and args[2] == 0 and self.polling:
+            if self.fault == 'poll-error':
+                self.calls.append((name,args)); self.events.append(name)
+                return -1
+            if self.busy > args[7]:
+                self.calls.append((name,args)); self.events.append(name)
+                self.abandoned = True
+                return -7
+            self.polling = False
         if name == 'control_transfer' and args[2] == 4 and args[3]<<16 | args[4] == self.reader['load_address']:
             self.calls.append((name,args)); self.events.append(name)
             if len(self.calls) == self.at: return -7
+            self.polling = True
             self.execute_addresses.append(self.reader['load_address']); self.batch_count += 1
             raw = self.get(self.scope['profile']['request_address'], collect.REQUEST_BYTES)
             magic, version, count, reserved = struct.unpack_from('<4I', raw)
@@ -98,7 +115,8 @@ class CollectorTests(unittest.TestCase):
         self.policy = collect.ram.load_metadata_policy(self.base,self.reader)
         self.scope = load_collector_policy(self.base,self.reader,'rootfs-probe')
         self.inputs = dict(spl=bytes(8056),payload=b'synthetic payload',build_sha256='a'*64,
-                           page_policy=self.policy,collector_policy=self.scope)
+                           page_policy=self.policy,collector_policy=self.scope,
+                           completion=collect.ram.load_completion(self.base,self.config))
         fixture=test_kernel_review.KernelReviewTests();fixture.setUp();self.metadata=fixture.page()
         self.library=self.root/'lib';self.library.write_bytes(b'fake')
         self.index=0
@@ -107,8 +125,8 @@ class CollectorTests(unittest.TestCase):
     def plan(self):
         return collect.make_plan(self.base,self.cpu,self.reader,self.config,self.inputs,self.metadata)
 
-    def run_fake(self, fault=None, at=0, skip_bootstrap=False):
-        fake=BatchRom(self.reader,self.config,self.scope,fault,at)
+    def run_fake(self, fault=None, at=0, skip_bootstrap=False, busy=0):
+        fake=BatchRom(self.reader,self.config,self.scope,fault,at,busy)
         plan=self.plan();clock=FakeClock();self.index+=1;output=self.root/str(self.index)
         def invoke():
             return collect.acquire(plan,collect.fingerprint(plan),self.base,self.cpu,self.reader,
@@ -124,7 +142,10 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(result['batch_executions'],3)
         self.assertEqual(result['records_completed'],132)
         self.assertEqual(len(fake.calls),297)
+        # Each batch's one CPU request is asked at once and held (plan, stage 4c): the same calls.
         self.assertEqual(result['plan']['protocol_call_limit'],297)
+        self.assertIs(result['plan']['completion_ask'],True)
+        self.assertEqual(result['batch_ready_ms']['batches'],3)
         self.assertEqual(fake.execute_addresses,[self.config['spl_entry']]+[self.reader['load_address']]*3)
         expected=b''.join(struct.pack('<I',page)*512 for page in range(5120,5248))
         self.assertEqual((path/'logical-image.bin').read_bytes(),expected)
@@ -133,12 +154,50 @@ class CollectorTests(unittest.TestCase):
         self.assertFalse(result['image_match_verified']);self.assertFalse(result['flash_ready'])
 
     def test_every_batch_usb_boundary_stops_without_replay(self):
+        # A timeout anywhere stops the session, the held ask after a batch's execution included: it
+        # is never asked again (an abandoned request breaks the ROM's next one).
         for position in range(1,54):
             with self.subTest(position=position):
                 result,path,fake=self.run_fake('timeout',position,True)
                 self.assertEqual(result['status'],'failed')
                 self.assertEqual(len(fake.calls),position)
                 self.assertEqual(result['records_completed'],0)
+
+    def test_without_the_completion_profile_the_plan_is_as_before(self):
+        """A plan made without the completion profile has no asks and none of its fields, so a plan an
+        earlier session recorded is the same plan today."""
+        asked = self.plan()
+        del self.inputs['completion']
+        plain = self.plan()
+        self.assertNotIn('completion_ask', plain); self.assertNotIn('completion_profile_sha256', plain)
+        self.assertEqual({k: v for k, v in asked.items() if k not in ('completion_ask', 'completion_profile_sha256')}, plain)
+
+    def test_a_running_batch_is_asked_once_and_held_until_the_rom_answers(self):
+        """The ask after a batch's execution (plan, stage 4c): one CPU-info request held for the whole
+        settle, answered once the batch returns (967 ms on the player, 2026-10-07); the fixed settle
+        is not slept and nothing is abandoned."""
+        result,path,fake=self.run_fake(busy=967)
+        self.assertEqual(result['status'],'rootfs-probe-collected')
+        self.assertEqual(len(fake.calls),297)
+        rows=[json.loads(line) for line in (path/'transfers.jsonl').read_text().splitlines()]
+        asks=[row for row in rows if row.get('poll') and row.get('phase') == 'attempt']
+        self.assertEqual(len(asks),3)
+        self.assertTrue(all(row['timeout_ms'] == self.config['settle_ms'] and row['request'] == 0 for row in asks))
+        self.assertFalse(any(row.get('code') == -7 for row in rows))
+        self.assertEqual(result['batch_ready_ms']['batches'],3)
+
+    def test_a_poll_that_errs_stops_without_replay(self):
+        result,path,fake=self.run_fake('poll-error')
+        self.assertEqual(result['status'],'failed')
+        self.assertEqual(result['batch_executions'],1)
+        self.assertEqual(fake.calls[-1][1][2],0,'the failed ask is the last call')
+
+    def test_a_batch_that_runs_past_the_settle_stops(self):
+        result,path,fake=self.run_fake(busy=3000)
+        self.assertEqual(result['status'],'failed')
+        self.assertIn('did not return within the wait',result['error'])
+        rows=[json.loads(line) for line in (path/'transfers.jsonl').read_text().splitlines()]
+        self.assertEqual(sum(1 for row in rows if row.get('poll') and row.get('phase') == 'attempt'),1,'asked once, never again')
 
     def test_ddr_calibration_failure_preserves_raw_diagnostic_and_never_starts_reader(self):
         diagnostic=struct.pack('<5I',0xd1a6c0de,9,30,0x12,1)
