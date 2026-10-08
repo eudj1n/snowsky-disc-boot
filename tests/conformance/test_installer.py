@@ -135,6 +135,25 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(installer.run(), 1)
         self.assertIn('disc-menu 9: no local file with sha256', installer.report['status'])
 
+    def test_libusb_is_found_where_its_packages_put_it_or_named(self):
+        """Plan, stage 6: no --libusb to give; a missing libusb is said with the command that installs it."""
+        import argparse
+        from unittest import mock
+        from installer import flow
+        library = self.root/'lib/libusb-1.0.0.dylib'
+        library.parent.mkdir(parents=True)
+        library.write_bytes(b'lib')
+        installer = flow.Installer.__new__(flow.Installer)
+        installer.args = argparse.Namespace(libusb=None)
+        with mock.patch.object(flow, 'LIBUSB_PLACES', (str(self.root/'nowhere.dylib'), str(self.root/'lib/libusb-*.dylib'))):
+            self.assertEqual(installer.libusb(), str(library))
+        with mock.patch.object(flow, 'LIBUSB_PLACES', (str(self.root/'nowhere.dylib'),)):
+            self.assertIsNone(installer.libusb())
+        installer.args = argparse.Namespace(libusb='/given/libusb.dylib')
+        self.assertEqual(installer.libusb(), '/given/libusb.dylib')
+        self.assertIn('brew install libusb', flow.LIBUSB_HINT)
+        self.assertIn('apt install libusb-1.0-0', flow.LIBUSB_HINT)
+
     def test_the_first_boot_says_how_usb_boot_is_left_and_done_once_the_start_was_checked(self):
         """2026-10-08 (owner): leaving USB Boot restarts the player into the new system by itself, so a
         start with Play comes after it; once the first start's check was fetched, the run says it is done
