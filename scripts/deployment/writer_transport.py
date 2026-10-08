@@ -31,6 +31,20 @@ def load_layout(base, reader, transport, policy, directory=PROFILES):
     return layout
 
 
+def run_layout(base, reader, transport, policy, path, bundle, directory=PROFILES):
+    """The admission a review without a history computed for its run (plan, stage 6: the package's
+    proposed-installer-profile.json), in place of the tracked profile, which it leaves as it is: only
+    for such a review, and differing from the tracked profile only in its admission and review pin."""
+    tracked = load_layout(base, reader, transport, policy, directory)
+    layout = json.loads(ram.read_file(path, 8192))
+    check(isinstance(bundle, dict) and bundle.get('source_state', {}).get('kind') == 'known-image',
+          'Only a review without a history brings the admission of its run')
+    contract = installation_review.layout_contract
+    check(contract(layout) == contract(tracked), 'The run\'s installer profile changes more than its admission and review pin')
+    validate_layout(base, reader, transport, policy, layout)
+    return layout
+
+
 def validate_layout(base, reader, transport, policy, layout):
     check(layout.get('schema_version') == 1 and layout.get('version') == base['version'], 'Invalid installer schema')
     for name, value in [('firmware', base), ('page_policy', policy), ('transport', transport), ('writer', policy['writer'])]:
@@ -119,6 +133,8 @@ def make_plan(base, cpu, reader, transport, layout, inputs, mode):
     review.writer_capacity(inputs['writer'],writer)
     check(inputs['target'] in ('candidate','restore'), 'Invalid writer target')
     binding=installation_review.validate_binding(inputs.get('installation_review'),base,cpu,reader,transport,layout,inputs) if mode=='write' else None
+    # A write without a history runs in the USB Boot entry of its evidence (plan, stage 6; ram_transport.bring_up).
+    same_entry = mode=='write' and inputs['installation_review']['source_state']['kind']=='known-image'
     check(len(inputs['staging_payload']) <= reader['code_bytes'], 'Staging check payload exceeds the code region')
     small = [(n,a,s) for n,a,s in regions if n != 'image']
     image_chunks = math.ceil(capacity/65536)
@@ -152,7 +168,7 @@ def make_plan(base, cpu, reader, transport, layout, inputs, mode):
                 completion_profile_sha256=fingerprint(c),
                 completion_ask=c['completion_ask'], staging_check_ms=c['staging_check_ms'],
                 staging_sample_ms=c['staging_sample_ms'], staging_sample_bytes=min(c['staging_sample_bytes'],capacity),
-                spl_once_an_entry=True,
+                spl_once_an_entry=True, same_entry_required=same_entry,
                 protocol_call_limit=139+18*sum(math.ceil(n/65536) for _,_,n in small)+6*image_chunks+staging_calls+writer_asks,
                 writer_wait_ms=layout['writer_wait_ms'],
                 session_budget_ms=layout['session_budget_ms'] if mode == 'write' else layout['staging_budget_ms'],
@@ -350,6 +366,8 @@ def main():
     parser.add_argument('--approved-plan-sha256')
     parser.add_argument('--installation-review',type=Path)
     parser.add_argument('--readback-build',type=Path)
+    parser.add_argument('--installer-profile',type=Path,
+                        help='A write without a history: the admission its review computed for the run (the package\'s proposed profile)')
     parser.add_argument('--confirm-reviewed-device-state',action='store_true',
                         help='Confirm the same player, unchanged boot/kernel/OTA/layout and target-specific write history; never resolves an unknown writer outcome')
     args = parser.parse_args()
@@ -359,6 +377,8 @@ def main():
     if (args.mode=='write' and not (args.installation_review and args.readback_build)) or (
             args.mode=='stage' and (args.installation_review or args.readback_build or args.confirm_reviewed_device_state)):
         parser.error('write requires installation review and readback build; stage accepts neither')
+    if args.installer_profile and args.mode!='write':
+        parser.error('Only a write takes the admission of its run')
     if args.confirm_reviewed_device_state and args.action!='acquire':
         parser.error('Evidence currency confirmation belongs only to a separately authorized write acquisition')
     try:
@@ -373,6 +393,8 @@ def main():
             ri=ram.prepare_inputs(base,cpu,reader,transport,args.readback_build,args.diskos,'rootfs')
             ri['completion']=ram.load_completion(base,transport)
             inputs['readback_plan']=installation_review.collect_rootfs.make_plan(base,cpu,reader,transport,ri,inputs['metadata'])
+            if args.installer_profile:
+                layout = run_layout(base,reader,transport,inputs['page_policy'],args.installer_profile,inputs['installation_review'])
         plan = make_plan(base,cpu,reader,transport,layout,inputs,args.mode)
         result = dict(plan=plan,plan_sha256=fingerprint(plan)) if args.action == 'plan' else acquire(
             plan,args.approved_plan_sha256,base,cpu,reader,transport,layout,inputs,args.libusb,args.output,

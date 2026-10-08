@@ -165,6 +165,21 @@ Independently collect and compare every byte of the exact approved padded image
 after candidate or restore writing. The pre-install FF-tail rule never applies
 to post-write acceptance.
 
+### A write without a history (plan, stage 6)
+
+A write whose review is `known-image` ([installation review](installation-review.md#without-a-history-the-known-image-plan-stage-6-2026-10-08))
+runs only in the USB Boot entry its evidence was read in: its plan carries
+`same_entry_required`, and the session reads the DDR diagnostic first as every
+session does; unless it is the clean one that entry's SPL left, it stops there,
+`failed-before-writer`, before any SPL, staging or writer
+(`ram_transport.bring_up`). The player restarted since the evidence means the
+evidence may no longer be what it holds: the installer starts again. Its
+admission comes from the package (`--installer-profile
+<package>/proposed-installer-profile.json`, `run_layout`): only for such a
+review, only for a write, and differing from the tracked
+`firmware/installers` profile only in the admission and the review pin, which
+stays closed and unchanged. Every other check of the write is as above.
+
 ## Offline planning and tests
 
 Example using locally prepared, ignored inputs (no USB library is loaded):
