@@ -1264,10 +1264,12 @@ layer and the emulator's checkout to build the image.
   path's test. The player (2026-10-08, the seventh write,
   [record](first-write-observation.md#the-seventh-write-the-users-path-without-a-history)):
   written, and its first start found `4f8d68b6…` on its root device.
-- [ ] The installer's Docker build of the image goes (the condition above is
+- [x] The installer's Docker build of the image goes (the condition above is
   met): squashfs-tools 4.6 or later and openssl only; the emulator stays for
   the guest. The USB payloads still need the toolchain image until a boot
-  release carries them (2.57.5).
+  release carries them (2.57.5). Done 2026-10-09: the check names
+  squashfs-tools and openssl with their install commands and asks about
+  Docker only for `--guest` (`test_installer`).
 - [ ] The user answers only yes or no at the first start (owner, 2026-10-08):
   the words are the developers' evidence (`owner-boot-confirmation.json`,
   read by the next review with a history), never needed without one. To

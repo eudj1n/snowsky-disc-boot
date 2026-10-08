@@ -135,6 +135,31 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(installer.run(), 1)
         self.assertIn('disc-menu 9: no local file with sha256', installer.report['status'])
 
+    def test_the_image_is_built_here_without_docker(self):
+        """Plan, stage 6: the guest and the player ran the image built on the computer (2026-10-08), so the
+        build in the emulator's Docker image went: without squashfs-tools and openssl the check says what to
+        install, and Docker is asked about only for the guest."""
+        import argparse
+        import io
+        from unittest import mock
+        from installer import flow, tui
+        args = argparse.Namespace(dry_run=True, yes=True, plain=True, ota=None, image=None, emulator=None, card=None,
+                                  package=None, app=None, packages_from=[], download=False, work=str(self.root/'run'),
+                                  catalog=str(self.catalog), simulate=None, simulate_small=False, fault=None, restore=False,
+                                  guest=False, history=None, diskos=None, libusb=None, boot_build=False)
+        calls = []
+        installer = flow.Installer(args, tui.Screen(look='plain', stream=io.StringIO()),
+                                   runner=lambda command, **kw: calls.append(command))
+        with mock.patch.object(flow.Installer, 'host_builder', return_value=None):
+            with self.assertRaises(flow.Stop) as stopped:
+                installer.check()
+        self.assertIn('squashfs-tools 4.6 or later and openssl', str(stopped.exception))
+        self.assertNotIn('Docker', str(stopped.exception))
+        with mock.patch.object(flow.Installer, 'host_builder', return_value='4.7.5'):
+            installer.check()
+        self.assertEqual(calls, [], 'no Docker asked about without a guest')
+        self.assertEqual(installer.report['steps'][-1]['squashfs'], '4.7.5')
+
     def test_libusb_is_found_where_its_packages_put_it_or_named(self):
         """Plan, stage 6: no --libusb to give; a missing libusb is said with the command that installs it."""
         import argparse

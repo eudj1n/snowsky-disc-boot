@@ -111,8 +111,9 @@ SHA-256 and the versions used are written into the header, docs/provenance.md).
 
 `python3 install.py` runs the guided installer in the terminal (the boot menu's colours;
 `--plain` or a non-terminal output gives plain text). This part checks the computer, builds
-the image from FiiO's update on the computer itself, without root, when squashfs-tools 4.6 or later
-and openssl are there (otherwise in the emulator's image with Docker), with the boot layer's programs
+the image from FiiO's update on the computer itself, without root, with squashfs-tools 4.6 or later
+and openssl (the build in the emulator's Docker image went once the guest and the player had run
+this one, 2026-10-08; only `--guest` needs Docker and the emulator), with the boot layer's programs
 of the newest release recorded for the firmware (`disc-boot-<version>-mips.tar.gz`, a local file by its record's
 digest or its download, checked; a local build of `build/mips` only with `--boot-build`), or takes
 one with `--image`; the update
