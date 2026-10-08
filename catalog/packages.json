@@ -30,12 +30,12 @@
         {
             "name": "disc-server",
             "role": "service",
-            "version": "2.57.4",
+            "version": "2.57.5",
             "homepage": "https://github.com/eudj1n/snowsky-disc-server",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-server/releases/download/v2.57.4/disc-server-2.57.4.zip",
-                "sha256": "4f53616da39424c53b29a3099d3bbf979725b262631de623334837cf2609845f",
-                "size": 838185
+                "url": "https://github.com/eudj1n/snowsky-disc-server/releases/download/v2.57.5/disc-server-2.57.5.zip",
+                "sha256": "26d19b4ceccb329ad6a07ff163bea70d116e4acfde2dea43018010243e3affa2",
+                "size": 838153
             },
             "profiles": [
                 "2.57"
@@ -43,13 +43,13 @@
             "bootApi": 1,
             "license": "MIT",
             "default": true,
-            "notes": "snowsky-disc-server's release variant; its catalog/apps.json offers the player page by default",
+            "notes": "snowsky-disc-server's release variant; its catalog/apps.json offers Disc Player 1.0.0 by default",
             "verified": {
-                "date": "2026-10-07",
+                "date": "2026-10-08",
                 "boot": "b29581a",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "2.57.3 to 2.57.4 through the manager on the guest (boot 2.57.3's image) and on the owner's player, confirmed; release 2.57.4 of snowsky-disc-server, the first tagged (its record says the rest)"
+                "acceptance": "2.57.4 to 2.57.5 through the manager on the guest (boot 2.57.3's image), confirmed in 187 s; Disc Player 1.0.0 installed through it; release 2.57.5 (2.57.4's build)"
             }
         },
         {
