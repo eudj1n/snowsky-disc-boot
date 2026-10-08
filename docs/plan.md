@@ -1084,25 +1084,36 @@ a write with all of it. Each item with its host tests and the guest.
   included); then the guest. The USB readback stays the way when the result
   does not come back or differs. With both items an installation takes the
   write (about 9 minutes) and a first start, against about an hour now.
-- [ ] One USB Boot entry for an installation, one session, one SPL (owner,
-  2026-10-07: easier for the user, as diskOS's single `usbboot` run of about
-  20 minutes, 18 of them a blind wait). What kept the readback out of the
-  write's entry was never the write: each of our sessions is its own tool
-  run and loads the SPL again, and a second SPL re-runs the DDR bring-up,
-  whose PHY training failed in 3 of 6 recorded re-runs (both after the
-  writer, one of four after a read; failure 30, `CALIB_DONE` `0x12`), the
-  first SPL of an entry clean in all 11 (`first-write-observation.md`, "The
-  second SPL of a USB Boot entry"). So the installation becomes one session:
-  the SPL and the metadata read; the short identity check of a few rootfs
-  blocks with the rootfs reader; the staging check, the image and its read
-  back, the sample's hash; the writer with its held ask; its record. Each
-  payload goes into the code region in turn, as the write session already
-  does, and DDR stays up. The proof then comes from the first start (the item
-  above); if it is wanted over USB, the readback can follow the writer in the
-  same session (no SPL), after a short read-only check that our reader works
-  on the NAND right after the writer in one session. A readback in a fresh
-  entry stays the fallback. One session also means one plan, one approval and
-  one audit of its journal.
+- [ ] One USB Boot entry for an installation (owner, 2026-10-07: easier for
+  the user, as diskOS's single `usbboot` run of about 20 minutes, 18 of them a
+  blind wait; and users install without a history). What kept sessions out
+  of one entry was never the write: each of our sessions is its own tool run
+  and loads the SPL again, and a second SPL re-runs the DDR bring-up, whose
+  PHY training failed in 3 of 6 recorded re-runs (both after the writer, one
+  of four after a read; failure 30, `CALIB_DONE` `0x12`), the first SPL of an
+  entry clean in all 11 (`first-write-observation.md`, "The second SPL of a
+  USB Boot entry"). The design (2026-10-07), tools kept apart rather than
+  merged into one session:
+  - [ ] The SPL once an entry: a session first reads the DDR diagnostic the
+    SPL leaves in TCSM; the clean one of this entry (`d1a6c0de 9 0 0 0`)
+    means DDR is up and the SPL is not run again; a fresh entry holds zeros
+    there (the reviewed SPL's padding) and runs it. Each tool (the reads, the
+    boot evidence, the write) plans and audits both starts. A read-only
+    experiment on the player first: two probe reads in one entry, the second
+    without the SPL.
+  - [ ] The installation in one entry: without a history, the boot blocks'
+    short read (which rootfs the bootloader selects, as the owner's boot
+    capture of 2026-09); the identity check of a few rootfs blocks; the
+    review offline in seconds while the player waits; the write; then the
+    first start's check (above), fetched over the USB console, and a
+    readback in a fresh entry only when it is missing or differs.
+  - [ ] The review's two ways: with a history, the identity check against
+    the history's image and, for the previous write, its readback or its
+    first start's check (the expected image, a match, the primary root
+    device, the written build); without one, the fresh boot evidence and the
+    identity check against stock of the reviewed version (blocks inside the
+    squashfs). Checked offline on the owner's history before any device
+    session, and on a synthetic fresh player.
 - [x] The fifth write (2026-10-07, run `install-20261007-215049`, image
   `69d82c9d…`, boot release 2.57.3 with the held ask, #15): the backup in
   24 min 11 s (794 batches, median 959 ms, no timeout; 38 min before), the
