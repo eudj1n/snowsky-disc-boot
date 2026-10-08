@@ -15,6 +15,14 @@
       "release": "2.57.4",
       "name": "disc-boot-v257-review-only.bin",
       "bytes": 100663296,
+      "sha256": "4f8d68b6449732a85ae18e476a4b3d717fa46d3e89aaa9451e9cb2e093436e9f",
+      "first_blocks_sha256": "700dd48be890a24e584035def0d51cd104b459812391fbc4e4d511dcf26aaae3",
+      "note": "Boot release 2.57.4 as the installer builds it since the image is reproducible (on the computer, without root or Docker; the same bytes as the Docker build): what an installation without a history writes until 2.57.5 records its own. Accepted on the emulator's guest at f1d5e33, 2026-10-08 (install.py --guest the user's way: installed by Play, the menu answered, the service confirmed)"
+    },
+    {
+      "release": "2.57.4",
+      "name": "disc-boot-v257-review-only.bin",
+      "bytes": 100663296,
       "sha256": "615d16c7482c88920146108e1ff682678fafb7294cbd5b2db6b7b4bff6f3b59b",
       "first_blocks_sha256": "4409b44499b93e2d14b88a786d8ef473581836cceadfbe29331c275f4d02358c",
       "note": "Boot release 2.57.4 as the owner's player holds it since the sixth write (2026-10-08), built before the image was reproducible"

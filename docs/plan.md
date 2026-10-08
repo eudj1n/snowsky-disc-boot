@@ -1255,7 +1255,13 @@ layer and the emulator's checkout to build the image.
   scopes for a mode; fixed. `test_release`, `test_usbboot`.
 - [ ] The image built so on the guest and on the player (the next boot
   release's image), then the installer's Docker build goes; the emulator
-  stays for the guest.
+  stays for the guest. The guest (2026-10-08): release 2.57.4's image built
+  on the computer without root or Docker (`4f8d68b6…`, the Docker build's
+  bytes), `install.py --guest` the user's way with the catalog's published
+  packages (menu 2.57.4, server 2.57.5, Disc Player 1.0.0): installed by
+  Play, the menu answered, the service confirmed. Known by its first blocks
+  (`firmware/images`), as the owner's player will hold it after the user
+  path's test.
 - [x] diskOS's writer and SPL fetched at their pinned revision, as the diskOS
   package already is (`catalog.py fetch --name diskos --download`, checked
   from a clean clone on 2026-10-06). Done 2026-10-08: the six files the
