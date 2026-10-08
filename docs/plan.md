@@ -1241,6 +1241,18 @@ own web apps and its updates; the boot packages (menus, interfaces,
 services) are installed and removed in the menu on the player, boot staying
 the only installer. Play at power-on stays the recovery path only.
 
+- [ ] First, the repository's layout (owner, 2026-10-08): one folder for each
+  component under `device/`, named as its package without `disc-`:
+  `boot/` (today's `device/src`), `console/` (disc-usb-console), `menu/`,
+  `health/`, `network/`, `common/` (SHA-256, manifests and the like),
+  `usbboot/` (the programs run from RAM in USB Boot, today's
+  `acquisition/`), `scripts/` (what goes into the image, today's
+  `deployment/`), with `tests/`, `vendor/`, `licenses/`, the Makefile and
+  the toolchain. `device/` stays the line between what runs on the player
+  (C, built for MIPS) and what runs on the computer (the installer, Python).
+  A move alone first, in its own PR: the same programs, only the paths in
+  the build, CI, `release.py` and the documents change (the build id
+  changes with them).
 - [ ] The menu's three screens: the interface (today's), the services'
   autostart, installing and removing (the card's staged packages shown
   there; never automatic). A specimen page and numbered decisions first;
