@@ -160,7 +160,8 @@ analysis of changed paths before enabling the engineering profile.
 
 ## GitHub Actions and private integration
 
-`.github/workflows/ci.yml` runs on push, pull request and manual dispatch with
+`.github/workflows/ci.yml` runs on each pull request, on `2.x` after each merge and by hand (not for a change of
+documents alone), with
 read-only repository permission and no firmware secrets. It builds the host C
 service and runs JS plus all synthetic Python conformance tests, including
 profile promotion, image/writer invariants, saved-result parsing and USB console

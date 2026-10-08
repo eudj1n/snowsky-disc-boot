@@ -1,7 +1,12 @@
 name: Firmware-free checks
+# A pull request is checked once (not also its branch's pushes), 2.x after each merge, and a change of
+# documents alone not at all; a tag's checks are the release workflow's own.
 on:
   push:
+    branches: ['2.x']
+    paths-ignore: ['docs/**', '**/*.md']
   pull_request:
+    paths-ignore: ['docs/**', '**/*.md']
   workflow_dispatch:
 permissions:
   contents: read

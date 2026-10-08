@@ -301,8 +301,8 @@ with the same digests. The catalog also names snowsky-disc-server's release (`di
 address on that repository and the digest its own record keeps) and diskOS's recipe. Pushing the tag `v<version>` runs `.github/workflows/release.yml`: the
 synthetic tests, the toolchain from its recipe, the MIPS build, `release.py build` and `check`
 (the files must be the recorded ones and the catalog must agree), then a draft release with
-the files and notes; the owner publishes it. `.github/workflows/ci.yml` builds the same files on
-every push as a 14-day artifact (`<firmware>.0-ci.<commit>`, never a release). The workflows
+the files and notes; the owner publishes it. `.github/workflows/ci.yml` builds the same files for
+each pull request and each merge into `2.x` (not for a change of documents alone) as a 14-day artifact (`<firmware>.0-ci.<commit>`, never a release). The workflows
 use no secrets; their actions are pinned by commit.
 
 ## Related repositories
