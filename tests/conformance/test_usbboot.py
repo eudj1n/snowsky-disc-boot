@@ -124,15 +124,31 @@ class ReviewedTests(unittest.TestCase):
         self.history = usbboot.History(dict(bootCapture=boot, stockCapture=self.root/'stock-capture', previousReview=self.root/'review.json',
                                             previousImage=previous/'combined.bin', writeCapture=self.root/'w', readbackCapture=self.root/'r'))
         # The stand-in tools take '/diskos' as given; its pinned files are scripts/sources.py's (test_sources).
+        # The payloads are built by the stand-in tools here, whatever the releases recorded carry.
         from unittest import mock
-        patcher = mock.patch.object(flow.sources, 'differs', return_value=[])
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        for patcher in (mock.patch.object(flow.sources, 'differs', return_value=[]),
+                        mock.patch.object(flow.Installer, 'release_payloads', return_value=None)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def reviewed(self, *faults):
         tools = Tools(self, faults)
         return usbboot.Reviewed('2.57', self.root/'usb', self.image.parent, '/diskos', '/libusb.dylib', self.history, run=tools,
                                 profile=self.profile), tools
+
+    def test_the_releases_payloads_are_taken_rather_than_built(self):
+        """Plan, stage 6: with the release's prebuilt payloads nothing is compiled on the computer."""
+        payloads = self.root/'payloads'
+        for mode in ('metadata', 'rootfs', 'rootfs-digest', 'staging-check', 'rootfs-probe'):
+            (payloads/mode).mkdir(parents=True)
+            (payloads/mode/'identity.bin').write_bytes(mode.encode())
+        tools = Tools(self, ())
+        reviewed = usbboot.Reviewed('2.57', self.root/'usb', self.image.parent, '/diskos', '/libusb.dylib', self.history, run=tools,
+                                    profile=self.profile, payloads=payloads)
+        reviewed.prepare()
+        self.assertNotIn('build_identity.py', tools.calls)
+        self.assertEqual((reviewed.probe_build/'identity.bin').read_bytes(), b'rootfs-probe')
+        self.assertEqual((reviewed.staging_build/'identity.bin').read_bytes(), b'staging-check')
 
     def test_the_installation_follows_the_procedure(self):
         reviewed, tools = self.reviewed()

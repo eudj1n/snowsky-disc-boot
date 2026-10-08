@@ -1241,6 +1241,18 @@ layer and the emulator's checkout to build the image.
   every check kept. On macOS (squashfs-tools 4.7.5) the installer's dry run
   built 2.57.4's image in about a minute without Docker: the very image of
   the container (`4f8d68b6…`). `test_deployment`, `test_sources`.
+- [x] The USB payloads from the release (owner, 2026-10-08: the installer
+  compiled them with diskOS's toolchain image, which a new user lacks). The
+  boot layer's own toolchain gives the very payloads diskOS's gave (the five
+  of the sixth write's run, byte for byte); `build.json` names the compiler
+  instead of the image's id, so a build is the same on any computer; the
+  release carries `disc-usb-payloads-<v>.tar.gz` (the five and the boot
+  evidence's two), built twice to the same bytes, and the installer takes it
+  by its record's digest (`--boot-build`, or a release before 2.57.5, builds
+  them with Docker). The review on the owner's history passes on the
+  release's payloads with nothing compiled. Found on the way: the boot
+  evidence's build had failed since the read by digest (stage 4b) asked its
+  scopes for a mode; fixed. `test_release`, `test_usbboot`.
 - [ ] The image built so on the guest and on the player (the next boot
   release's image), then the installer's Docker build goes; the emulator
   stays for the guest.

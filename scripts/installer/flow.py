@@ -474,7 +474,32 @@ class Installer:
         if not self.args.libusb:
             raise Stop('the player is written through the reviewed tools: give --libusb (the libusb library they load)')
         return usbboot.Reviewed(load_profile()['version'], work or self.work/'usb', Path(image).parent, self.diskos(),
-                                self.args.libusb, history, run=self.runner, progress=self.session_progress())
+                                self.args.libusb, history, run=self.runner, progress=self.session_progress(),
+                                payloads=self.release_payloads())
+
+    def release_payloads(self):
+        """The folder of the boot release's prebuilt USB payloads (plan, stage 6), by its record's digest; None when
+        they are built here: with --boot-build, or for a release that carries none (Docker, the boot layer's
+        toolchain)."""
+        if getattr(self.args, 'boot_build', False):
+            return None
+        folder = self.work/'payloads'
+        if folder.is_dir():
+            return folder
+        version = load_profile()['version']
+        try:
+            chosen = release.boot_release(version)
+        except release.ReleaseError as error:
+            raise Stop(str(error))
+        if not chosen['payloads']:
+            return None
+        self.downloads.mkdir(parents=True, exist_ok=True)
+        archive = self.obtained(chosen['payloads']['name'], lambda places: catalog.obtain(
+            chosen['payloads']['archive'], places, self.downloads, self.args.download, self.downloading('The player (USB Boot)')))
+        try:
+            return release.extract_payloads(archive, chosen['version'], folder)
+        except release.ReleaseError as error:
+            raise Stop(str(error))
 
     def diskos(self):
         """diskOS's writer, SPL and the sources they are checked by (plan, stage 6): the checkout given with

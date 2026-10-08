@@ -23,6 +23,7 @@ and a failed write never turns into a restore by itself.
 import hashlib
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import time
@@ -166,7 +167,10 @@ class Progress:
 
 
 class Reviewed:
-    def __init__(self, version, work, artifacts, diskos, libusb, history, run=subprocess.run, profile=None, progress=None):
+    def __init__(self, version, work, artifacts, diskos, libusb, history, run=subprocess.run, profile=None, progress=None,
+                 payloads=None):
+        # payloads: the folder of the release's prebuilt payloads (plan, stage 6), else they are built here.
+        self.payloads = Path(payloads) if payloads else None
         self.version, self.work, self.artifacts = version, Path(work), Path(artifacts)
         self.diskos, self.libusb, self.history, self.run = str(diskos), str(libusb), history, run
         self.profile = Path(profile or ROOT/'firmware/installers'/f'v{version}.json')
@@ -251,6 +255,10 @@ class Reviewed:
         # The digest payload (plan, stage 4b) is built beside the reviewed ones; it runs only beside a full read.
         for mode, out in (('metadata', self.meta), ('rootfs', self.readback_build), ('rootfs-digest', self.digest_build),
                           ('staging-check', self.staging_build), ('rootfs-probe', self.probe_build)):
+            if self.payloads:
+                # The release's build, by its digest; the tools still check it against the profiles and sources.
+                shutil.copytree(self.payloads/mode, out)
+                continue
             self.need(self.tool('build_identity.py', '--version', self.version, '--mode', mode, '--diskos', self.diskos, '--output', out),
                       f'the {mode} payload')
         history = (['--previous-review', self.history['previousReview'], '--previous-image', self.history['previousImage'],

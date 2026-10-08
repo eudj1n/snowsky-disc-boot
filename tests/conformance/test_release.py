@@ -27,7 +27,15 @@ class ReleaseTests(unittest.TestCase):
         (self.mips/'build-id').write_text('b43034ba1e27\n')
         self.releases = self.root/'releases'
 
+    def payloads(self, firmware, diskos, output):
+        """A stand-in for the payloads' builds (Docker): the same bytes on every build."""
+        for name, source in release.payload_members(output):
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_bytes(f'{firmware} {name}'.encode())
+
     def build(self, folder='dist', version='2.57.1', **kw):
+        kw.setdefault('payloads', self.payloads)
+        kw.setdefault('diskos', self.root/'diskos')
         return release.build(version, self.root/folder, self.mips, **kw)
 
     def catalog(self, sha, size, name='disc-menu-2.57.1.zip'):
@@ -93,6 +101,10 @@ class ReleaseTests(unittest.TestCase):
         archive = self.root/'dist-2.57.2'/chosen['name']
         self.assertEqual(chosen['archive'], dict(url=release.url('2.57.2', chosen['name']), size=archive.stat().st_size,
                                                  sha256=hashlib.sha256(archive.read_bytes()).hexdigest()))
+        self.assertEqual(chosen['payloads']['name'], 'disc-usb-payloads-2.57.2.tar.gz')
+        built = release.extract_payloads(self.root/'dist-2.57.2'/chosen['payloads']['name'], '2.57.2', self.root/'payloads')
+        self.assertEqual((built/'rootfs-probe/identity.bin').read_bytes(), b'2.57 rootfs-probe/identity.bin')
+        self.assertTrue((built/'boot-evidence/uboot/identity.elf').is_file())
         programs = release.extract_boot(archive, '2.57.2', chosen['buildId'], self.root/'boot')
         self.assertEqual(sorted(programs), ['disc-boot', 'disc-usb-console'])
         self.assertEqual(programs['disc-boot'].read_bytes(), (self.mips/'disc-boot').read_bytes())
