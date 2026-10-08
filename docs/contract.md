@@ -696,6 +696,24 @@ A package must not write MTD devices, change FiiO's files in `/usr/data`
 or create a USB gadget while the console owns the controller. Boot cannot
 enforce this: packages run as root, at the installer's risk.
 
+## The check after an installation (the first start)
+
+The installer that writes an image puts its SHA-256 and length on the card,
+`.disc/boot/expected-rootfs.json` (`{"schema": 1, "sha256", "bytes"}`). At
+each start, in any mode, boot looks for it once stock has mounted the card
+(at most 90 s), in a process of its own at a low priority that nothing waits
+for. When there is no outcome for that image yet, it reads that many bytes of
+the device its kernel booted from: `root=` in `/proc/cmdline`, which must be
+a `/dev/mtdblock_bbt_ro<N>` (the partition's good blocks in order, bad ones
+skipped, as the kernel mounts the root file system: `nand-kernel-review.md`),
+hashes them, and writes the outcome to the card,
+`.disc/boot/rootfs-check.json`, and to `/run/disc-boot/rootfs-check.json`:
+`{"schema": 1, "expected", "actual", "bytes", "device", "match", "seconds",
+"error", "build"}`, with a line in the boot log. Another root device, one
+shorter than the image or a read error is an error, never a match. The
+installer reads the outcome over the USB console; a match stands for the
+readback through USB Boot, which stays the way when it is missing or differs.
+
 ## Status (`/run/disc-boot/`)
 
 - `boot.json`: the boot layer's API and build, the profile, the mode and its
