@@ -325,7 +325,8 @@ image is never a release file, and debug builds stay local.
 bash scripts/build.sh mips
 python3 scripts/release.py build --version 2.57.2 --output work/release-2.57.2/dist
 # the guest accepts these files (menu_guest.py, install.py --guest), then:
-python3 scripts/release.py record --version 2.57.2 --dist work/release-2.57.2/dist --accepted "<what ran>"
+python3 scripts/release.py record --version 2.57.2 --dist work/release-2.57.2/dist --accepted "<what ran>" \
+  --image work/<run>/image   # from 2.57.5: the image the guest ran, so a player holding it is known
 ```
 
 `record` writes `releases/<version>.json` once; the catalog's entries for the release name its

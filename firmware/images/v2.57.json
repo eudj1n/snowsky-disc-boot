@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "version": "2.57",
+  "description": "The rootfs images a player may hold, known by their digests (plan, stage 6: the user's installation without a history). The identity probe reads the rootfs's first blocks (first_blocks_bytes, the collectors profile's probe_blocks) and compares their SHA-256 with first_blocks_sha256. Stock is the official rootfs padded to the writer's size; every boot release from 2.57.5 records its own image (releases/<v>.json, image), built reproducibly from FiiO's update and the release; the images before it are listed here. Digests only: no firmware is kept in this repository.",
+  "first_blocks_bytes": 262144,
+  "stock": {
+    "name": "stock-v257-restore-review-only.bin",
+    "rootfs_sha256": "111e4dd7ee3d7ff91ba7e61181690be7ffd22bd1bbd13ad513f5f015ffb302ae",
+    "bytes": 100663296,
+    "sha256": "e75d85bddb7b9fe304dfe334058693fb522a93cb1048ddfb5417f136f204eae0",
+    "first_blocks_sha256": "dccfa97506e44bc8ed82512efb6bca7ed0b6acbf1393963d89fe244db9501c90"
+  },
+  "earlier": [
+    {
+      "release": "2.57.4",
+      "name": "disc-boot-v257-review-only.bin",
+      "bytes": 100663296,
+      "sha256": "615d16c7482c88920146108e1ff682678fafb7294cbd5b2db6b7b4bff6f3b59b",
+      "first_blocks_sha256": "4409b44499b93e2d14b88a786d8ef473581836cceadfbe29331c275f4d02358c",
+      "note": "Boot release 2.57.4 as the owner's player holds it since the sixth write (2026-10-08), built before the image was reproducible"
+    },
+    {
+      "release": "2.57.3",
+      "name": "disc-boot-v257-review-only.bin",
+      "bytes": 100663296,
+      "sha256": "69d82c9d2bd1dde529dadc2d837a74b9f99b565e76dd370c02d096b70128bf06",
+      "first_blocks_sha256": "837ed890b724bb04b21c143dfc92ae3f4a0cc5dd57515768e7e7992d2d3df49a",
+      "note": "Boot release 2.57.3 as the fifth write put it on the owner's player (2026-10-07), built before the image was reproducible"
+    }
+  ]
+}

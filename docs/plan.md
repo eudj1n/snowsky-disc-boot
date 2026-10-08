@@ -1282,7 +1282,25 @@ layer and the emulator's checkout to build the image.
   its zip at the card's root; the owner checks it later) or ours through USB
   Boot. After the write, the first start's check as now. No history, no
   captures, no review pin moved after each write for the user; `--history`
-  stays the developers' way.
+  stays the developers' way. The design (2026-10-08, accepted by the owner
+  with its two risks: an image is known by its first 256 KiB, and the kernel
+  partition is never read, since neither our writes nor any image of ours
+  touch it and FiiO's update writes the kernel and the rootfs together):
+  - [x] The known images (`firmware/images/v2.57.json`: stock and the owner's
+    2.57.3 and 2.57.4 by their digests and their first blocks' digests;
+    `scripts/deployment/known_images.py` adds every release's recorded image
+    and refuses two that share their first blocks; `release.py record
+    --image` records the image the guest ran). `test_known_images`.
+  - [ ] A review of its own (`source_state` `known-image`): in one entry the
+    metadata page (the entry's only SPL), the boot evidence with it, the
+    identity probe, then the review offline in seconds; the write plan bound
+    by its digests and an admission computed for the run, never written to
+    `firmware/installers`.
+  - [ ] The write refused unless it runs in the same entry (its SPL skipped).
+  - [ ] The installer's user path (no `--history`), and `--restore` without
+    a history.
+  - [ ] On the owner's player after FiiO's Local upgrade back to stock (the
+    owner's step, on its own go-ahead).
 - [ ] The installer for users as one archive in the boot release
   (`disc-installer-<v>.tar.gz`, owner, 2026-10-08): `install.py` with the
   scripts, profiles, catalogs and source pins it needs, this release's files
@@ -1300,6 +1318,9 @@ layer and the emulator's checkout to build the image.
   said the same way, and Docker only for the guest (`test_installer`).
 - [ ] The README's guide: what is installed, the risk, the way back, the
   packages.
+- [ ] Two timing tests fail now and then under the full suite's load and pass
+  alone (`test_usb_console`'s unmounted card, `test_boot`'s menu hand-over
+  order, 2026-10-08): wait for the event, not for a time.
 - [ ] The whole path from a clean clone, in CI where it can run (no player)
   and on a clean computer.
 

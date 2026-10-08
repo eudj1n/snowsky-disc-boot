@@ -171,7 +171,25 @@ def observed(version, dist):
     return files, build_id
 
 
-def record(version, dist, accepted, releases=RELEASES):
+def image_of(folder):
+    """The image the guest accepted, from its build's folder (build_candidate.py's report.json and the image):
+    its name, bytes, digest and its first blocks' digest, which a player's identity probe reads (stage 6)."""
+    folder = Path(folder)
+    report = json.loads((folder/'report.json').read_text())
+    name = next((n for n in report.get('artifacts', {}) if n.startswith('disc-boot-')), None)
+    if not name or not (folder/name).is_file():
+        raise ReleaseError(f'{folder} holds no built image')
+    data = (folder/name).read_bytes()
+    if hashlib.sha256(data).hexdigest() != report['artifacts'][name]['sha256']:
+        raise ReleaseError(f'{name} is not the image its report names')
+    return dict(name=name, bytes=len(data), sha256=hashlib.sha256(data).hexdigest(), first_blocks_bytes=FIRST_BLOCKS,
+                first_blocks_sha256=hashlib.sha256(data[:FIRST_BLOCKS]).hexdigest())
+
+
+FIRST_BLOCKS = 262144
+
+
+def record(version, dist, accepted, releases=RELEASES, image=None):
     firmware = firmware_of(version)
     files, build_id = observed(version, dist)
     path = Path(releases)/f'{version}.json'
@@ -181,6 +199,9 @@ def record(version, dist, accepted, releases=RELEASES):
         raise ReleaseError('say what the guest accepted (--accepted)')
     data = dict(schema=1, version=version, firmware=firmware, tag=f'v{version}', buildId=build_id, files=files,
                 accepted=accepted.strip(), urls={name: url(version, name) for name in files})
+    if image is not None:
+        # The image built from FiiO's update and these files, as the guest ran it: a player holding it is known.
+        data['image'] = image_of(image)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2) + '\n')
     return data
@@ -305,6 +326,7 @@ def main():
     r.add_argument('--version', required=True)
     r.add_argument('--dist', type=Path, required=True)
     r.add_argument('--accepted', required=True, help='What the guest accepted, with which emulator and image')
+    r.add_argument('--image', type=Path, help="The image's build folder (build_candidate.py's output) the guest ran")
     c = sub.add_parser('check', help='A fresh build against its record and the catalog; the notes')
     c.add_argument('--version', required=True)
     c.add_argument('--dist', type=Path, required=True)
@@ -314,7 +336,7 @@ def main():
         if args.command == 'build':
             result = build(args.version, args.output, args.mips, release=not args.not_a_release, diskos=args.diskos)
         elif args.command == 'record':
-            result = record(args.version, args.dist, args.accepted)
+            result = record(args.version, args.dist, args.accepted, image=args.image)
         else:
             result = check(args.version, args.dist)
             if args.notes:
