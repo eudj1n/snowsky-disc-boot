@@ -1392,8 +1392,11 @@ layer and the emulator's checkout to build the image.
   it (`--libusb` only to name another), and a missing one is said with the
   command that installs it; the image needs squashfs-tools and openssl,
   said the same way, and Docker only for the guest (`test_installer`).
-- [ ] The README's guide: what is installed, the risk, the way back, the
-  packages.
+- [x] The README's guide: what is installed, the risk, the way back, the
+  packages. Done 2026-10-09: what you get, what you need (with the install
+  commands), the steps with the typed words, the risk, both ways back (FiiO's
+  Local upgrade as checked on the player, `install.py --restore`), the keys
+  at power-on; the menu's own pictures. It is the archive's user guide.
 - [x] Two timing tests fail now and then under the full suite's load and pass
   alone (`test_usb_console`'s unmounted card, `test_boot`'s menu hand-over
   order, 2026-10-08): wait for the event, not for a time. Done 2026-10-09,
@@ -1406,7 +1409,11 @@ layer and the emulator's checkout to build the image.
   bounds for the events. 16 at once: none failed; `test_boot` takes as long
   as before.
 - [ ] The whole path from a clean clone, in CI where it can run (no player)
-  and on a clean computer.
+  and on a clean computer. In CI since 2026-10-09: the installer's archive
+  built from the checkout, unpacked and run without the repository, offline
+  (`test_installer`); the image and the guest need FiiO's update, which CI
+  has not. The clean computer: the release's acceptance, the archive on a
+  user account without the repository or its tools.
 
 ## Stage 7 — the menu's three screens and services beside the server (owner, 2026-10-07/08)
 
