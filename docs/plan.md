@@ -1220,6 +1220,16 @@ the only installer. Play at power-on stays the recovery path only.
 - [ ] Several services (owner, 2026-10-07, to shape the architecture):
   `service/<name>/` as `ui/<name>/`, each with its own lifecycle, an
   autostart flag and limits; disc-server keeps its paths.
+- [ ] disc-health and disc-network are built here, as the menu is (owner,
+  2026-10-08): native code beside `device/menu`, the same toolchain, released
+  with the boot layer's numbers (`disc-health-<v>.zip`,
+  `disc-network-<v>.zip`) and named in the catalog, so the installer offers
+  them in the same entry as the image and boot installs them at the first
+  start. Neither needs the server: each writes a small status file of its
+  own in the boot layer's status folder, which the server shows (as it
+  shows `ui.json` and `menu.json`). The installer's defaults (proposed, for
+  the owner): disc-health ticked (it only reads), disc-network offered but
+  not ticked until it has run on the owner's player.
 - [ ] disc-health (owner, 2026-10-07): a read-only, offline journal of the
   battery, temperature, uptime, crashes, card errors and free space, shown
   by the server's diagnostics.
