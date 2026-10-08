@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "version": "2.57.4",
+  "firmware": "2.57",
+  "tag": "v2.57.4",
+  "buildId": "b41966605383",
+  "files": {
+    "disc-menu-2.57.4.zip": {
+      "bytes": 158909,
+      "sha256": "c7cf36961c29c6a1d1361f3770c9384711ac27b67c1161c790e2d4815149da4b"
+    },
+    "disc-boot-2.57.4-mips.tar.gz": {
+      "bytes": 319361,
+      "sha256": "5af9fcf5c298f97a32ea71957e471af9945e4c9fa455a27457b92e1d6924fcfd"
+    }
+  },
+  "accepted": "on the emulator's guest at f1d5e33 with FiiO 2.57, 2026-10-08: an image from next-image (device sources of b419666, build b41966605383) holding this disc-boot and disc-usb-console, boot_guest.py 16 of 16 (its probe writing its slot to the disk before its request; the boot-loop guard with the tentative version at each start), two_packages.py, boot_report.py and boot_layer.py on the packed tree; this disc-menu package, menu_guest.py 3 of 3 and a start with Play while a menu is installed (it showed the installation, answered after it, nothing stopped); install.py --guest with the release candidate's catalog (this menu, disc-server 2.57.4), building its own image: installed by Play, the menu answered, the service confirmed. The SPL once an entry on the owner's player, read-only (two probe reads in one entry)",
+  "urls": {
+    "disc-menu-2.57.4.zip": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.4/disc-menu-2.57.4.zip",
+    "disc-boot-2.57.4-mips.tar.gz": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.4/disc-boot-2.57.4-mips.tar.gz"
+  }
+}

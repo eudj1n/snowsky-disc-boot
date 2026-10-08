@@ -1,94 +1,94 @@
 {
-  "schema": 1,
-  "kind": "packages",
-  "description": "The packages the installer offers (docs/contract.md, \"Catalogs\"): release files only, each accepted on the guest with this boot layer; a package is identified by its archive's SHA-256, fetched from its url once published or taken from a local file with that digest. Debug builds stay local.",
-  "entries": [
-    {
-      "name": "disc-menu",
-      "role": "menu",
-      "version": "2.57.3",
-      "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
-      "source": {
-        "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.3/disc-menu-2.57.3.zip",
-        "sha256": "24bf8279678765bb8235bbae69b26a5141158f2c19c769f19a39cf2857904627",
-        "size": 154991
-      },
-      "profiles": [
-        "2.57"
-      ],
-      "bootApi": 1,
-      "license": "MIT; Inter (SIL OFL 1.1) as rasterised masks",
-      "default": true,
-      "verified": {
-        "date": "2026-10-07",
-        "boot": "6856f30",
-        "emulator": "f1d5e33",
-        "firmware": "2.57",
-        "acceptance": "menu_guest.py 3 of 3; install.py --guest (installed by Play, the menu answered); release 2.57.3"
-      }
-    },
-    {
-      "name": "disc-server",
-      "role": "service",
-      "version": "2.57.4",
-      "homepage": "https://github.com/eudj1n/snowsky-disc-server",
-      "source": {
-        "url": "https://github.com/eudj1n/snowsky-disc-server/releases/download/v2.57.4/disc-server-2.57.4.zip",
-        "sha256": "4f53616da39424c53b29a3099d3bbf979725b262631de623334837cf2609845f",
-        "size": 838185
-      },
-      "profiles": [
-        "2.57"
-      ],
-      "bootApi": 1,
-      "license": "MIT",
-      "default": true,
-      "notes": "snowsky-disc-server's release variant; its catalog/apps.json offers the player page by default",
-      "verified": {
-        "date": "2026-10-07",
-        "boot": "b29581a",
-        "emulator": "f1d5e33",
-        "firmware": "2.57",
-        "acceptance": "2.57.3 to 2.57.4 through the manager on the guest (boot 2.57.3's image) and on the owner's player, confirmed; release 2.57.4 of snowsky-disc-server, the first tagged (its record says the rest)"
-      }
-    },
-    {
-      "name": "diskos",
-      "role": "ui",
-      "version": "1.2.0",
-      "title": "diskOS",
-      "homepage": "https://github.com/b0hemia/diskos",
-      "source": {
-        "recipe": "diskos-release",
-        "archives": [
-          {
-            "url": "https://github.com/b0hemia/diskos/releases/download/v1.2.0/diskos-installer-macos-arm64.tar.gz",
-            "sha256": "ad310120fdf2bac7577bee1362b6f6d65bd1f7f6f63c04ecfa0417e8c879e6ab",
-            "size": 57793208
-          },
-          {
-            "url": "https://github.com/b0hemia/diskos/releases/download/v1.2.0/diskos-installer-linux-x86_64.tar.gz",
-            "sha256": "cb1c37f91d3b9d9cf906be3ecd4e8b1fe5d563b1beb870560abf9a29c9b98dc7",
-            "size": 59094317
-          }
-        ],
-        "member": "diskos-installer/payload/mq_ui",
-        "memberSha256": "3bd951ce21228e33a5521edfe5228acf9df584a38ff0955c249b97e36756c6c8"
-      },
-      "profiles": [
-        "2.57"
-      ],
-      "bootApi": 1,
-      "license": "MIT; its UI under ui/ GPL-3.0, taken from the upstream release on the user's computer and never redistributed",
-      "default": false,
-      "notes": "The package is assembled on the user's computer: diskOS's own UI binary from its release, and an entry of ours that records the boot choice diskOS 1.2.0 expects",
-      "verified": {
-        "date": "2026-10-03",
-        "boot": "be681e3",
-        "emulator": "690a55c",
-        "firmware": "2.57",
-        "acceptance": "two_packages.py (the same binary, built locally from 0edcfba)"
-      }
-    }
-  ]
+    "schema": 1,
+    "kind": "packages",
+    "description": "The packages the installer offers (docs/contract.md, \"Catalogs\"): release files only, each accepted on the guest with this boot layer; a package is identified by its archive's SHA-256, fetched from its url once published or taken from a local file with that digest. Debug builds stay local.",
+    "entries": [
+        {
+            "name": "disc-menu",
+            "role": "menu",
+            "version": "2.57.4",
+            "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
+            "source": {
+                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.4/disc-menu-2.57.4.zip",
+                "sha256": "c7cf36961c29c6a1d1361f3770c9384711ac27b67c1161c790e2d4815149da4b",
+                "size": 158909
+            },
+            "profiles": [
+                "2.57"
+            ],
+            "bootApi": 1,
+            "license": "MIT; Inter (SIL OFL 1.1) as rasterised masks",
+            "default": true,
+            "verified": {
+                "date": "2026-10-08",
+                "boot": "b419666",
+                "emulator": "f1d5e33",
+                "firmware": "2.57",
+                "acceptance": "menu_guest.py 3 of 3; install.py --guest (installed by Play, the menu answered); release 2.57.4"
+            }
+        },
+        {
+            "name": "disc-server",
+            "role": "service",
+            "version": "2.57.4",
+            "homepage": "https://github.com/eudj1n/snowsky-disc-server",
+            "source": {
+                "url": "https://github.com/eudj1n/snowsky-disc-server/releases/download/v2.57.4/disc-server-2.57.4.zip",
+                "sha256": "4f53616da39424c53b29a3099d3bbf979725b262631de623334837cf2609845f",
+                "size": 838185
+            },
+            "profiles": [
+                "2.57"
+            ],
+            "bootApi": 1,
+            "license": "MIT",
+            "default": true,
+            "notes": "snowsky-disc-server's release variant; its catalog/apps.json offers the player page by default",
+            "verified": {
+                "date": "2026-10-07",
+                "boot": "b29581a",
+                "emulator": "f1d5e33",
+                "firmware": "2.57",
+                "acceptance": "2.57.3 to 2.57.4 through the manager on the guest (boot 2.57.3's image) and on the owner's player, confirmed; release 2.57.4 of snowsky-disc-server, the first tagged (its record says the rest)"
+            }
+        },
+        {
+            "name": "diskos",
+            "role": "ui",
+            "version": "1.2.0",
+            "title": "diskOS",
+            "homepage": "https://github.com/b0hemia/diskos",
+            "source": {
+                "recipe": "diskos-release",
+                "archives": [
+                    {
+                        "url": "https://github.com/b0hemia/diskos/releases/download/v1.2.0/diskos-installer-macos-arm64.tar.gz",
+                        "sha256": "ad310120fdf2bac7577bee1362b6f6d65bd1f7f6f63c04ecfa0417e8c879e6ab",
+                        "size": 57793208
+                    },
+                    {
+                        "url": "https://github.com/b0hemia/diskos/releases/download/v1.2.0/diskos-installer-linux-x86_64.tar.gz",
+                        "sha256": "cb1c37f91d3b9d9cf906be3ecd4e8b1fe5d563b1beb870560abf9a29c9b98dc7",
+                        "size": 59094317
+                    }
+                ],
+                "member": "diskos-installer/payload/mq_ui",
+                "memberSha256": "3bd951ce21228e33a5521edfe5228acf9df584a38ff0955c249b97e36756c6c8"
+            },
+            "profiles": [
+                "2.57"
+            ],
+            "bootApi": 1,
+            "license": "MIT; its UI under ui/ GPL-3.0, taken from the upstream release on the user's computer and never redistributed",
+            "default": false,
+            "notes": "The package is assembled on the user's computer: diskOS's own UI binary from its release, and an entry of ours that records the boot choice diskOS 1.2.0 expects",
+            "verified": {
+                "date": "2026-10-03",
+                "boot": "be681e3",
+                "emulator": "690a55c",
+                "firmware": "2.57",
+                "acceptance": "two_packages.py (the same binary, built locally from 0edcfba)"
+            }
+        }
+    ]
 }
