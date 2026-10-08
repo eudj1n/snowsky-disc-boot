@@ -1291,6 +1291,14 @@ layer and the emulator's checkout to build the image.
     `scripts/deployment/known_images.py` adds every release's recorded image
     and refuses two that share their first blocks; `release.py record
     --image` records the image the guest ran). `test_known_images`.
+  - [x] The boot evidence's audit as a tool of its own
+    (`scripts/deployment/audit_usb_boot.py`, 2026-10-08): the session
+    reconstructed from its saved files, the plan, the build and the SPL,
+    with the entry's diagnostic (the SPL skipped when clean), the held
+    completion ask and any bad blocks; its report is the review's
+    `offline-review.json`. It replaces the first observation's one-off
+    script. `test_audit_usb_boot` (full-size sessions of the fake ROM,
+    tampered files refused, the review's `evidence()` taking the report).
   - [ ] A review of its own (`source_state` `known-image`): in one entry the
     metadata page (the entry's only SPL), the boot evidence with it, the
     identity probe, then the review offline in seconds; the write plan bound
