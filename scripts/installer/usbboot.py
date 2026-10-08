@@ -17,6 +17,12 @@ procedure does. The order:
    every byte of the image is compared (readback.py verify);
 5. audit: both USB journals are reconstructed offline (audit_usb_write.py, audit_usb_readback.py).
 
+Without a history (plan, stage 6: a user's installation) the evidence is read in the entry of the
+write instead: the metadata page (the entry's only SPL), the boot evidence and the identity probe,
+each audited; the review (installation_review.py --known) knows the image the player holds by its
+first blocks, and the write takes the admission the review computed for the run and runs in that
+entry; its first start's check proves it. No history is written.
+
 The installer asks for a typed word before each session with the player; nothing is retried,
 and a failed write never turns into a restore by itself.
 """
@@ -180,6 +186,9 @@ class Reviewed:
         self.probe_build = self.work/'build-probe'
         # The staging check (plan, stage 4c): the image region checked and the image hashed on the player.
         self.staging_build = self.work/'build-staging'
+        # Without a history (plan, stage 6): the boot evidence's payloads; the review knows the image.
+        self.boot_build = self.work/'build-boot-evidence'
+        self.known = False
         self.log = self.work/'commands.log'
         # progress(label, fraction, seconds) while a USB session runs (the installer's screen).
         self.progress = progress
@@ -251,16 +260,26 @@ class Reviewed:
 
     # 1. Offline
 
-    def prepare(self):
+    def builds(self, evidence=False):
+        """The payloads: the release's builds, by its digest (the tools still check them against the profiles
+        and sources), else built here. evidence: the boot evidence's too, for an installation without a history."""
         # The digest payload (plan, stage 4b) is built beside the reviewed ones; it runs only beside a full read.
         for mode, out in (('metadata', self.meta), ('rootfs', self.readback_build), ('rootfs-digest', self.digest_build),
                           ('staging-check', self.staging_build), ('rootfs-probe', self.probe_build)):
             if self.payloads:
-                # The release's build, by its digest; the tools still check it against the profiles and sources.
                 shutil.copytree(self.payloads/mode, out)
                 continue
             self.need(self.tool('build_identity.py', '--version', self.version, '--mode', mode, '--diskos', self.diskos, '--output', out),
                       f'the {mode} payload')
+        if evidence:
+            if self.payloads:
+                shutil.copytree(self.payloads/'boot-evidence', self.boot_build)
+            else:
+                self.need(self.tool('boot_evidence.py', 'build', '--version', self.version, '--diskos', self.diskos,
+                                    '--output', self.boot_build), 'the boot evidence\'s payloads')
+
+    def prepare(self):
+        self.builds()
         history = (['--previous-review', self.history['previousReview'], '--previous-image', self.history['previousImage'],
                     '--write-capture', self.history['writeCapture'], '--readback-capture', self.history['readbackCapture']]
                    if self.history.get('previousReview') else ['--stage-capture', self.history['stageCapture']])
@@ -277,6 +296,66 @@ class Reviewed:
                 raise ReviewedError(f'the installation package lacks {name}')
         return dict(package=str(self.package), write=self.plan_sha('candidate-write-plan.json'),
                     read=self.plan_sha('postwrite-collection-plan.json'))
+
+    # 1-2 without a history (plan, stage 6): the evidence of this entry, then the review
+
+    def metadata_page(self):
+        """The partition table's page the plans bind: the history's boot capture's, or this entry's."""
+        return Path(self.history['bootCapture'])/'metadata-main.bin' if self.history else self.work/'boot'/'metadata-main.bin'
+
+    def planned(self, name, *args, save, what):
+        """A reviewed tool's plan, kept for its audit: (plan, its SHA-256)."""
+        self.need(self.tool(name, 'plan', *args, stdout=save), f'{what}\'s plan')
+        plan = load_json(save)
+        return plan['plan'], plan['plan_sha256']
+
+    def entry(self):
+        """The reads of the one entry before the review, each a session of its own: the partition table's page
+        (the entry's SPL; about 10 s), the boot evidence (the bootloader and the OTA selector; about 2 min) and the
+        identity probe (the first rootfs blocks; about 10 s), the last two audited offline."""
+        out = self.work/'metadata'
+        plan, approved = self.planned('ram_transport.py', '--mode', 'metadata', '--version', self.version, '--build', self.meta,
+                                      '--diskos', self.diskos, save=self.work/'metadata-plan.json', what='the partition table')
+        self.need(self.session('ram_transport.py', 'acquire', '--mode', 'metadata', '--version', self.version, '--build', self.meta,
+                               '--diskos', self.diskos, '--libusb', self.libusb, '--approved-plan-sha256', approved, '--output', out,
+                               output=out, calls=expected_calls(plan), label='Reading the partition table'),
+                  'the partition table\'s read')
+        if load_json(out/'result.json').get('status') != 'nand-metadata-observed':
+            raise ReviewedError('the partition table\'s read did not finish')
+        page = out/'metadata-main.bin'
+        for name, tool, mode, build, audit, status, label in (
+                ('boot', 'boot_evidence.py', None, self.boot_build, 'audit_usb_boot.py', 'boot-evidence-collected',
+                 'Reading the bootloader'),
+                ('identity', 'collect_rootfs.py', 'rootfs-probe', self.probe_build, 'audit_usb_probe.py', 'rootfs-probe-collected',
+                 'Checking what the player holds')):
+            mode_args = ['--mode', mode] if mode else []
+            args = [*mode_args, '--version', self.version, '--build', build, '--diskos', self.diskos, '--metadata-page', page]
+            plan_file = self.work/f'{name}-plan.json'
+            plan, approved = self.planned(tool, *args, save=plan_file, what=label.lower())
+            out = self.work/name
+            self.need(self.session(tool, 'acquire', *args, '--libusb', self.libusb, '--approved-plan-sha256', approved,
+                                   '--output', out, output=out, calls=expected_calls(plan), label=label), label.lower())
+            if load_json(out/'result.json').get('status') != status:
+                raise ReviewedError(f'{label.lower()} did not finish')
+            self.need(self.tool(audit, '--run', out, '--plan', plan_file, '--build', build, '--diskos', self.diskos,
+                                '--output', out/'offline-review.json'), f'the audit of {label.lower()}')
+        # The boot evidence read the page again and found it unchanged (its metadata-main.bin): the plans bind it.
+        return self.metadata_page()
+
+    def review_known(self):
+        """The review of this entry's evidence, offline in seconds: what the player holds (decision.json), or a
+        refusal (an image it does not know, another bootloader) before anything is written."""
+        self.need(self.tool('installation_review.py', '--known', '--version', self.version, '--diskos', self.diskos,
+                            '--artifacts', self.artifacts, '--build', self.meta, '--staging-build', self.staging_build,
+                            '--readback-build', self.readback_build, '--boot-build', self.boot_build, '--probe-build', self.probe_build,
+                            '--boot-capture', self.work/'boot', '--probe-capture', self.work/'identity', '--libusb', self.libusb,
+                            '--output', self.package), 'the review')
+        for name in ('installation-review.json', 'proposed-installer-profile.json', 'decision.json', 'candidate-write-plan.json',
+                     'restore-write-plan.json', 'postwrite-collection-plan.json'):
+            if not (self.package/name).is_file():
+                raise ReviewedError(f'the installation package lacks {name}')
+        self.known = True
+        return load_json(self.package/'decision.json')
 
     # 2, 4. A collection of the primary rootfs, compared with an image
 
@@ -433,15 +512,21 @@ class Reviewed:
         self.profile.write_text(json.dumps(dict(proposed, physical_write_admitted=False), indent=2) + '\n')
 
     def write(self, target='candidate'):
-        tracked, proposed = self.admission()
+        """The write, once. Without a history its admission is the run's (the package's proposed profile, the
+        tracked one untouched) and it runs in the entry of its evidence; with one the tracked profile is opened
+        for it and closed again."""
         name = folder('write', target)
-        (self.work/f'{folder("installer-before", target)}.json').write_text(json.dumps(tracked, indent=2) + '\n')
         plan_file = f'{target}-write-plan.json'
         args = ['--version', self.version, '--build', self.meta, '--staging-build', self.staging_build, '--diskos', self.diskos,
-                '--artifacts', self.artifacts,
-                '--metadata-page', Path(self.history['bootCapture'])/'metadata-main.bin',
+                '--artifacts', self.artifacts, '--metadata-page', self.metadata_page(),
                 '--installation-review', self.package/'installation-review.json', '--readback-build', self.readback_build]
-        self.profile.write_text(json.dumps(proposed, indent=2) + '\n')
+        if self.known:
+            args += ['--installer-profile', self.package/'proposed-installer-profile.json']
+            proposed = None
+        else:
+            tracked, proposed = self.admission()
+            (self.work/f'{folder("installer-before", target)}.json').write_text(json.dumps(tracked, indent=2) + '\n')
+            self.profile.write_text(json.dumps(proposed, indent=2) + '\n')
         try:
             replanned = self.tool('writer_transport.py', 'plan', '--mode', 'write', '--target', target, *args,
                                   stdout=self.work/f'{name}-replanned.json')
@@ -456,7 +541,8 @@ class Reviewed:
                          label='Writing stock\'s rootfs' if target == 'restore' else 'Writing the image',
                          writer=writer_wait(approved['plan']), asks=held_asks(approved['plan'], self.completion()))
         finally:
-            self.close_admission(proposed)
+            if proposed is not None:
+                self.close_admission(proposed)
         result = load_json(out/'result.json')
         status = result.get('status')
         if status == 'writer-outcome-unknown':

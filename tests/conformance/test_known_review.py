@@ -102,6 +102,15 @@ class KnownReviewTests(unittest.TestCase):
         found = self.assemble(known=known)['source_state']['found']
         self.assertEqual((found['kind'], found['release']), ('release', '2.57.5'))
 
+    def test_the_packages_own_image_is_known_on_the_way_back(self):
+        known = copy.deepcopy(self.known)
+        known['stock']['first_blocks_sha256'] = 'e'*64
+        probe = self.captures['probe']/'logical-image.bin'
+        candidate = probe.read_bytes()+self.inputs['candidate']['image'][262144:]
+        self.inputs['candidate'] = dict(self.inputs['candidate'], image=candidate)
+        found = self.assemble(known=known)['source_state']['found']
+        self.assertEqual((found['kind'], found['sha256']), ('candidate', ram.sha(candidate)))
+
     def test_an_unknown_image_stops_before_anything_is_written(self):
         known = copy.deepcopy(self.known)
         known['stock']['first_blocks_sha256'] = 'e'*64

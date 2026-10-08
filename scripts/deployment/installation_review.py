@@ -67,7 +67,7 @@ def validate_binding(bundle,base,cpu,reader,transport,layout,inputs):
         # entry of the write, which must follow in that entry.
         found=state.get('found',{})
         check(state.get('same_entry_required') is True and state.get('new_image_staged') is False
-              and found.get('kind') in ('stock','release') and sha(found.get('sha256'))
+              and found.get('kind') in ('stock','release','candidate') and sha(found.get('sha256'))
               and sha(found.get('first_blocks_sha256')) and state.get('first_blocks_sha256')==found['first_blocks_sha256'],
               'Invalid known-image source state')
     if state['kind']=='installed-candidate':
@@ -242,9 +242,12 @@ def assemble_known(base,cpu,reader,transport,layout,inputs,captures,plans,libusb
     check(first['image_sha256']==probe['logical_image_sha256'] and first['capture_sha256']==probe['capture_sha256']
           and first['image_bytes']==known['first_blocks_bytes'],'The probe\'s first blocks differ from its records')
     kind,found=known_images.match_digest(known,first['image_sha256'])
+    images={k:dict(name=v['image_name'],bytes=len(v['image']),sha256=ram.sha(v['image'])) for k,v in inputs.items()}
+    if kind is None and ram.sha(current['image'][:known['first_blocks_bytes']])==first['image_sha256']:
+        # This package's own image, written before (a run whose new system did not start, on its way back to stock).
+        kind,found='candidate',dict(images['candidate'],first_blocks_sha256=first['image_sha256'])
     check(kind is not None,'The player holds a rootfs this installer does not know (another FiiO version or a '
           'changed image): nothing is written; FiiO\'s own update (Local upgrade) returns it to stock')
-    images={k:dict(name=v['image_name'],bytes=len(v['image']),sha256=ram.sha(v['image'])) for k,v in inputs.items()}
     check(images['restore']['sha256']==known['stock']['sha256'] and images['restore']['bytes']==known['stock']['bytes'],
           'The way back is not the reviewed stock image')
     from deployment.writer_transport import validate_layout

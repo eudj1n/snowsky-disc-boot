@@ -31,7 +31,8 @@ def main():
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument('--simulate', nargs='?', const='run', help='Write a simulated player (a NAND file; default in the run folder)')
     modes.add_argument('--guest', action='store_true', help="The emulator's guest of the image as the player (the card staged in the run folder)")
-    modes.add_argument('--history', help="This player's installation history (history.json of its last installation)")
+    modes.add_argument('--history', help="A developer's player: its installation history (history.json of its last "
+                       "installation). Without it the player is read and written in one entry into USB Boot, by the image it holds")
     parser.add_argument('--yes', action='store_true', help='No questions: the defaults and the options given')
     parser.add_argument('--plain', action='store_true', help='Plain text, no colours')
     parser.add_argument('--ota', help="The folder of FiiO's update (main_os/ota_v...)")

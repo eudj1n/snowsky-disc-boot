@@ -137,7 +137,26 @@ It identifies the chip, backs up the whole NAND into the run folder, writes afte
 `WRITE`, reads back and compares every byte; `--restore` writes the stock restore image built
 beside the image the same way (`RESTORE`). `--fault no-device`, `bad-blocks=N,M`,
 `write-stops=N` and `readback-flip=N` show how each failure stops the run with the backup's place
-and nothing retried. With `--history` (this player's `history.json`: its boot and stock captures, and the last
+and nothing retried.
+
+Without `--history` (a user's installation, plan, stage 6), in a terminal and not a dry run, the
+player is read and written in one entry into USB Boot, and no history is kept. After `CHECK`,
+three reads, each a session of its own: the partition table's page (`ram_transport.py --mode
+metadata`, the entry's only SPL), the boot evidence (`boot_evidence.py`, the bootloader and the
+OTA selector) and the identity probe (the first rootfs blocks), the last two audited offline
+(`audit_usb_boot.py`, `audit_usb_probe.py`). The review (`installation_review.py --known`, seconds,
+offline) knows what the player holds by its first blocks, stock or one of ours (`firmware/images`
+and the releases' images), or stops before anything is written and names FiiO's Local upgrade as
+the way back; `decision.json` says what it found. The write (`WRITE`) takes the admission the
+review computed for the run (`--installer-profile`, the tracked profile untouched) and runs only
+in that entry; its first start's check proves it as below, the readback following only when the
+check does not come back. A no takes the player back to stock with the evidence of a new entry
+(`usb-back/`, where the review knows this run's own image); `--restore` writes stock's rootfs the
+same way. Without a terminal (`--yes`) the card is staged and the player is not written.
+The payloads come from the boot release (`disc-usb-payloads-<v>.tar.gz`, the boot evidence's
+among them) or are built here with `--boot-build`.
+
+With `--history` (this player's `history.json`: its boot and stock captures, and the last
 installation's review, image, write and readback, or the stage capture of a first one),
 diskOS's pinned files (`--diskos`, or fetched) and libusb (found, or `--libusb`), the step runs the
 reviewed tools in `scripts/installer/usbboot.py`, the order of
