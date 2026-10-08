@@ -7,6 +7,7 @@ from datetime import datetime
 
 from deployment import installation_review as install
 from deployment import readback, review
+from deployment.kernel_review import review_partitions
 
 check = install.check
 # USB diagnostic content and host source/build manifests may change. The NAND,
@@ -73,10 +74,39 @@ def session(folder, writing):
                         files=files, dependency_sha256=install.load(folder/'dependency.json')['sha256'])
 
 
+def first_start(folder, write, image, metadata, policy):
+    """The check after the write at its first start (plan, stage 4c), in place of a readback: what
+    the written system's boot layer read of its root device and hashed (rootfs-check.json, fetched
+    over the USB console), how the installer fetched it (fetch.json) and the owner's word on that
+    start. It binds the written image (its SHA-256 and length, a match) to the primary root device
+    as the partition table numbers it (/dev/mtdblock_bbt_ro<the target's index>), after the write."""
+    names = ('rootfs-check.json', 'fetch.json', 'owner-boot-confirmation.json')
+    pins = {n: install.file_pin(folder/n, 1024*1024) for n in names}
+    record, fetched, owner = (install.load(folder/n) for n in names)
+    table = review_partitions(metadata, policy['kernel'], policy['chip'], policy['writer'])
+    index = next(i for i, part in enumerate(table['partitions']) if part['name'] == policy['kernel']['metadata']['target'])
+    check(record.get('schema') == 1 and record.get('match') is True and record.get('error') is None and
+          record.get('expected') == record.get('actual') == image['sha256'] and record.get('bytes') == image['bytes'] and
+          record.get('device') == f'/dev/mtdblock_bbt_ro{index}', 'The first start\'s check is not the written image on its root')
+    check(fetched.get('via') == 'usb-console' and fetched.get('rootfs_check_sha256') == pins['rootfs-check.json']['sha256'] and
+          fetched.get('write_session_id') == write['session_id'], 'The first start\'s check was not fetched for this write')
+    check(owner.get('observation') == 'owner-confirmed-normal-first-boot' and isinstance(owner.get('owner_answer'), str)
+          and bool(owner['owner_answer'].strip()) and owner.get('write_session_id') == write['session_id']
+          and all(owner.get(k) is False for k in ('automated_boot_test', 'native_process_verified')),
+          'Missing or mixed owner boot confirmation')
+    written = timestamp(write['finished_at'])
+    check(written < timestamp(owner['reported_at']) and written < timestamp(fetched['fetched_at']),
+          'Write/first start chronology mismatch')
+    return record, owner, dict(files=pins)
+
+
 def assess(prior_path, image_path, write_folder, read_folder, current_context, restore,
            historical_pins, base, reader, policy, metadata, libusb_sha256):
     prior = install.load(prior_path)
-    write, wpins = session(write_folder, True); read, rpins = session(read_folder, False)
+    write, wpins = session(write_folder, True)
+    # The previous installation's proof: its readback, or its first start's check (plan, stage 4c).
+    checked = (read_folder/'rootfs-check.json').exists() and not (read_folder/'result.json').exists()
+    read, rpins = (None, None) if checked else session(read_folder, False)
     plan = write['plan']; old = prior['context']; prior_hash = install.fingerprint(prior); target = plan['target']
     check(prior.get('schema_version') == 1 and prior.get('status') == 'installation-inputs-reviewed'
           and prior_hash == plan.get('installation_review_sha256') and
@@ -96,12 +126,21 @@ def assess(prior_path, image_path, write_folder, read_folder, current_context, r
           'Original restore or boot/stock provenance changed')
     check(prior['boot']['static_selection_reviewed'] is True and
           prior['boot']['selected_rootfs'] == policy['kernel']['metadata']['target'], 'Previous boot target mismatch')
-    check(prior['libusb_sha256'] == wpins['dependency_sha256'] == rpins['dependency_sha256'] == libusb_sha256,
-          'Historical USB dependency mismatch')
+    check(prior['libusb_sha256'] == wpins['dependency_sha256'] == libusb_sha256 and
+          (checked or rpins['dependency_sha256'] == libusb_sha256), 'Historical USB dependency mismatch')
     image = prior['images'][target]
     check(image == dict(name=plan['image_name'], bytes=plan['image_bytes'], sha256=plan['image_sha256']) and
           install.file_pin(image_path, image['bytes']) == {k: image[k] for k in ('bytes', 'sha256')},
           'Previous approved image mismatch')
+    if checked:
+        check(target == 'candidate', 'Only a candidate checks itself at its first start')
+        debug = review.check_debug(install.ram.read_file(write_folder/'writer-result.bin', 1024), 0, policy['writer'])
+        check(debug == write['writer_result'], 'Writer completion differs from its raw record')
+        record, owner, rpins = first_start(read_folder, write, image, metadata, policy)
+        state = dict(kind='installed-candidate', target=target, image=image, previous_review_sha256=prior_hash,
+                     previous_review_file=install.file_pin(prior_path, 1024*1024), exact_readback=None,
+                     first_start_check=record, owner_boot=owner, new_image_staged=False, freshness_verified=False)
+        return state, plan, dict(write=wpins, first_start=rpins)
     check(read['plan'] == prior['postwrite_collection'], 'Postwrite collection was not in previous review')
     exact_plan = readback.make_plan(base, reader, policy, metadata, image['sha256'])
     check(exact_plan == prior['exact_readback'][target], 'Previous exact readback contract changed')
