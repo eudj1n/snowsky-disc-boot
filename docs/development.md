@@ -111,8 +111,9 @@ SHA-256 and the versions used are written into the header, docs/provenance.md).
 
 `python3 install.py` runs the guided installer in the terminal (the boot menu's colours;
 `--plain` or a non-terminal output gives plain text). This part checks the computer, builds
-the image from FiiO's update in the emulator's image with the boot layer's programs of the newest
-release recorded for the firmware (`disc-boot-<version>-mips.tar.gz`, a local file by its record's
+the image from FiiO's update on the computer itself, without root, when squashfs-tools 4.6 or later
+and openssl are there (otherwise in the emulator's image with Docker), with the boot layer's programs
+of the newest release recorded for the firmware (`disc-boot-<version>-mips.tar.gz`, a local file by its record's
 digest or its download, checked; a local build of `build/mips` only with `--boot-build`), or takes
 one with `--image`; the update
 may be given as its own folder, `main_os` or `main_os/ota_v<version>`, and its rootfs chunks are
@@ -212,9 +213,24 @@ pseudo-terminal whose other end is a shell.
 
 ## The image and its guest
 
-The review image is built offline from the selected firmware's OTA, in the
-emulator's image with its checkout on `PYTHONPATH`; it never reaches a
-player from here:
+The review image is built offline from the selected firmware's OTA; it never reaches a player from
+here. On the computer, without root (plan, stage 6; squashfs-tools 4.6 or later, `brew install
+squashfs` on macOS, and openssl), with the emulator's reader of FiiO's update fetched at the revision
+`firmware/sources/emulator.json` pins (the installer keeps it in `work/downloads/emulator-<rev>`):
+
+```sh
+python3 scripts/deployment/build_candidate.py --ota <firmware>/main_os/ota_v<version> \
+  --console build/mips/disc-usb-console --boot build/mips/disc-boot --output work/<run>/build \
+  --reader work/downloads/emulator-f1d5e33/firmware/tools/firmware_inventory.py
+```
+
+Without root the unpacked tree cannot hold stock's owners or setuid bits: the extraction is checked
+for kinds, sizes and link targets, and every stock entry's owner, mode bits and time are packed from
+stock's own listing (`mksquashfs -pf`, a folder's definition before its entries'), the additions as
+root's; the packed image is then held to stock's listing exactly, as in the container. Stock names that
+differ only by case are refused (a case-insensitive file system would unpack them over each other).
+Built so on macOS with squashfs-tools 4.7.5, 2.57.4's release gave the very image the container builds
+(`4f8d68b6…`). In the emulator's image, with its checkout on `PYTHONPATH`:
 
 ```sh
 bash scripts/build.sh mips

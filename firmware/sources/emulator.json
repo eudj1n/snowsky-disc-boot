@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "name": "emulator",
+  "repository": "https://github.com/eudj1n/snowsky-disc-qemu",
+  "revision": "f1d5e33f4c39100d8323e9a7bb6297dad0fc2bb1",
+  "license": "MIT",
+  "files": {
+    "firmware/tools/firmware_inventory.py": "da3d4f9582f9699b030ed86c4ccc607213f591e59cd0b14a28adaf9c0e327e0a"
+  },
+  "note": "The reader of FiiO's update the image builder takes without the emulator's checkout (plan, stage 6): it checks the update's chunks and decrypts its rootfs with openssl"
+}

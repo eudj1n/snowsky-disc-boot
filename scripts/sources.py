@@ -1,9 +1,9 @@
-"""The outside files the installer's reviewed tools read (plan, stage 6): diskOS's writer, its SPL
-and the sources they are checked against, at the revision firmware/sources/diskos.json names. The
-files and their digests are the reviewed profiles' own pins (reader, writer, probe), so a copy is
-taken from anywhere it is found with those digests (a checkout, the installer's cache) and is
-otherwise fetched file by file from that revision and checked; nothing of it is kept in this
-repository (owner, 2026-10-08)."""
+"""The outside files the installer reads (plan, stage 6), each at the revision its
+firmware/sources/<name>.json names: diskOS's writer, its SPL and the sources they are checked
+against (their digests the reviewed profiles' own pins: reader, writer, probe), and the emulator's
+reader of FiiO's update (its digest in its source file). A copy is taken from anywhere it is found
+with those digests (a checkout, the installer's cache) and is otherwise fetched file by file from
+that revision and checked; nothing of it is kept in this repository (owner, 2026-10-08)."""
 import hashlib
 import json
 from pathlib import Path
@@ -45,6 +45,16 @@ def diskos_files(version):
     return files
 
 
+def files_of(name, version):
+    """{path: sha256} of a source's files: diskOS's by the profiles' pins, the others by their source file."""
+    if name == 'diskos':
+        return diskos_files(version)
+    files = load(name).get('files')
+    if not isinstance(files, dict) or not files:
+        raise SourceError(f'{name}: its source file names no files')
+    return dict(files)
+
+
 def digest(path):
     h = hashlib.sha256()
     with open(path, 'rb') as handle:
@@ -59,21 +69,22 @@ def differs(folder, files):
     return [p for p, d in sorted(files.items()) if not (folder/p).is_file() or (folder/p).is_symlink() or digest(folder/p) != d]
 
 
-def fetch(version, places=(), cache=ROOT/'work/downloads', allow_download=True, opener=None, progress=None):
+def fetch(version, places=(), cache=ROOT/'work/downloads', allow_download=True, opener=None, progress=None, name='diskos'):
     """A folder holding diskOS's pinned files: the first of places (and the cache) that holds them all,
     else a fresh copy fetched from the source's revision into the cache, every file checked."""
-    source, files = load(), diskos_files(version)
-    cached = Path(cache)/f'diskos-{source["revision"][:7]}'
+    source, files = load(name), files_of(name, version)
+    cached = Path(cache)/f'{name}-{source["revision"][:7]}'
     for place in [*map(Path, places), cached]:
         if place.is_dir() and not differs(place, files):
             return place
     if not allow_download:
-        raise SourceError(f'no copy of diskOS {source["revision"][:7]} with the pinned files '
-                          f'({", ".join(differs(cached, files)) or "none"}): give its checkout with --diskos')
+        raise SourceError(f'no copy of {name} {source["revision"][:7]} with the pinned files '
+                          f'({", ".join(differs(cached, files)) or "none"}): give a copy'
+                          + (' with --diskos' if name == 'diskos' else '') + ', or allow downloads')
     owner, repo = urllib.parse.urlsplit(source['repository']).path.strip('/').split('/')[:2]
     opener = opener or (lambda url: urllib.request.urlopen(url, timeout=60, context=catalog.tls_context()))
     Path(cache).mkdir(parents=True, exist_ok=True)
-    fresh = Path(tempfile.mkdtemp(prefix='diskos-', dir=cache))
+    fresh = Path(tempfile.mkdtemp(prefix=f'{name}-', dir=cache))
     try:
         for n, (path, expected) in enumerate(sorted(files.items())):
             url = RAW.format(owner=owner, repo=repo, revision=source['revision'], path=path)
@@ -89,7 +100,7 @@ def fetch(version, places=(), cache=ROOT/'work/downloads', allow_download=True, 
                         out.write(chunk)
             except OSError as error:
                 raise SourceError(f'{path} could not be fetched from {urllib.parse.urlsplit(url).netloc} ({error}): '
-                                  'give a diskOS checkout with --diskos') from None
+                                  f'give a copy of {name} at {source["revision"][:7]}') from None
             if digest(target) != expected:
                 raise SourceError(f'{path} at {source["revision"][:7]} does not match its pin')
             if progress:
