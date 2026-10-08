@@ -1299,6 +1299,10 @@ layer and the emulator's checkout to build the image.
     `offline-review.json`. It replaces the first observation's one-off
     script. `test_audit_usb_boot` (full-size sessions of the fake ROM,
     tampered files refused, the review's `evidence()` taking the report).
+  - [x] The identity probe's audit (`scripts/deployment/audit_usb_probe.py`,
+    2026-10-08): the probe session reconstructed the same way, its report
+    giving the first blocks' digest; the records and calls the two audits
+    rebuild shared in `usb_trace_audit.py`. `test_audit_usb_probe`.
   - [ ] A review of its own (`source_state` `known-image`): in one entry the
     metadata page (the entry's only SPL), the boot evidence with it, the
     identity probe, then the review offline in seconds; the write plan bound

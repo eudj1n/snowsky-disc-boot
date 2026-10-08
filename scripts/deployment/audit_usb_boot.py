@@ -5,61 +5,18 @@ The boot layer's bounded reads of the uboot and OTA partitions (boot_evidence.py
 from the saved files alone against the reviewed profiles, the build and the SPL: every record, the
 blocks and pages they had to be, each batch's request and result, and the USB journal call by call
 (usb_trace_audit.compare). The report (offline-review.json) is the session's audit that
-installation_review.py takes. Apart from the journal comparison it shares no code with the
-acquisition: the profiles are read as files and the page and boot policies rebuilt from them."""
-import argparse
-import hashlib
+installation_review.py takes. Apart from usb_trace_audit it shares no code with the acquisition:
+the profiles are read as files and the page and boot policies rebuilt from them."""
 import json
 from pathlib import Path
 import struct
 import sys
-import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from usb_trace_audit import compare, ready, require
+from usb_trace_audit import (CLEAN, RECORD, Calls, batch_request, check_plan, check_record, check_session,
+                             cli, compare, digest as sha, fingerprint as fp, profiles, ram_regions, require, split)
 
 ROOT = Path(__file__).resolve().parents[2]
-# The batch ABI (device/acquisition): a 16-byte header, then 48 bytes a request and 4428 a result.
-BATCH_PAGES, REQUEST, RESULT = 64, 48, 4428
-REQUEST_BYTES, RESULT_BYTES = 16+REQUEST*BATCH_PAGES, 16+RESULT*BATCH_PAGES
-CHUNK = 65536
-CLEAN = struct.pack('<5I', 0xd1a6c0de, 9, 0, 0, 0)
-
-
-def sha(data):
-    return hashlib.sha256(data).hexdigest()
-
-
-def fp(value):
-    return sha(json.dumps(value, sort_keys=True, separators=(',', ':')).encode())
-
-
-def load(path):
-    return json.loads(Path(path).read_text())
-
-
-def profiles(root, version):
-    """The reviewed profiles the plan names, and the page and boot policies rebuilt from them as
-    boot_evidence.load_policy builds them."""
-    d = root/'firmware'
-    base = load(d/f'v{version}.json')
-    named = {k: load(d/k/f'v{version}.json') for k in
-             ('readers', 'transports', 'probes', 'completion', 'pages', 'kernels', 'boot', 'collectors')}
-    reader, pages, kernel = named['readers'], named['pages'], named['kernels']
-    chip, writer = load(d/'chips'/f'{kernel["chip"]}.json'), load(d/'writers'/f'{base["writer"]}.json')
-    require(pages['reader_profile_sha256'] == fp(reader) and pages['kernel_profile_sha256'] == fp(kernel)
-            and pages['chip_profile_sha256'] == fp(chip), 'Page profile links differ')
-    ecc = chip['ecc']
-    page = dict(profile=pages, kernel=kernel, chip=chip, writer=writer, page=pages['page'],
-                expected_id=int.from_bytes(bytes.fromhex(chip['id_prefix_hex']), 'little'), id_mask=0xffff,
-                main_bytes=chip['page_bytes'], oob_bytes=chip['oob_bytes'],
-                total_pages=chip['blocks']*chip['pages_per_block'], feature_mask=pages['feature_mask'],
-                feature_value=pages['feature_value'], ecc_mask=ecc['status_mask'], ecc_shift=ecc['status_shift'],
-                ecc_admitted=(1 << (ecc['max_corrected']+1))-1)
-    boot, buffers = named['boot'], named['collectors']
-    require(boot['page_policy_sha256'] == fp(page) and buffers['policy_sha256'] == fp(page), 'Boot policy links differ')
-    return dict(base=base, reader=reader, transport=named['transports'], probe=named['probes'],
-                completion=named['completion'], page=page, policy=dict(profile=boot, page_policy=page, buffers=buffers))
 
 
 def selector(data, boot):
@@ -72,45 +29,21 @@ def selector(data, boot):
 
 def audit(run, plan_file, build, diskos, root=ROOT):
     run = Path(run)
-    r, q, approved = load(run/'result.json'), load(run/'request.json'), load(plan_file)
-    p = r['plan']
-    require(p == q['plan'] == approved['plan'] and fp(p) == approved['plan_sha256']
-            == r['approved_plan_sha256'] == q['approved_plan_sha256'], 'Plan differs from the approved one')
-    require(r['status'] == 'boot-evidence-collected' and r.get('error') is None and r['cleanup_errors'] == []
-            and r['session_id'] == q['session_id'] and r['nonce_hex'] == q['nonce_hex'], 'Incomplete boot session')
-    require(r['physical_device_accessed'] is True and r['ram_roundtrip_passed'] is True
-            and r['page_execution_attempted'] is True and not any(r[k] for k in (
-                'writer_execution_attempted', 'nand_writes', 'active_boot_verified', 'flash_ready')),
-            'Boot session scope differs')
-    require(p['operation'] == 'boot-evidence' and p['nand_writes'] is False and p['writer_executions'] == 0,
-            'Not a read-only boot evidence plan')
-    for name, digest in p['transport_sources_sha256'].items():
-        require(sha((root/name).read_bytes()) == digest, f'Changed acquisition source: {name}')
-
+    r, p = check_session(run, plan_file, 'boot-evidence-collected', root)
+    require(p['operation'] == 'boot-evidence' and p['writer_executions'] == 0, 'Not a read-only boot evidence plan')
     f = profiles(root, p['version'])
-    reader, t, page, policy = f['reader'], f['transport'], f['page'], f['policy']
+    reader, t, page, policy = f['reader'], f['transport'], f['page'], f['boot']
     boot, buffers = policy['profile'], policy['buffers']
-    for key, value in (('firmware_profile_sha256', f['base']), ('probe_profile_sha256', f['probe']),
-                       ('reader_profile_sha256', reader), ('transport_profile_sha256', t),
-                       ('policy_sha256', policy)):
-        require(p[key] == fp(value), f'Plan {key} differs from the reviewed profiles')
+    ask = check_plan(p, f)
+    require(p['policy_sha256'] == fp(policy), 'Plan policy_sha256 differs from the reviewed profiles')
     main, oob, ppb = page['main_bytes'], page['oob_bytes'], page['chip']['pages_per_block']
     require(p['metadata'] == dict(page=page['page'], bytes=main+oob, policy_sha256=fp(page)), 'Metadata page differs')
     spans = [dict(name=x['name'], first_page=x['offset']//main, end_page=(x['offset']+x['size'])//main,
                   profile=buffers) for x in boot['partitions']]
     require(p['scopes'] == spans and [s['name'] for s in spans] == ['uboot', 'ota'], 'Evidence scopes differ')
-    regions = [('code', reader['load_address'], reader['code_bytes']),
-               ('stack', reader['stack_bottom'], reader['stack_top']-reader['stack_bottom']),
-               ('request', reader['request_address'], REQUEST), ('result', reader['result_address'], RESULT),
-               ('batch-request', buffers['request_address'], REQUEST_BYTES),
-               ('batch-result', buffers['result_address'], RESULT_BYTES)]
-    require(p['ram_regions'] == [dict(name=n, address=a, bytes=s) for n, a, s in regions], 'RAM regions differ')
+    require(p['ram_regions'] == ram_regions(reader, buffers), 'RAM regions differ')
     load_address = reader['load_address']
     require(p['payload_entry'] == load_address, 'Payload entry differs')
-    ask = p.get('completion_ask', False)
-    require(('completion_profile_sha256' not in p and not ask) or
-            (p['completion_profile_sha256'] == fp(f['completion']) and ask == f['completion']['completion_ask']),
-            'Completion profile differs')
 
     build = Path(build)
     require(sha((build/'build.json').read_bytes()) == p['build_sha256'], 'Build manifest differs')
@@ -122,44 +55,24 @@ def audit(run, plan_file, build, diskos, root=ROOT):
             bytes=len(spl), diagnostic=t['diagnostic_address'], once_an_entry=True), 'SPL differs')
 
     nonce, raw = bytes.fromhex(r['nonce_hex']), (run/'records.bin').read_bytes()
-    size = REQUEST+RESULT
-    require(raw and len(raw) % size == 0 and sha(raw) == r['capture_sha256'], 'Capture differs')
-    records = [raw[i:i+size] for i in range(0, len(raw), size)]
+    require(raw and len(raw) % RECORD == 0 and sha(raw) == r['capture_sha256'], 'Capture differs')
+    records = [raw[i:i+RECORD] for i in range(0, len(raw), RECORD)]
     histogram, batches, cursor = [0]*16, [], 0
-
-    def framed(i, number):
-        """Record i: the request for that page and the core's answer, checked as the reader admits
-        it. Returns the page and its OOB."""
-        req, b = records[i][:REQUEST], records[i][REQUEST:]
-        require(req == struct.pack('<3I16s5I', 0x3151524e, 1, 2, nonce, i+1, number, 0, 0, 0),
-                f'Record {i+1} request differs')
-        w = struct.unpack_from('<19I', b)
-        require(w[:4] == (0x3153524e, 1, 0x454e4f44, 0) and b[16:32] == nonce
-                and w[8:12] == (i+1, 2, number, main+oob), f'Record {i+1} header differs')
-        data = b[76:76+main+oob]
-        require(w[12] == zlib.crc32(data) and not any(b[76+main+oob:]), f'Record {i+1} payload differs')
-        require(0 < w[13] < 0xffffff and w[13] & page['id_mask'] == page['expected_id']
-                and max(w[14:17]) <= 255 and not w[16] & 1
-                and w[15] & page['feature_mask'] == page['feature_value']
-                and 2 <= w[17] <= 2*reader['nand_polls'] and w[18] == w[17]+8, f'Record {i+1} NAND state differs')
-        ecc = (w[16] & page['ecc_mask']) >> page['ecc_shift']
-        require(page['ecc_admitted'] >> ecc & 1, f'Record {i+1} ECC is not admitted')
-        histogram[ecc] += 1
-        return data
 
     def batch(name, numbers):
         nonlocal cursor
         require(cursor+len(numbers) <= len(records), 'Capture ends early')
-        values = [framed(cursor+k, n) for k, n in enumerate(numbers)]
+        values = []
+        for k, n in enumerate(numbers):
+            data, ecc = check_record(records[cursor+k], cursor+k, n, nonce, page, reader)
+            histogram[ecc] += 1
+            values.append(data)
         batches.append((name, cursor, len(numbers)))
         cursor += len(numbers)
         return values
 
-    def split(numbers):
-        return [numbers[k:k+BATCH_PAGES] for k in range(0, len(numbers), BATCH_PAGES)]
-
     # The pages the reads had to be: each block's first page twice, then (uboot) the metadata page
-    # and every page of the good blocks.
+    # and every page of the good blocks, a batch a block.
     report = {}
     for scope in spans:
         name = scope['name']
@@ -203,6 +116,9 @@ def audit(run, plan_file, build, diskos, root=ROOT):
     require(histogram == r['ecc_histogram'], 'ECC histogram differs')
     require(len(batches) == r['batch_executions'] <= p['batch_limit']
             and len(list(run.glob('batch-*-request.bin'))) == len(batches), 'Batches differ')
+    for index, (_, first, count) in enumerate(batches, 1):
+        require(batch_request(records[first:first+count]) == (run/f'batch-{index:04}-request.bin').read_bytes(),
+                f'Batch {index} request differs')
 
     entry = bytes.fromhex(r['entry_diagnostic'])
     skipped = entry == CLEAN
@@ -211,61 +127,18 @@ def audit(run, plan_file, build, diskos, root=ROOT):
     # The ROM's CPU answer: the first call's, one of the reviewed ones; compare() checks every other.
     answer = (run/'read-001.bin').read_bytes()
     require(answer.hex() in f['probe']['accepted_reply_hex'], 'Unreviewed CPU answer')
-
-    def ctrl(n, a=0):
-        yield ('control', n, a, answer if n == 0 else None)
-
-    def transfer(address, data, incoming):
-        yield from ctrl(1, address)
-        yield from ctrl(2, len(data))
-        yield ('bulk', 129 if incoming else 1, len(data), data)
-
-    def chunks(address, data):
-        for off in range(0, len(data), CHUNK):
-            yield address+off, data[off:off+CHUNK]
-
-    def write_compare(address, data):
-        for incoming in (False, True):
-            for where, part in chunks(address, data):
-                yield from transfer(where, part, incoming)
+    calls = Calls(answer)
 
     def expected():
-        # DDR's diagnostic first: this entry's clean one means no SPL again (ram_transport.bring_up).
-        yield from ctrl(0)
-        yield from transfer(t['diagnostic_address'], entry, True)
-        if not skipped:
-            yield from write_compare(t['spl_load_address'], spl)
-            yield from ctrl(4, t['spl_entry'])
-            yield from ctrl(0)
-            yield from transfer(t['diagnostic_address'], CLEAN, True)
-        for turn in range(2):
-            for incoming in (False, True):
-                for region in p['ram_regions']:
-                    data = hashlib.shake_256(nonce+struct.pack('<I', region['address'])).digest(region['bytes'])
-                    if turn:
-                        data = bytes(v ^ 255 for v in data)
-                    for where, part in chunks(region['address'], data):
-                        yield from transfer(where, part, incoming)
-        yield from write_compare(load_address, payloads['uboot'])
+        yield from calls.bring_up(t, entry, spl)
+        yield from calls.patterns(nonce, p['ram_regions'])
+        yield from calls.write_compare(load_address, payloads['uboot'])
         current = 'uboot'
-        for index, (name, first, count) in enumerate(batches, 1):
+        for name, first, count in batches:
             if name != current:
-                yield from write_compare(load_address, payloads[name])
+                yield from calls.write_compare(load_address, payloads[name])
                 current = name
-            own = records[first:first+count]
-            request = (struct.pack('<4I', 0x3151424e, 1, count, 0)+b''.join(x[:REQUEST] for x in own)).ljust(REQUEST_BYTES, b'\0')
-            require(request == (run/f'batch-{index:04}-request.bin').read_bytes(), f'Batch {index} request differs')
-            result = (struct.pack('<4I', 0x3152424e, 1, count, 0)+b''.join(x[REQUEST:] for x in own)).ljust(RESULT_BYTES, b'\0')
-            yield from write_compare(buffers['request_address'], request)
-            yield from write_compare(buffers['result_address'], bytes(RESULT_BYTES))
-            yield from ctrl(4, load_address)
-            # The one CPU request asked at once and held when the plan asks, else after the settle.
-            if ask:
-                yield ready(t['settle_ms'], answer)
-            else:
-                yield from ctrl(0)
-            for where, part in chunks(buffers['result_address'], result):
-                yield from transfer(where, part, True)
+            yield from calls.batch(buffers, load_address, records[first:first+count], ask, t['settle_ms'])
 
     rows = [json.loads(line) for line in (run/'transfers.jsonl').read_text().splitlines()]
     trace = compare(rows, expected(), run, t, p['protocol_call_limit'],
@@ -282,20 +155,7 @@ def audit(run, plan_file, build, diskos, root=ROOT):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    for name in ('run', 'plan', 'build', 'diskos', 'output'):
-        parser.add_argument('--'+name, type=Path, required=True)
-    args = parser.parse_args()
-    try:
-        report = audit(args.run, args.plan, args.build, args.diskos)
-        with args.output.open('x') as stream:
-            json.dump(report, stream, indent=2)
-            stream.write('\n')
-    except (ValueError, KeyError, OSError) as exc:
-        print(f'{type(exc).__name__}: {exc}', file=sys.stderr)
-        return 1
-    print(json.dumps(report, indent=2))
-    return 0
+    return cli(audit, __doc__)
 
 
 if __name__ == '__main__':
