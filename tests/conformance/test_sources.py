@@ -41,7 +41,7 @@ class SourcesTests(unittest.TestCase):
         self.assertEqual(sources.fetch('2.57', [checkout], self.root/'cache', allow_download=False), checkout)
         (checkout/'flash/spl.bin').write_bytes(b'other')
         self.assertEqual(sources.differs(checkout, self.files), ['flash/spl.bin'])
-        with self.assertRaisesRegex(sources.SourceError, 'no copy of diskOS'):
+        with self.assertRaisesRegex(sources.SourceError, 'no copy of diskos'):
             sources.fetch('2.57', [checkout], self.root/'cache', allow_download=False)
 
     def test_fetched_file_by_file_from_the_revision_checked_and_kept(self):
@@ -67,6 +67,12 @@ class PinnedFilesTests(unittest.TestCase):
                                          'flash/my_write5_dram.bin', 'spl-src/uboot-xburst-lpddr3-src.tar.gz',
                                          'src/usbboot/usbboot.c'])
         self.assertEqual(len(sources.load()['revision']), 40)
+
+    def test_the_update_reader_is_pinned_in_its_source_file(self):
+        """The image builder's reader of FiiO's update, without the emulator's checkout (stage 6)."""
+        self.assertEqual(sources.files_of('emulator', '2.57'),
+                         {'firmware/tools/firmware_inventory.py': 'da3d4f9582f9699b030ed86c4ccc607213f591e59cd0b14a28adaf9c0e327e0a'})
+        self.assertEqual(sources.load('emulator')['repository'], 'https://github.com/eudj1n/snowsky-disc-qemu')
 
 
 if __name__ == '__main__':

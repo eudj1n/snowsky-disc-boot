@@ -4,8 +4,11 @@
 Ported from snowsky-disc-web's companion builder (at faaf502), reduced to the
 boot layer: stock plus the boot layer's own objects, and no package inside
 (docs/contract.md). Run inside the pinned Linux tooling container with the
-reference on PYTHONPATH. Decrypted firmware and images belong in ignored work
-storage.
+reference on PYTHONPATH, or on the user's computer without root (plan, stage 6):
+squashfs-tools 4.6 or later and openssl there, the reference's update reader
+given as a file (--reader). Without root, stock's owners, mode bits and times
+are not trusted to the computer's file system: they are packed from stock's own
+listing. Decrypted firmware and images belong in ignored work storage.
 """
 import argparse
 import hashlib
@@ -168,15 +171,93 @@ def check_listing(stock, candidate, additions):
                          f'unexpected={extra[:8]}')
 
 
-def check_extraction(stock, tree):
+def check_extraction(stock, tree, exact=True):
     """The unpacked tree holds stock's entries as the image does: a folder whose file system drops
-    owners or mode bits is refused before anything is built from it."""
-    stock, tree = ({k: v for k, v in entries.items() if k != '/'} for entries in (stock, tree))
+    owners or mode bits is refused before anything is built from it. Without root (exact=False) an
+    unpacked tree cannot keep owners or setuid bits: its entries' kinds, sizes and link targets are
+    compared, and the owners and modes are packed from stock's listing instead (pseudo_lines)."""
+    def kept(entry):
+        kind, mode, owner, size, target = entry
+        return entry if exact else (kind, None, None, size, target)
+    stock, tree = ({k: kept(v) for k, v in entries.items() if k != '/'} for entries in (stock, tree))
     changed = sorted(k for k in stock if k in tree and tree[k] != stock[k])
     if changed or set(stock) != set(tree):
         raise ValueError(f'The build folder\'s file system did not keep stock\'s tree (owners, mode bits): '
                          f'changed={changed[:8]} ({len(changed)}), missing={sorted(set(stock) - set(tree))[:8]}, '
                          f'unexpected={sorted(set(tree) - set(stock))[:8]}')
+
+
+def check_case(stock):
+    """No two of stock's paths differ only by case: a computer's case-insensitive file system (macOS
+    by default) would unpack them over each other."""
+    seen = {}
+    for path in stock:
+        other = seen.setdefault(path.lower(), path)
+        if other != path:
+            raise ValueError(f'Stock holds {other} and {path}, which differ only by case: build on a case-sensitive file system')
+
+
+MODE_BITS = {'r': 4, 'w': 2, 'x': 1}
+
+
+def mode_bits(text):
+    """The permission bits of a listing's mode string (rwsr-xr-x and the like), with setuid, setgid
+    and sticky."""
+    bits = 0
+    for i in range(3):
+        r, w, x = text[1 + 3*i:4 + 3*i]
+        bits |= ((4 if r == 'r' else 0) | (2 if w == 'w' else 0) | (1 if x in 'xst' else 0)) << (3 * (2 - i))
+    bits |= (0o4000 if text[3] in 'sS' else 0) | (0o2000 if text[6] in 'sS' else 0) | (0o1000 if text[9] in 'tT' else 0)
+    return bits
+
+
+def pseudo_lines(stock, tree, files, created, stamp):
+    """mksquashfs's pseudo definitions ("M" time mode uid gid) that pack, without root, every stock entry
+    with stock's mode bits and owner and the unpacked time (unsquashfs keeps times), every addition
+    as root's with its mode and the stock time, and the folders made for them likewise."""
+    lines = []
+    def line(path, mtime, mode, owner):
+        if any(c in path for c in '"\\\n'):
+            raise ValueError(f'Unexpected character in {path!r}')
+        uid, gid = owner.split('/')
+        lines.append(f'"{path}" M {int(mtime)} {mode:o} {uid} {gid}')
+    entries = {}
+    for path, (kind, mode, owner, size, target) in stock.items():
+        if path != '/':
+            rel = path.lstrip('/')
+            entries[rel] = ((tree/rel).lstat().st_mtime, 0o777 if kind == 'l' else mode_bits(mode), owner)
+    for name, (data, mode) in files.items():
+        entries[name] = (stamp, 0o777 if data == 'link' else mode, '0/0')
+    for folder in created:
+        entries[folder] = (stamp, 0o755, '0/0')
+    # A folder's line before its entries': mksquashfs makes a folder of its own for a path it meets first.
+    for path in sorted(entries, key=lambda p: p.split('/')):
+        line(path, *entries[path])
+    return lines
+
+
+def check_additions(candidate, files, created):
+    """Every addition in the packed image as root's with its own mode: a file, a link or a folder."""
+    wrong = []
+    for name, (data, mode) in files.items():
+        kind, text, owner, size, target = candidate.get('/' + name, (None,) * 5)
+        expected_kind = 'l' if data == 'link' else '-'
+        if kind != expected_kind or owner != '0/0' or (kind == '-' and mode_bits(text) != mode):
+            wrong.append(name)
+    for folder in created:
+        kind, text, owner, size, target = candidate.get('/' + folder, (None,) * 5)
+        if kind != 'd' or owner != '0/0' or mode_bits(text) != 0o755:
+            wrong.append(folder)
+    if wrong:
+        raise ValueError(f'Additions not packed as root\'s with their modes: {sorted(wrong)[:8]}')
+
+
+def mksquashfs_version():
+    out = subprocess.run(['mksquashfs', '-version'], capture_output=True, text=True).stdout
+    match = re.search(r'version (\d+)\.(\d+)(?:\.(\d+))?', out)
+    if not match:
+        raise ValueError('mksquashfs did not say its version')
+    return tuple(int(part or 0) for part in match.groups())
 
 
 def tree_listing(root):
@@ -387,21 +468,40 @@ def payload(profile, usb, console, boot):
     }
 
 
-def build(ota, console, boot, out, profile, writer):
+def build(ota, console, boot, out, profile, writer, reader=None):
     if out.exists() or out.is_symlink():raise ValueError('Output exists; select a fresh directory')
     # Unpacked, changed and packed in the build's own file system, never in the output folder: a
     # macOS share under Docker dropped stock's setuid and group bits and its owners (owner's
     # player, 2026-10-05). DISC_IMAGE_SCRATCH names another place; it is checked like any other.
     scratch = Path(tempfile.mkdtemp(prefix='disc-image-', dir=os.environ.get('DISC_IMAGE_SCRATCH')))
     try:
-        assemble(ota, console, boot, out, scratch, profile, writer)
+        assemble(ota, console, boot, out, scratch, profile, writer, reader)
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
 
-def assemble(ota, console, boot, out, scratch, profile, writer):
+def update_reader(path=None):
+    """The reference's reader of FiiO's update: the module on PYTHONPATH (the tooling container), or the
+    file given (fetched at its pinned revision, plan stage 6)."""
+    if path is None:
+        from firmware.tools import firmware_inventory
+        return firmware_inventory
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('firmware_inventory', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def assemble(ota, console, boot, out, scratch, profile, writer, reader=None):
     # External pinned tooling is an offline build input, never a production dependency.
-    from firmware.tools.firmware_inventory import verified_chunks, plaintext_digest
+    inventory_module = update_reader(reader)
+    verified_chunks, plaintext_digest = inventory_module.verified_chunks, inventory_module.plaintext_digest
+    # Without root the computer's file system cannot hold stock's owners and setuid bits: they are packed
+    # from stock's listing (pseudo_lines), with mksquashfs 4.6 or later (-root-uid and its kind).
+    rootless = os.geteuid() != 0
+    if rootless and mksquashfs_version() < (4, 6):
+        raise ValueError('Without root the image needs mksquashfs 4.6 or later (squashfs-tools)')
     capacity = writer['block_bytes'] * writer['logical_blocks']
     usb = load_usb_profile(profile)
     console_native = check_usb_binary(console)
@@ -414,9 +514,10 @@ def assemble(ota, console, boot, out, scratch, profile, writer):
     with stock.open('xb') as output:plaintext_digest(chunks,output=output)
     check_stock(stock, profile)
     stock_entries = listing(stock)
+    check_case(stock_entries)
     tree = scratch/'candidate-tree'
     command('unsquashfs','-no-progress','-no-xattrs','-d',tree,stock)
-    check_extraction(stock_entries, tree_listing(tree))
+    check_extraction(stock_entries, tree_listing(tree), exact=not rootless)
     metadata = dict(line.split('=', 1) for line in
                     (tree/'etc/product_version/version.in').read_text().splitlines() if '=' in line)
     for key, expected in (('PRODUCT', profile['product']), ('MAIN_OS_VER', profile['main_os_version']),
@@ -447,13 +548,23 @@ def assemble(ota, console, boot, out, scratch, profile, writer):
             if parent == tree or not parent.is_relative_to(tree):break
             if parent not in kept:os.utime(parent, (stamp, stamp))
     for parent, mtime in kept.items():os.utime(parent, ns=(mtime, mtime))
+    created = sorted({str(parent.relative_to(tree)) for name in files for parent in (tree/name).parents
+                      if parent != tree and parent.is_relative_to(tree) and parent not in kept})
     expected = inventory(tree);check_delta(before,expected,additions)
     packed = out/'candidate.squashfs'
+    owners = []
+    if rootless:
+        pseudo = out/'owners.pseudo'
+        pseudo.write_text('\n'.join(pseudo_lines(stock_entries, tree, files, created, stamp)) + '\n')
+        owner = stock_entries['/'][2].split('/')
+        owners = ['-pf', pseudo, '-root-uid', owner[0], '-root-gid', owner[1],
+                  '-root-mode', f'{mode_bits(stock_entries["/"][1]):o}', '-root-time', str(int(tree.lstat().st_mtime))]
     command('mksquashfs',tree,packed,'-comp','lzo','-b','131072','-no-xattrs','-noappend','-no-progress','-processors','2',
-            '-mkfs-time',str(stamp))
+            '-mkfs-time',str(stamp),*owners)
     if packed.stat().st_size>capacity:raise ValueError('Candidate too large')
     candidate_entries = listing(packed)
     check_listing(stock_entries, candidate_entries, additions)
+    check_additions(candidate_entries, files, created)
     verified = scratch/'verified-tree'
     command('unsquashfs','-no-progress','-no-xattrs','-d',verified,packed)
     actual = inventory(verified)
@@ -476,6 +587,7 @@ def assemble(ota, console, boot, out, scratch, profile, writer):
                   stockBytes=profile['rootfs_size'],packedBytes=packed.stat().st_size,
                   writerFormatBytes=capacity,added=sorted(additions),variant=VARIANT,
                   stockEntriesPreserved=len(before),stockEntriesExact=len(stock_entries),fullRoundTrip=True,packages=[],
+                  builder=dict(rootless=rootless,mksquashfs='.'.join(map(str,mksquashfs_version()))),
                   listingsSha256={name:digest(out/name) for name in ('stock-listing.txt','candidate-listing.txt')},
                   boot=dict(native=boot_native,api=1,launcher=f'/{LAUNCHER}',wrapper=f'/{UI_WRAPPER}',
                             playerLauncher=f'/{PLAYER_LAUNCHER}',playerWrapper=f'/{PLAYER_WRAPPER}',guard=f'/{GUARD}',
@@ -503,6 +615,8 @@ if __name__ == '__main__':
     parser.add_argument('--console',type=Path,required=True,help='The USB console (build/mips/disc-usb-console)')
     parser.add_argument('--boot',type=Path,required=True,help='The boot program (build/mips/disc-boot)')
     parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--reader',type=Path,help="The reference's update reader (firmware/tools/firmware_inventory.py at its "
+                                                  "pinned revision) when it is not on PYTHONPATH")
     args = parser.parse_args()
     profile = load_profile(args.version)
-    build(args.ota,args.console,args.boot,args.output,profile,load_writer(profile['writer']))
+    build(args.ota,args.console,args.boot,args.output,profile,load_writer(profile['writer']),args.reader)

@@ -1231,9 +1231,19 @@ layer and the emulator's checkout to build the image.
   of a player without a history needs. The next boot release's image is the
   first so built; across tools it holds while the same `mksquashfs` (4.5.1,
   the emulator's image) packs it.
-- [ ] A light image builder of our own (Python and `squashfs-tools`), with
+- [x] A light image builder of our own (Python and `squashfs-tools`), with
   the emulator's reader of FiiO's update fetched at its pinned revision
-  rather than the emulator's image with its qemu build.
+  rather than the emulator's image with its qemu build. Done 2026-10-08 as
+  the same builder run on the computer without root: squashfs-tools 4.6 or
+  later and openssl, the reader (`firmware/tools/firmware_inventory.py`)
+  fetched at `f1d5e33` by its digest (`firmware/sources/emulator.json`),
+  stock's owners, setuid bits and times packed from stock's own listing,
+  every check kept. On macOS (squashfs-tools 4.7.5) the installer's dry run
+  built 2.57.4's image in about a minute without Docker: the very image of
+  the container (`4f8d68b6…`). `test_deployment`, `test_sources`.
+- [ ] The image built so on the guest and on the player (the next boot
+  release's image), then the installer's Docker build goes; the emulator
+  stays for the guest.
 - [x] diskOS's writer and SPL fetched at their pinned revision, as the diskOS
   package already is (`catalog.py fetch --name diskos --download`, checked
   from a clean clone on 2026-10-06). Done 2026-10-08: the six files the

@@ -63,6 +63,33 @@ class DeploymentTests(unittest.TestCase):
         stock.write_bytes(b'notsquashfs!')
         with self.assertRaises(ValueError):candidate.stock_time(stock)
 
+    def test_without_root_owners_and_modes_come_from_stocks_listing(self):
+        """Plan, stage 6: on the user's computer the unpacked tree cannot hold stock's owners or setuid
+        bits; the pseudo definitions pack them from stock's listing, a folder's line before its entries."""
+        tree = self.root/'tree'
+        (tree/'bin').mkdir(parents=True)
+        (tree/'bin/busybox').write_bytes(b'x')
+        os.utime(tree/'bin/busybox', (100, 100))
+        os.utime(tree/'bin', (90, 90))
+        stock = {'/': ('d', 'drwxr-xr-x', '0/0', None, None), '/bin': ('d', 'drwxr-xr-x', '0/0', None, None),
+                 '/bin/busybox': ('-', '-rwsr-xr-x', '0/0', '1', None)}
+        files = {'opt/disc-boot/disc-boot': (b'boot', 0o755), 'opt/disc-boot/mq_ui': ('link', 'disc-boot')}
+        lines = candidate.pseudo_lines(stock, tree, files, ['opt/disc-boot'], 200)
+        self.assertEqual(lines, ['"bin" M 90 755 0 0', '"bin/busybox" M 100 4755 0 0', '"opt/disc-boot" M 200 755 0 0',
+                                 '"opt/disc-boot/disc-boot" M 200 755 0 0', '"opt/disc-boot/mq_ui" M 200 777 0 0'])
+        self.assertEqual(candidate.mode_bits('-rwsr-sr-t'), 0o7755)
+        with self.assertRaises(ValueError):
+            candidate.check_case({'/etc/Init': None, '/etc/init': None})
+        # Without root an extraction's owners and modes are left to the pseudo definitions; kinds, sizes and
+        # link targets still count.
+        tree_entries = {'/bin/busybox': ('-', '-rwxr-xr-x', '501/20', '1', None)}
+        candidate.check_extraction({'/bin/busybox': stock['/bin/busybox']}, tree_entries, exact=False)
+        with self.assertRaises(ValueError):
+            candidate.check_extraction({'/bin/busybox': stock['/bin/busybox']}, tree_entries)
+        with self.assertRaises(ValueError):
+            candidate.check_extraction({'/bin/busybox': stock['/bin/busybox']},
+                                       {'/bin/busybox': ('-', '-rwxr-xr-x', '501/20', '2', None)}, exact=False)
+
     def test_wrong_stock_refused(self):
         path=self.root/'stock';path.write_bytes(b'hsqs'+b'0'*100)
         with self.assertRaises(ValueError):candidate.check_stock(path, {'rootfs_size':8,'rootfs_sha256':'0'*64})

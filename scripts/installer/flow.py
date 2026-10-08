@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -211,16 +212,21 @@ class Installer:
 
     def check(self):
         facts = dict(python=sys.version.split()[0])
-        # Docker and the emulator's checkout build the image and run the guest; an image built
-        # before, without a guest, needs neither.
-        needed = not self.args.image or self.args.guest
+        # The image is built on this computer with squashfs-tools and openssl (plan, stage 6), else in the
+        # emulator's image with Docker; the guest always needs Docker and the emulator's checkout; an image
+        # built before, without a guest, needs none of them.
+        facts['squashfs'] = self.host_builder()
+        needed = self.args.guest or (not self.args.image and not facts['squashfs'])
         facts['docker'] = bool(needed and shutil.which('docker') and self.runner(['docker', 'info'], capture_output=True).returncode == 0)
         facts['emulator'] = str(self.emulator()) if self.emulator() else None
         problems = []
         if sys.version_info < (3, 11):
             problems.append('Python 3.11 or later is needed.')
         if needed and not facts['docker']:
-            problems.append('Docker must run to ' + ('run the guest.' if self.args.image else 'build the image (or give a built one with --image).'))
+            problems.append('Docker must run to run the guest.' if self.args.guest else
+                            'The image needs squashfs-tools 4.6 or later and openssl (macOS: brew install squashfs; '
+                            'Debian or Ubuntu: apt install squashfs-tools), or Docker with the emulator\'s checkout; '
+                            'or give a built image with --image.')
         # The image takes the boot layer's programs from its release file (plan, stage 6); a local build
         # only with --boot-build, for development.
         missing = [n for n in release.BOOT_PROGRAMS if not (ROOT/'build/mips'/n).is_file()]
@@ -228,12 +234,24 @@ class Installer:
             problems.append(f'The boot layer is not built ({", ".join(missing)}): bash scripts/build.sh mips.')
         if needed and not facts['emulator']:
             problems.append('The emulator checkout ' + ('runs the guest' if self.args.image else 'builds the image') + ' (--emulator).')
-        found = [f'Python {facts["python"]}'] + (['An image built before: no build'] if self.args.image else []) + (
+        found = [f'Python {facts["python"]}'] + (['An image built before: no build'] if self.args.image else (
+            [f'squashfs-tools {facts["squashfs"]} and openssl: the image is built here'] if facts['squashfs'] else [])) + (
             ['Docker ' + ('runs' if facts['docker'] else 'does not run'), 'Emulator ' + (facts['emulator'] or 'not found')] if needed else [])
         self.say('Check this computer', found + problems)
         if problems:
             raise Stop(' '.join(problems))
         self.done('check', **facts)
+
+    def host_builder(self):
+        """squashfs-tools 4.6 or later and openssl on this computer (the image built here, without root), as
+        mksquashfs says its version; None without them."""
+        if not all(shutil.which(tool) for tool in ('mksquashfs', 'unsquashfs', 'openssl')):
+            return None
+        out = subprocess.run(['mksquashfs', '-version'], capture_output=True, text=True).stdout or ''
+        found = re.search(r'version (\d+)\.(\d+)(?:\.(\d+))?', out)
+        if not found or tuple(int(p or 0) for p in found.groups()) < (4, 6, 0):
+            return None
+        return '.'.join(p for p in found.groups() if p)
 
     def emulator(self):
         candidate = Path(self.args.emulator or os.environ.get('DISC_EMULATOR', ROOT.parent/'snowsky-disc-server/work/emulator-ref'))
@@ -255,12 +273,27 @@ class Installer:
         out = self.work/'image'
         out.parent.mkdir(parents=True, exist_ok=True)
         programs, boot = self.boot_programs(profile)
-        self.say('Firmware and image', [f'Building the image from {ota.name} with the boot layer {boot}. This takes a few minutes.'])
-        revision = subprocess.check_output(['git', '-C', str(self.emulator()), 'rev-parse', '--short=7', 'HEAD'], text=True).strip()
-        command = ['docker', 'run', '--rm', '--network', 'none', '-e', 'PYTHONPATH=/repo', '-v', f'{self.emulator()}:/repo:ro',
-                   '-v', f'{ota}:/ota:ro', '-v', f'{ROOT}:/src:ro', '-v', f'{programs}:/boot:ro', '-v', f'{out.parent}:/out',
-                   '--entrypoint', 'python3', f'snowsky-disc-qemu-ci:{revision}', '-B', '/src/scripts/deployment/build_candidate.py',
-                   '--ota', '/ota', '--console', '/boot/disc-usb-console', '--boot', '/boot/disc-boot', '--output', f'/out/{out.name}']
+        if self.host_builder():
+            # On this computer, without root (plan, stage 6): the emulator's reader of FiiO's update fetched at
+            # its pinned revision, stock's owners and mode bits packed from stock's own listing.
+            try:
+                reader = sources.fetch(profile['version'], cache=self.downloads, allow_download=self.args.download,
+                                       name='emulator')/'firmware/tools/firmware_inventory.py'
+            except sources.SourceError as error:
+                raise Stop(str(error))
+            self.say('Firmware and image', [f'Building the image from {ota.name} with the boot layer {boot}, here. '
+                                            'This takes a minute.'])
+            command = [sys.executable, '-B', str(ROOT/'scripts/deployment/build_candidate.py'), '--ota', str(ota),
+                       '--console', str(programs/'disc-usb-console'), '--boot', str(programs/'disc-boot'),
+                       '--output', str(out), '--reader', str(reader)]
+        else:
+            self.say('Firmware and image', [f'Building the image from {ota.name} with the boot layer {boot}, in the '
+                                            'emulator\'s image. This takes a few minutes.'])
+            revision = subprocess.check_output(['git', '-C', str(self.emulator()), 'rev-parse', '--short=7', 'HEAD'], text=True).strip()
+            command = ['docker', 'run', '--rm', '--network', 'none', '-e', 'PYTHONPATH=/repo', '-v', f'{self.emulator()}:/repo:ro',
+                       '-v', f'{ota}:/ota:ro', '-v', f'{ROOT}:/src:ro', '-v', f'{programs}:/boot:ro', '-v', f'{out.parent}:/out',
+                       '--entrypoint', 'python3', f'snowsky-disc-qemu-ci:{revision}', '-B', '/src/scripts/deployment/build_candidate.py',
+                       '--ota', '/ota', '--console', '/boot/disc-usb-console', '--boot', '/boot/disc-boot', '--output', f'/out/{out.name}']
         result = subprocess.run(command, capture_output=True, text=True)
         if result.returncode:
             raise Stop('the image was not built: ' + (result.stderr.strip().splitlines() or ['no output'])[-1])
