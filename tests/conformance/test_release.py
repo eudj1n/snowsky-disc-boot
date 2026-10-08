@@ -1,6 +1,7 @@
 """scripts/release.py on a stand-in MIPS build: the same bytes on every build, the record kept
 once, and the release workflow's check refusing a build, a list of files or a catalog entry
 that is not the accepted one."""
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -81,6 +82,24 @@ class ReleaseTests(unittest.TestCase):
         (self.root/'dist/extra.bin').write_bytes(b'x')
         with self.assertRaisesRegex(release.ReleaseError, 'a release holds'):
             release.check('2.57.1', self.root/'dist', self.releases, self.catalog(menu['sha256'], menu['bytes']))
+
+    def test_the_installer_takes_the_newest_boot_release_and_only_its_programs(self):
+        """Plan, stage 6: the image is built from the release file, by its record's digest."""
+        for version in ('2.57.1', '2.57.2'):
+            self.build(f'dist-{version}', version)
+            release.record(version, self.root/f'dist-{version}', 'the guest', self.releases)
+        chosen = release.boot_release('2.57', self.releases)
+        self.assertEqual((chosen['version'], chosen['name']), ('2.57.2', 'disc-boot-2.57.2-mips.tar.gz'))
+        archive = self.root/'dist-2.57.2'/chosen['name']
+        self.assertEqual(chosen['archive'], dict(url=release.url('2.57.2', chosen['name']), size=archive.stat().st_size,
+                                                 sha256=hashlib.sha256(archive.read_bytes()).hexdigest()))
+        programs = release.extract_boot(archive, '2.57.2', chosen['buildId'], self.root/'boot')
+        self.assertEqual(sorted(programs), ['disc-boot', 'disc-usb-console'])
+        self.assertEqual(programs['disc-boot'].read_bytes(), (self.mips/'disc-boot').read_bytes())
+        with self.assertRaisesRegex(release.ReleaseError, 'another build'):
+            release.extract_boot(archive, '2.57.2', 'ffffffffffff', self.root/'other')
+        with self.assertRaisesRegex(release.ReleaseError, 'no release of the boot layer'):
+            release.boot_release('2.58', self.releases)
 
     def test_the_repository_records_are_releases(self):
         for path in sorted((ROOT/'releases').glob('*.json')) if (ROOT/'releases').is_dir() else []:

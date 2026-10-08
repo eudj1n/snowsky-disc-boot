@@ -111,7 +111,10 @@ SHA-256 and the versions used are written into the header, docs/provenance.md).
 
 `python3 install.py` runs the guided installer in the terminal (the boot menu's colours;
 `--plain` or a non-terminal output gives plain text). This part checks the computer, builds
-the image from FiiO's update in the emulator's image (or takes one with `--image`; the update
+the image from FiiO's update in the emulator's image with the boot layer's programs of the newest
+release recorded for the firmware (`disc-boot-<version>-mips.tar.gz`, a local file by its record's
+digest or its download, checked; a local build of `build/mips` only with `--boot-build`), or takes
+one with `--image`; the update
 may be given as its own folder, `main_os` or `main_os/ota_v<version>`, and its rootfs chunks are
 counted against the profile before the build), offers
 `catalog/packages.json` by role (a service and a boot menu, one at most each; any number of
@@ -218,6 +221,11 @@ docker run --rm --network none -e PYTHONPATH=/repo -v <emulator>:/repo:ro -v <fi
   -B /src/scripts/deployment/build_candidate.py --ota /ota --console /src/build/mips/disc-usb-console \
   --boot /src/build/mips/disc-boot --output /out/build
 ```
+
+The same update and the same boot programs give the same image: what is added takes the stock
+file system's own time (its superblock's), the stock folders it goes into keep theirs, and the
+superblock is packed with that time (`-mkfs-time`); two builds of 2.57.4's release file gave one
+image (`4f8d68b6…`).
 
 The builder unpacks, changes and packs stock's tree in a scratch folder of
 the container's own file system (`DISC_IMAGE_SCRATCH` names another): a

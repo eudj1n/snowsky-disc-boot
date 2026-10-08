@@ -13,6 +13,7 @@ import tempfile
 import time
 
 import catalog
+import release
 from firmware_profile import load_profile, load_usb_profile
 from installer import card as cards
 from installer import device as devices
@@ -219,9 +220,11 @@ class Installer:
             problems.append('Python 3.11 or later is needed.')
         if needed and not facts['docker']:
             problems.append('Docker must run to ' + ('run the guest.' if self.args.image else 'build the image (or give a built one with --image).'))
-        missing = [n for n in ('disc-boot', 'disc-usb-console') if not (ROOT/'build/mips'/n).is_file()]
-        if not self.args.image and missing:
-            problems.append(f'The boot layer is not built ({", ".join(missing)}): bash scripts/build.sh.')
+        # The image takes the boot layer's programs from its release file (plan, stage 6); a local build
+        # only with --boot-build, for development.
+        missing = [n for n in release.BOOT_PROGRAMS if not (ROOT/'build/mips'/n).is_file()]
+        if not self.args.image and getattr(self.args, 'boot_build', False) and missing:
+            problems.append(f'The boot layer is not built ({", ".join(missing)}): bash scripts/build.sh mips.')
         if needed and not facts['emulator']:
             problems.append('The emulator checkout ' + ('runs the guest' if self.args.image else 'builds the image') + ' (--emulator).')
         found = [f'Python {facts["python"]}'] + (['An image built before: no build'] if self.args.image else []) + (
@@ -250,18 +253,38 @@ class Installer:
         ota = self.ota = self.update_folder(profile)
         out = self.work/'image'
         out.parent.mkdir(parents=True, exist_ok=True)
-        self.say('Firmware and image', [f'Building the image from {ota.name} with the boot layer. This takes a few minutes.'])
+        programs, boot = self.boot_programs(profile)
+        self.say('Firmware and image', [f'Building the image from {ota.name} with the boot layer {boot}. This takes a few minutes.'])
         revision = subprocess.check_output(['git', '-C', str(self.emulator()), 'rev-parse', '--short=7', 'HEAD'], text=True).strip()
         command = ['docker', 'run', '--rm', '--network', 'none', '-e', 'PYTHONPATH=/repo', '-v', f'{self.emulator()}:/repo:ro',
-                   '-v', f'{ota}:/ota:ro', '-v', f'{ROOT}:/src:ro', '-v', f'{out.parent}:/out', '--entrypoint', 'python3',
-                   f'snowsky-disc-qemu-ci:{revision}', '-B', '/src/scripts/deployment/build_candidate.py', '--ota', '/ota',
-                   '--console', '/src/build/mips/disc-usb-console', '--boot', '/src/build/mips/disc-boot', '--output', f'/out/{out.name}']
+                   '-v', f'{ota}:/ota:ro', '-v', f'{ROOT}:/src:ro', '-v', f'{programs}:/boot:ro', '-v', f'{out.parent}:/out',
+                   '--entrypoint', 'python3', f'snowsky-disc-qemu-ci:{revision}', '-B', '/src/scripts/deployment/build_candidate.py',
+                   '--ota', '/ota', '--console', '/boot/disc-usb-console', '--boot', '/boot/disc-boot', '--output', f'/out/{out.name}']
         result = subprocess.run(command, capture_output=True, text=True)
         if result.returncode:
             raise Stop('the image was not built: ' + (result.stderr.strip().splitlines() or ['no output'])[-1])
         image = next(out.glob('disc-boot-v*-review-only.bin'))
-        self.done('firmware', image=str(image), ota=str(ota), profile=profile['version'])
+        self.done('firmware', image=str(image), ota=str(ota), profile=profile['version'], boot=boot)
         return image
+
+    def boot_programs(self, profile):
+        """The folder of disc-boot and disc-usb-console for the image, and what they are: the newest boot release
+        recorded for the firmware, its archive found by its record's digest (--from, earlier downloads) or
+        downloaded and checked (plan, stage 6); a local build of build/mips only with --boot-build."""
+        if getattr(self.args, 'boot_build', False):
+            return ROOT/'build/mips', 'built here (build/mips)'
+        try:
+            chosen = release.boot_release(profile['version'])
+        except release.ReleaseError as error:
+            raise Stop(str(error))
+        self.downloads.mkdir(parents=True, exist_ok=True)
+        archive = self.obtained(chosen['name'], lambda places: catalog.obtain(
+            chosen['archive'], places, self.downloads, self.args.download, self.downloading('Firmware and image')))
+        try:
+            release.extract_boot(archive, chosen['version'], chosen['buildId'], self.work/'boot')
+        except release.ReleaseError as error:
+            raise Stop(str(error))
+        return self.work/'boot', f'{chosen["version"]} (build {chosen["buildId"]}, its release file)'
 
     def update_folder(self, profile):
         given = self.ask('Firmware and image', f'The folder of FiiO\'s {profile["version"]} update', self.args.ota)

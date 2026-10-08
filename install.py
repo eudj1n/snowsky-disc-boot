@@ -36,6 +36,8 @@ def main():
     parser.add_argument('--plain', action='store_true', help='Plain text, no colours')
     parser.add_argument('--ota', help="The folder of FiiO's update (main_os/ota_v...)")
     parser.add_argument('--image', help='An image built before (skips the build)')
+    parser.add_argument('--boot-build', action='store_true',
+                        help="The boot layer's programs from build/mips, a local build (development), not its release file")
     parser.add_argument('--emulator', help="The emulator checkout whose image builds the image")
     parser.add_argument('--card', help="Where the player's card is mounted")
     parser.add_argument('--package', action='append', help='A package to install (default: the catalog\'s defaults)')

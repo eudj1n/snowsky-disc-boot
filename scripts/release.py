@@ -149,6 +149,54 @@ def url(version, name):
     return f'{REPOSITORY}/releases/download/v{version}/{name}'
 
 
+BOOT_PROGRAMS = ('disc-boot', 'disc-usb-console')
+
+
+def boot_release(firmware, releases=RELEASES):
+    """The newest release recorded here for the firmware with the boot layer's programs: its version and
+    the archive by its record's address, digest and size (plan, stage 6: the installer builds the image
+    from the release file, not from a local build)."""
+    found = []
+    for path in Path(releases).glob('*.json'):
+        data = json.loads(path.read_text())
+        name = f'disc-boot-{data["version"]}-mips.tar.gz'
+        if data.get('firmware') == firmware and name in data.get('files', {}):
+            number = tuple(int(part) for part in data['version'].split('.'))
+            found.append((number, data, name))
+    if not found:
+        raise ReleaseError(f'no release of the boot layer is recorded for firmware {firmware}')
+    _, data, name = max(found, key=lambda item: item[0])
+    record = data['files'][name]
+    return dict(version=data['version'], buildId=data['buildId'], name=name,
+                archive=dict(url=data.get('urls', {}).get(name) or url(data['version'], name),
+                             sha256=record['sha256'], size=record['bytes']))
+
+
+def extract_boot(archive, version, build_id, output):
+    """disc-boot and disc-usb-console from the release's archive (already checked by its digest), and its
+    build id, which must be the record's; the archive holds nothing else that runs."""
+    output = Path(output)
+    if output.exists():
+        raise ReleaseError(f'{output} exists; choose a fresh folder')
+    folder = f'disc-boot-{version}'
+    with tarfile.open(archive, 'r:gz') as tar:
+        def member(name):
+            try:
+                found = tar.getmember(f'{folder}/{name}')
+            except KeyError:
+                raise ReleaseError(f'{folder}/{name} is not in the release') from None
+            if not found.isfile():
+                raise ReleaseError(f'{folder}/{name} is not a regular file in the release')
+            return tar.extractfile(found).read()
+        if member('build-id').decode().strip() != build_id:
+            raise ReleaseError(f'the release says another build than its record ({build_id})')
+        output.mkdir(parents=True)
+        for name in BOOT_PROGRAMS:
+            (output/name).write_bytes(member(name))
+            (output/name).chmod(0o755)
+    return {name: output/name for name in BOOT_PROGRAMS}
+
+
 def check(version, dist, releases=RELEASES, catalog_path=ROOT/'catalog/packages.json'):
     firmware_of(version)
     path = Path(releases)/f'{version}.json'

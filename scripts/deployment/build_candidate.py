@@ -210,6 +210,14 @@ def check_delta(before, after, additions):
         raise ValueError(f'Unexpected rootfs delta: removed={sorted(removed)}, changed={sorted(changed)}, added={sorted(added)}')
 
 
+def stock_time(path):
+    """The stock squashfs's own time (its superblock's modification time, seconds since 1970)."""
+    with Path(path).open('rb') as handle:
+        head = handle.read(12)
+    if len(head) < 12 or head[:4] != b'hsqs':raise ValueError('The stock rootfs is not a squashfs')
+    return struct.unpack_from('<I', head, 8)[0]
+
+
 def pad(source, destination, capacity):
     size = source.stat().st_size
     if size>capacity:raise ValueError('Image exceeds writer capacity; refusing truncation')
@@ -419,15 +427,30 @@ def assemble(ota, console, boot, out, scratch, profile, writer):
     if (tree/'opt').is_symlink() or not (tree/'opt').is_dir():raise ValueError('Unexpected /opt layout')
     before = inventory(tree)
     additions = additions_of(files, before)
+    # The same update and the same boot layer give the same image (plan, stage 6): what is added takes the
+    # stock file system's own time, the stock folders it goes into keep theirs, and so does the superblock.
+    stamp = stock_time(stock)
+    kept = {}
+    for name in files:
+        for parent in (tree/name).parents:
+            if parent == tree or not parent.is_relative_to(tree):break
+            if parent.is_dir() and not parent.is_symlink():kept.setdefault(parent, parent.stat().st_mtime_ns)
     for name, (data, mode) in sorted(files.items()):
         destination = tree/name
         if destination.exists() or destination.is_symlink():raise ValueError(f'Payload collision: {name}')
         destination.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
-        if data == 'link':destination.symlink_to(mode);continue
-        destination.write_bytes(data);destination.chmod(mode)
+        if data == 'link':destination.symlink_to(mode)
+        else:destination.write_bytes(data);destination.chmod(mode)
+        os.utime(destination, (stamp, stamp), follow_symlinks=False)
+    for name in files:
+        for parent in (tree/name).parents:
+            if parent == tree or not parent.is_relative_to(tree):break
+            if parent not in kept:os.utime(parent, (stamp, stamp))
+    for parent, mtime in kept.items():os.utime(parent, ns=(mtime, mtime))
     expected = inventory(tree);check_delta(before,expected,additions)
     packed = out/'candidate.squashfs'
-    command('mksquashfs',tree,packed,'-comp','lzo','-b','131072','-no-xattrs','-noappend','-no-progress','-processors','2')
+    command('mksquashfs',tree,packed,'-comp','lzo','-b','131072','-no-xattrs','-noappend','-no-progress','-processors','2',
+            '-mkfs-time',str(stamp))
     if packed.stat().st_size>capacity:raise ValueError('Candidate too large')
     candidate_entries = listing(packed)
     check_listing(stock_entries, candidate_entries, additions)
