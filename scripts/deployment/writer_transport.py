@@ -152,7 +152,8 @@ def make_plan(base, cpu, reader, transport, layout, inputs, mode):
                 completion_profile_sha256=fingerprint(c),
                 completion_ask=c['completion_ask'], staging_check_ms=c['staging_check_ms'],
                 staging_sample_ms=c['staging_sample_ms'], staging_sample_bytes=min(c['staging_sample_bytes'],capacity),
-                protocol_call_limit=136+18*sum(math.ceil(n/65536) for _,_,n in small)+6*image_chunks+staging_calls+writer_asks,
+                spl_once_an_entry=True,
+                protocol_call_limit=139+18*sum(math.ceil(n/65536) for _,_,n in small)+6*image_chunks+staging_calls+writer_asks,
                 writer_wait_ms=layout['writer_wait_ms'],
                 session_budget_ms=layout['session_budget_ms'] if mode == 'write' else layout['staging_budget_ms'],
                 transport_sources_sha256={name:ram.probe.digest(ram.ROOT/name) for name in (

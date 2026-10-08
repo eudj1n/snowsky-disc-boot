@@ -104,7 +104,7 @@ def evidence(folder,kind):
         check(audit.get('status')=='saved-boot-trace-matches' and audit.get('records')==result['records_completed']
               and 0<audit['calls']<=p['protocol_call_limit'],'Incomplete boot trace review')
     if kind=='stock':
-        check(audit.get('records')==result['records_completed'] and audit.get('spl_executions')==1
+        check(audit.get('records')==result['records_completed'] and audit.get('spl_executions') in (0,1)
               and audit.get('batch_executions')==result['batch_executions']
               and 0<audit['protocol_calls']<=p['protocol_call_limit'],'Incomplete stock trace review')
     if kind!='stage':

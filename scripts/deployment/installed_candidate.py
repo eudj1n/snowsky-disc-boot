@@ -62,7 +62,7 @@ def session(folder, writing):
     else:
         check(plan.get('nand_writes') is False and result.get('writer_execution_attempted', False) is False
               and audit.get('nand_writes') is False and audit.get('writer_executions', 0) == 0
-              and audit.get('status') == 'saved-postwrite-trace-matches' and audit.get('spl_executions') == 1
+              and audit.get('status') == 'saved-postwrite-trace-matches' and audit.get('spl_executions') in (0, 1)
               and audit['records'] == result['records_completed'] and
               audit['batch_executions'] == result['batch_executions'], 'Incomplete postwrite audit')
         files['records.bin'] = install.file_pin(folder/'records.bin', 256*1024*1024)

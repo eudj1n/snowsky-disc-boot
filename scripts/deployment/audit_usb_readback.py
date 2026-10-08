@@ -60,6 +60,7 @@ assert (args.artifacts/candidate['name']).read_bytes()==image
 for i,n in enumerate(pages[len(marker_pages):],len(marker_pages)):
  if n%ppb==0:assert main[i][2048]==255
 
+CLEAN=struct.pack('<5I',0xd1a6c0de,9,0,0,0)
 def ctrl(n,a=0):yield ('control',n,a,b'X2000' if n==0 else None)
 def transfer(a,b,incoming):
  yield from ctrl(1,a);yield from ctrl(2,len(b));yield ('bulk',129 if incoming else 1,len(b),b)
@@ -69,8 +70,12 @@ def compare_ram(a,b):
  for incoming in (False,True):
   for where,part in chunks(a,b):yield from transfer(where,part,incoming)
 def expected():
- yield from ctrl(0);yield from compare_ram(t['spl_load_address'],spl);yield from ctrl(4,t['spl_entry']);yield from ctrl(0)
- yield from transfer(t['diagnostic_address'],struct.pack('<5I',0xd1a6c0de,9,0,0,0),True)
+ # DDR's diagnostic first: this entry's clean one means no SPL again (ram_transport.bring_up, plan, stage 4c).
+ yield from ctrl(0);yield from transfer(t['diagnostic_address'],bytes.fromhex(r['entry_diagnostic']),True)
+ assert r['spl_skipped']==(bytes.fromhex(r['entry_diagnostic'])==CLEAN)
+ if not r['spl_skipped']:
+  yield from compare_ram(t['spl_load_address'],spl);yield from ctrl(4,t['spl_entry']);yield from ctrl(0)
+  yield from transfer(t['diagnostic_address'],CLEAN,True)
  for turn in range(2):
   for incoming in (False,True):
    for region in p['ram_regions']:
@@ -91,7 +96,7 @@ def expected():
  assert batch==r['batch_executions']==p['batch_limit']
 rows=[json.loads(l) for l in (run/'transfers.jsonl').read_text().splitlines()]
 trace=compare(rows,expected(),run,t,p['protocol_call_limit'],
-              [t['spl_entry']]+[reader['load_address']]*r['batch_executions'],r['connection'])
-report=dict(status='saved-postwrite-trace-matches',session_id=r['session_id'],calls=trace['calls'],raw_reads=trace['raw_reads'],raw_bytes=trace['read_bytes'],bulk_ram_writes=trace['bulk_writes'],spl_executions=1,batch_executions=r['batch_executions'],records=len(pages),bad_blocks=bad,ecc_histogram=hist,plan_sha256=fp(p),result_sha256=sha((run/'result.json').read_bytes()),journal_sha256=sha((run/'transfers.jsonl').read_bytes()),capture_sha256=sha(raw),image_sha256=sha(image),audit_script_sha256=sha(Path(__file__).read_bytes()),new_device_access=False,nand_writes=False,active_boot_verified=False)
+              ([] if r['spl_skipped'] else [t['spl_entry']])+[reader['load_address']]*r['batch_executions'],r['connection'])
+report=dict(status='saved-postwrite-trace-matches',session_id=r['session_id'],calls=trace['calls'],raw_reads=trace['raw_reads'],raw_bytes=trace['read_bytes'],bulk_ram_writes=trace['bulk_writes'],spl_executions=0 if r['spl_skipped'] else 1,batch_executions=r['batch_executions'],records=len(pages),bad_blocks=bad,ecc_histogram=hist,plan_sha256=fp(p),result_sha256=sha((run/'result.json').read_bytes()),journal_sha256=sha((run/'transfers.jsonl').read_bytes()),capture_sha256=sha(raw),image_sha256=sha(image),audit_script_sha256=sha(Path(__file__).read_bytes()),new_device_access=False,nand_writes=False,active_boot_verified=False)
 with args.output.open('x') as f:json.dump(report,f,indent=2);f.write('\n')
 print(json.dumps(report,indent=2))

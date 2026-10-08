@@ -141,9 +141,11 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(result['status'],'rootfs-probe-collected')
         self.assertEqual(result['batch_executions'],3)
         self.assertEqual(result['records_completed'],132)
-        self.assertEqual(len(fake.calls),297)
-        # Each batch's one CPU request is asked at once and held (plan, stage 4c): the same calls.
-        self.assertEqual(result['plan']['protocol_call_limit'],297)
+        self.assertEqual(len(fake.calls),300)
+        # Each batch's one CPU request is asked at once and held (plan, stage 4c): the same calls; 3 more
+        # read the DDR diagnostic before the SPL.
+        self.assertEqual(result['plan']['protocol_call_limit'],300)
+        self.assertFalse(result['spl_skipped'], 'a fresh entry runs the SPL')
         self.assertIs(result['plan']['completion_ask'],True)
         self.assertEqual(result['batch_ready_ms']['batches'],3)
         self.assertEqual(fake.execute_addresses,[self.config['spl_entry']]+[self.reader['load_address']]*3)
@@ -152,6 +154,25 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual((path/'records.bin').stat().st_size,132*4476)
         self.assertEqual(result['logical_image_sha256'],hashlib.sha256(expected).hexdigest())
         self.assertFalse(result['image_match_verified']);self.assertFalse(result['flash_ready'])
+
+    def test_a_second_session_in_the_entry_does_not_run_the_spl_again(self):
+        """The SPL once a USB Boot entry (plan, stage 4c): the second session finds the clean DDR
+        diagnostic the first one's SPL left in TCSM, runs no SPL, checks RAM and reads the same."""
+        fake = BatchRom(self.reader, self.config, self.scope)
+        runs = []
+        for _ in range(2):
+            plan = self.plan(); clock = FakeClock(); self.index += 1; output = self.root/str(self.index)
+            runs.append((collect.acquire(plan, collect.fingerprint(plan), self.base, self.cpu, self.reader, self.config,
+                                         self.inputs, self.metadata, self.library, output, loader=lambda _: fake,
+                                         clock=clock, sleep=clock.sleep), output))
+        (first, one), (second, two) = runs
+        self.assertEqual((first['status'], second['status']), ('rootfs-probe-collected',) * 2)
+        self.assertEqual((first['spl_skipped'], second['spl_skipped']), (False, True))
+        self.assertEqual(second['entry_diagnostic'], struct.pack('<5I', 0xd1a6c0de, 9, 0, 0, 0).hex())
+        self.assertFalse(second['spl_execution_attempted'])
+        self.assertTrue(second['ram_roundtrip_passed'])
+        self.assertEqual(fake.execute_addresses.count(self.config['spl_entry']), 1)
+        self.assertEqual((one/'logical-image.bin').read_bytes(), (two/'logical-image.bin').read_bytes())
 
     def test_every_batch_usb_boundary_stops_without_replay(self):
         # A timeout anywhere stops the session, the held ask after a batch's execution included: it
@@ -178,7 +199,7 @@ class CollectorTests(unittest.TestCase):
         is not slept and nothing is abandoned."""
         result,path,fake=self.run_fake(busy=967)
         self.assertEqual(result['status'],'rootfs-probe-collected')
-        self.assertEqual(len(fake.calls),297)
+        self.assertEqual(len(fake.calls),300)
         rows=[json.loads(line) for line in (path/'transfers.jsonl').read_text().splitlines()]
         asks=[row for row in rows if row.get('poll') and row.get('phase') == 'attempt']
         self.assertEqual(len(asks),3)
@@ -206,14 +227,14 @@ class CollectorTests(unittest.TestCase):
             original(rom,address,diagnostic if address==rom.config['diagnostic_address'] else data)
         with patch.object(BatchRom,'put',inject):result,path,fake=self.run_fake()
         self.assertEqual(result['status'],'failed')
-        self.assertIn('SPL DDR diagnostic failed',result['error'])
+        self.assertIn('SPL did not report clean DDR completion',result['error'])
         self.assertEqual(result['records_completed'],0)
         self.assertEqual(result['batch_executions'],0)
         self.assertFalse(result['page_execution_attempted'])
         self.assertFalse(result['ram_roundtrip_passed'])
         self.assertEqual(fake.execute_addresses,[self.config['spl_entry']])
-        self.assertEqual(len(fake.calls),12)
-        self.assertEqual((path/'read-012.bin').read_bytes(),diagnostic)
+        self.assertEqual(len(fake.calls),15, '3 more: the DDR diagnostic read before the SPL')
+        self.assertEqual((path/'read-015.bin').read_bytes(),diagnostic)
         self.assertEqual(result['cleanup_errors'],[])
         self.assertIn('release_interface',fake.events)
         self.assertFalse((path/'records.bin').exists())

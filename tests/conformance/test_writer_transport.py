@@ -477,6 +477,25 @@ class WriterTransportTests(unittest.TestCase):
                                '--build', str(folders['build']), '--staging-build', str(folders['staging']),
                                '--diskos', str(folders['diskos']), '--output', str(report)], capture_output=True, text=True)
 
+    def test_a_write_after_another_session_in_the_entry_runs_no_spl_and_audits(self):
+        """The SPL once a USB Boot entry (plan, stage 4c): a write after a stage-only session in the
+        same entry finds the clean DDR diagnostic, runs no SPL, and its audit follows that start."""
+        self.layout['physical_write_admitted'] = True
+        self.inputs['completion'] = {**self.inputs['completion'],'staging_sample_bytes':65536}
+        folders, subprocess = self.files()
+        fake = self.rom()
+        staged, _ = self.run_rom(fake)
+        self.assertEqual((staged['status'], staged['spl_skipped']), ('writer-staging-verified', False))
+        result, output = self.run_rom(fake, 'write')
+        self.assertEqual(result['status'], 'writer-completion-observed', result.get('error'))
+        self.assertTrue(result['spl_skipped'])
+        self.assertFalse(result['spl_execution_attempted'])
+        self.assertEqual(fake.execute_addresses.count(self.transport['spl_entry']), 1)
+        plan = json.loads((output/'request.json').read_text())['plan']
+        done = self.audit(folders, subprocess, output, plan)
+        self.assertEqual(done.returncode, 0, done.stderr[-2000:])
+        self.assertEqual(json.loads(done.stdout)['executions'], [self.reader['load_address']]*3 + [plan['writer_entry']])
+
     def test_the_write_audit_reconstructs_the_staging_check_and_the_asks(self):
         self.layout['physical_write_admitted'] = True
         self.inputs['completion'] = {**self.inputs['completion'],'staging_sample_bytes':65536}

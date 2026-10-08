@@ -31,7 +31,8 @@ assert plan['operation']=='writer-write' and plan['writer_executions']==1 and pl
 assert plan['physical_write_admitted'] and result['evidence_currency_confirmed']
 assert request['session_id']==result['session_id'] and request['nonce_hex']==result['nonce_hex']
 assert result['status']=='writer-completion-observed' and not result['cleanup_errors']
-for name in ('spl_execution_attempted','page_execution_attempted','staging_execution_attempted','ram_roundtrip_passed',
+assert result['spl_execution_attempted'] is (not result['spl_skipped'])
+for name in ('page_execution_attempted','staging_execution_attempted','ram_roundtrip_passed',
              'full_staging_patterns_verified','image_ram_verified','image_hash_sample_verified','writer_ram_verified',
              'completion_poison_verified','writer_execution_attempted','writer_return_observed'):
     assert result[name] is True
@@ -116,11 +117,16 @@ small=[r for r in regions if r[0]!='image']
 _,image_address,image_bytes=next(r for r in regions if r[0]=='image')
 seed=struct.unpack('<I',hashlib.shake_256(nonce+b'staging-pattern').digest(4))[0] or 1
 def expected():
+    # DDR's diagnostic first: this entry's clean one means no SPL again (ram_transport.bring_up, plan, stage 4c).
+    clean=struct.pack('<5I',0xd1a6c0de,9,0,0,0)
     yield from control(0)
-    yield from transfer(transport['spl_load_address'],spl,False)
-    yield from transfer(transport['spl_load_address'],spl,True)
-    yield from control(4,transport['spl_entry']); yield from control(0)
-    yield from transfer(transport['diagnostic_address'],struct.pack('<5I',0xd1a6c0de,9,0,0,0),True)
+    yield from transfer(transport['diagnostic_address'],bytes.fromhex(result['entry_diagnostic']),True)
+    assert result['spl_skipped']==(bytes.fromhex(result['entry_diagnostic'])==clean)
+    if not result['spl_skipped']:
+        yield from transfer(transport['spl_load_address'],spl,False)
+        yield from transfer(transport['spl_load_address'],spl,True)
+        yield from control(4,transport['spl_entry']); yield from control(0)
+        yield from transfer(transport['diagnostic_address'],clean,True)
     for turn in range(2):
         for incoming in (False,True):
             for _,address,size in regions[:4]: yield from transfer(address,pattern(address,size,turn),incoming)
@@ -165,7 +171,7 @@ def expected():
 
 rows=[json.loads(line) for line in (run/'transfers.jsonl').read_text().splitlines()]
 trace=compare(rows,expected(),run,transport,plan['protocol_call_limit'],
-              [transport['spl_entry'],reader['load_address'],reader['load_address'],reader['load_address'],plan['writer_entry']],
+              ([] if result['spl_skipped'] else [transport['spl_entry']])+[reader['load_address']]*3+[plan['writer_entry']],
               result['connection'])
 report=dict(status=f'saved-{args.target}-write-trace-matches',session_id=result['session_id'],plan_sha256=fp(plan),
             calls=trace['calls'],raw_reads=trace['raw_reads'],read_bytes=trace['read_bytes'],
