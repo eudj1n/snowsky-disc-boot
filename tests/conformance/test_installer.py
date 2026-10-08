@@ -135,6 +135,30 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(installer.run(), 1)
         self.assertIn('disc-menu 9: no local file with sha256', installer.report['status'])
 
+    def test_the_first_boot_says_how_usb_boot_is_left_and_done_once_the_start_was_checked(self):
+        """2026-10-08 (owner): leaving USB Boot restarts the player into the new system by itself, so a
+        start with Play comes after it; once the first start's check was fetched, the run says it is done
+        rather than repeating the first boot's instructions."""
+        import argparse
+        import io
+        from installer import flow, tui
+        args = argparse.Namespace(dry_run=False, yes=True, plain=True, ota=None, image=str(self.image), emulator=None, card=None,
+                                  package=None, app=None, packages_from=[str(self.local)], download=False, work=str(self.root/'run'),
+                                  catalog=str(self.catalog), simulate=None, simulate_small=False, fault=None, restore=False, guest=False,
+                                  history=None, diskos=None, libusb=None)
+        for proven, expected, absent in ((False, 'restarts into the new system by itself', 'Done:'),
+                                         (True, 'Done: the image is written', 'Disconnect the cable')):
+            screen = io.StringIO()
+            installer = flow.Installer(args, tui.Screen(look='plain', stream=screen))
+            installer.proven_start = proven
+            installer.first_boot()
+            text = ' '.join(screen.getvalue().split())
+            with self.subTest(proven=proven):
+                self.assertIn(expected, text)
+                self.assertNotIn(absent, text)
+                self.assertEqual(installer.report['steps'][-1], dict(step='first boot', **({'proven': True} if proven else {})))
+        self.assertIn('switch it off, then switch it on holding Play', flow.Installer.PLAY_AFTER)
+
     def test_what_an_earlier_run_staged_and_this_one_did_not_choose_leaves_the_card(self):
         """2026-10-07: a server staged by a run that stopped at its review was installed by the next
         run's Play, which had chosen only the menu."""
