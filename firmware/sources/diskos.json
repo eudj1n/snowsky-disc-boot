@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "name": "diskos",
+  "repository": "https://github.com/b0hemia/diskos",
+  "revision": "646212d57425bd437468ab8896f63b16bae8f744",
+  "license": "MIT; its SPL (flash/disc_spl_lpddr3.bin) GPL-2.0 with its source in spl-src/ (diskOS's SPL_SOURCE.md)",
+  "note": "The files the reviewed tools read, fetched one by one from this revision and checked by the digests the reader, writer and probe profiles pin; never redistributed by this repository"
+}

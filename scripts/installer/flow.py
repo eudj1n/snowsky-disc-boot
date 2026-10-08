@@ -14,6 +14,7 @@ import time
 
 import catalog
 import release
+import sources
 from firmware_profile import load_profile, load_usb_profile
 from installer import card as cards
 from installer import device as devices
@@ -437,10 +438,27 @@ class Installer:
              'run down; then hold Volume Down and connect the cable.')
 
     def reviewed_tools(self, image, history, work=None):
-        if not (self.args.diskos and self.args.libusb):
-            raise Stop('the player is written through the reviewed tools: give --diskos (its pinned checkout) and --libusb')
-        return usbboot.Reviewed(load_profile()['version'], work or self.work/'usb', Path(image).parent, self.args.diskos,
+        if not self.args.libusb:
+            raise Stop('the player is written through the reviewed tools: give --libusb (the libusb library they load)')
+        return usbboot.Reviewed(load_profile()['version'], work or self.work/'usb', Path(image).parent, self.diskos(),
                                 self.args.libusb, history, run=self.runner, progress=self.session_progress())
+
+    def diskos(self):
+        """diskOS's writer, SPL and the sources they are checked by (plan, stage 6): the checkout given with
+        --diskos or a copy found before, each file by the profiles' pins, else fetched from the pinned revision."""
+        version = load_profile()['version']
+        try:
+            if self.args.diskos:
+                wrong = sources.differs(self.args.diskos, sources.diskos_files(version))
+                if wrong:
+                    raise Stop(f'{self.args.diskos} is not diskOS at its pinned revision: {", ".join(wrong)} differ')
+                return Path(self.args.diskos)
+            return sources.fetch(version, cache=self.downloads, allow_download=self.args.download,
+                                 progress=lambda path, part: self.frame(
+                                     lambda: self.screen.label('The player (USB Boot)'),
+                                     lambda: self.screen.progress(f'diskOS\'s writer and SPL: {path}', part)))
+        except sources.SourceError as error:
+            raise Stop(str(error))
 
     def session_progress(self):
         """A USB session's bar in the menu's look: the share of its calls done, the time gone and left."""
@@ -558,7 +576,7 @@ class Installer:
             self.write_and_read(reviewed, title, image, backup)
         except usbboot.ReviewedError as error:
             raise Stop(f'{error}. The run\'s evidence is in {self.work/"usb"}; nothing was retried. '
-                       f'The way back to stock: install.py --restore --run {self.work} --diskos … --libusb …')
+                       f'The way back to stock: install.py --restore --run {self.work} --libusb …')
 
     def write_and_read(self, reviewed, title, image, backup):
         """After the backup: the write in a fresh entry, the owner's look at the new system's start,
@@ -626,7 +644,7 @@ class Installer:
             self.write_and_read(reviewed, title, image, dict(reviewed.identity(strict=True), resumes=str(run)))
         except usbboot.ReviewedError as error:
             raise Stop(f'{error}. The run\'s evidence is in {self.work/"usb"}; nothing was retried. '
-                       f'The way back to stock: install.py --restore --run {self.work} --diskos … --libusb …')
+                       f'The way back to stock: install.py --restore --run {self.work} --libusb …')
 
     def restore_from_run(self):
         """install.py --restore --run DIR: back to stock with that run's package, from whatever the player
@@ -679,8 +697,8 @@ class Installer:
         if not self.args.simulate:
             self.say(title, [
                 f'The image is ready: {Path(image).name}.',
-                'The player is written through the reviewed tools with its installation history (--history), diskOS\'s '
-                'pinned checkout (--diskos) and libusb (--libusb): backup, write, readback, every byte compared. '
+                'The player is written through the reviewed tools with its installation history (--history) and libusb '
+                '(--libusb); diskOS\'s writer and SPL come from their pinned revision (or --diskos). '
                 'Without a player: --simulate (a simulated NAND) or --guest (the emulator\'s guest).'])
             self.done('player', image=str(image), written=False)
             return
