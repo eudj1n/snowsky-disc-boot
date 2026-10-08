@@ -1253,7 +1253,7 @@ layer and the emulator's checkout to build the image.
   release's payloads with nothing compiled. Found on the way: the boot
   evidence's build had failed since the read by digest (stage 4b) asked its
   scopes for a mode; fixed. `test_release`, `test_usbboot`.
-- [ ] The image built so on the guest and on the player (the next boot
+- [x] The image built so on the guest and on the player (the next boot
   release's image), then the installer's Docker build goes; the emulator
   stays for the guest. The guest (2026-10-08): release 2.57.4's image built
   on the computer without root or Docker (`4f8d68b6…`, the Docker build's
@@ -1261,7 +1261,19 @@ layer and the emulator's checkout to build the image.
   packages (menu 2.57.4, server 2.57.5, Disc Player 1.0.0): installed by
   Play, the menu answered, the service confirmed. Known by its first blocks
   (`firmware/images`), as the owner's player will hold it after the user
-  path's test.
+  path's test. The player (2026-10-08, the seventh write,
+  [record](first-write-observation.md#the-seventh-write-the-users-path-without-a-history)):
+  written, and its first start found `4f8d68b6…` on its root device.
+- [ ] The installer's Docker build of the image goes (the condition above is
+  met): squashfs-tools 4.6 or later and openssl only; the emulator stays for
+  the guest. The USB payloads still need the toolchain image until a boot
+  release carries them (2.57.5).
+- [ ] The user answers only yes or no at the first start (owner, 2026-10-08):
+  the words are the developers' evidence (`owner-boot-confirmation.json`,
+  read by the next review with a history), never needed without one. To
+  weigh: no question at all when the first start's check comes back (the
+  system started and holds the written image), the question only when it
+  does not (then it decides the way back to stock).
 - [x] diskOS's writer and SPL fetched at their pinned revision, as the diskOS
   package already is (`catalog.py fetch --name diskos --download`, checked
   from a clean clone on 2026-10-06). Done 2026-10-08: the six files the
@@ -1273,7 +1285,7 @@ layer and the emulator's checkout to build the image.
   (owner: the SPL carries vendor-origin DDR bytes that diskOS itself has not
   cleared for redistribution). The review gives the same plans with the
   fetched copy as with the owner's checkout (`test_sources`).
-- [ ] The user's installation without a history (owner, 2026-10-08: the
+- [x] The user's installation without a history (owner, 2026-10-08: the
   history is the developers' evidence; a user needs none). Every run decides
   by digests in one USB Boot entry: the boot evidence read there (the
   bootloader's selection and the kernel, so the player runs the reviewed
@@ -1342,8 +1354,15 @@ layer and the emulator's checkout to build the image.
     the same way; an unknown image stops before anything is written, naming
     FiiO's Local upgrade; without a terminal the card only
     ([development](development.md)). `test_usbboot` (`KnownPathTests`).
-  - [ ] On the owner's player after FiiO's Local upgrade back to stock (the
-    owner's step, on its own go-ahead).
+  - [x] On the owner's player after FiiO's Local upgrade back to stock (the
+    owner's step, on its own go-ahead). Done 2026-10-08, the seventh write
+    ([record](first-write-observation.md#the-seventh-write-the-users-path-without-a-history)):
+    the Local upgrade took our image back to stock (no version gate, about 2
+    minutes); `install.py` with no history found stock, wrote the image in
+    the same entry and its first start proved it, about 13 minutes in all.
+    `/usr/data/disc-boot` stayed through the Local upgrade, so the first
+    installation of a new user's packages is tested in stage 7, after a
+    removal of everything ours.
 - [ ] The installer for users as one archive in the boot release
   (`disc-installer-<v>.tar.gz`, owner, 2026-10-08): `install.py` with the
   scripts, profiles, catalogs and source pins it needs, this release's files
@@ -1443,7 +1462,22 @@ the only installer. Play at power-on stays the recovery path only.
   emulator has no Wi-Fi: checked with a stand-in `wpa_cli` on the guest,
   then on the player.
 
+- [ ] Remove everything ours (owner, 2026-10-08: before the player is sold,
+  and for a clean test): in the menu, the boot layer's packages and their
+  data in `/usr/data/disc-boot`, disc-network's networks and the card's
+  `.disc` state (music and `Apps` asked about separately); then FiiO's Local
+  upgrade leaves a stock player. Neither the Local upgrade nor stock's
+  "Reset all" removes `/usr/data/disc-boot`. After it, the user path's test
+  on the owner's player from a really new state: the first installation of
+  the packages, a card without `.disc`.
+
 ## Later
+
+- An update of the image by the running system from the card (owner,
+  2026-10-08: FiiO's own update takes about 2 minutes, ours over USB Boot
+  about 10): the new rootfs written on the player as FiiO's recovery does,
+  with the first start's check as its proof; USB Boot stays the first
+  installation and the way back from any state.
 
 - The emulator repository keeps only its qemu part (owner, 2026-10-02): a
   separate session after the boot layer's emulator work, one PR into its

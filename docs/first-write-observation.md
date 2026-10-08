@@ -347,3 +347,36 @@ start had been checked; both are in its words now. The next review on the new hi
 in the write plan's binding, which knew only a readback as the previous write's proof; it takes
 the first start's check now (`test_installation_review`).
 
+## The seventh write (the user's path, without a history)
+
+On 2026-10-08 the owner took the player back to stock with FiiO's own Local upgrade and then
+installed it the way a user does: `python3 install.py` with no `--history`, `--diskos`, `--libusb`
+or `--image` (boot 2.x at `3437eff`, run `install-20261008-233506`).
+
+- **FiiO's Local upgrade, from our image (2.57.4, `615d16c7…`) back to stock 2.57**: the update's
+  zip (`SNOWSKY_DISC_update_20260909_v257.zip`, as FiiO publishes it) at the card's root, Settings →
+  System updates → Local upgrade. No version gate for the same version; the recovery's last phase
+  showed "3/3, Updating about 2 mins"; stock started and worked (the owner). It rewrites recovery,
+  kernel and rootfs only: `/usr/data`, with `/usr/data/disc-boot` (the menu, the server and the
+  diskOS 1.2.0 interface installed before), and the card stay.
+- **The computer**: diskOS's pinned files fetched (`work/downloads/diskos-646212d`), libusb found
+  and named by its file (Homebrew's link resolved, PR #39), the image built here without root or
+  Docker (`4f8d68b6…`, release 2.57.4's programs, accepted on the guest the same day, PR #40); the
+  catalog's packages from their published releases (menu 2.57.4, server 2.57.5, Disc Player 1.0.0).
+  The USB payloads were built with the boot layer's toolchain in Docker (2.57.4 has no payloads
+  file; from 2.57.5 they come with the release).
+
+| Step (2026-10-08, UTC) | Observed |
+| --- | --- |
+| `CHECK`, one entry | 18:38:37: the partition table's page (`ffea3bdd`, 4.5 s, the entry's SPL); the boot evidence (`4cb66176`, 35.6 s, SPL skipped; its audit matched, 1,143 calls, 1,073 records); the identity probe (`bb94aa3c`, 6.5 s, SPL skipped; its audit matched, 289 calls, 132 records) |
+| The review `--known` | the player holds stock (first blocks `dccfa975…`), the bootloader selects the primary rootfs; the run's admission in the package, `firmware/installers` untouched |
+| `WRITE`, the same entry | `fdad1ff4`, 9 min 44 s, `same_entry_required`, SPL skipped: the image region's check 110.7 s, the sample's hash 4.2 s, the writer 245.4 s; bad blocks 383 and 716 skipped; the write's audit matched |
+| The first start's check | the new system hashed `/dev/mtdblock_bbt_ro2`, 100,663,296 bytes, in 13.4 s: `4f8d68b6…`, the written image; fetched over the USB console at 18:51:44; no readback, no history |
+
+About 13 minutes from the first read to the proof, with no history before or after. Not yet the
+first installation of a new user's player: the boot layer's first start found the packages
+`/usr/data/disc-boot` kept through the Local upgrade (stock's "Reset all" keeps them too). That
+test waits for a removal of everything ours (stage 7). The owner's observations: a user need not
+describe the first start in words (yes or no is enough, if anything); and FiiO's update from the
+card takes about 2 minutes, which an update by the running system from the card could approach.
+
