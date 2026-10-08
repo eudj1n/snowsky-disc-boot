@@ -451,7 +451,9 @@ def run(output):
     time.sleep(5)
     power('cut', unsynced=True)
     counts = []
-    for _ in range(2):
+    # The start that activated it ran the confirmed version first (the job is the running probe's),
+    # whose readiness cleared the count: three starts with the tentative one follow.
+    for _ in range(3):
         power('on')
         counts.append(boot_status().get('unconfirmedBoots'))
         service(lambda s: s['version'] == '6' and s['state'] == 'ready', 'version 6 tentative again', 300)
