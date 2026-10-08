@@ -1267,11 +1267,32 @@ layer and the emulator's checkout to build the image.
   (owner: the SPL carries vendor-origin DDR bytes that diskOS itself has not
   cleared for redistribution). The review gives the same plans with the
   fetched copy as with the owner's checkout (`test_sources`).
-- [ ] A first installation without a history (owner's question,
-  2026-10-07): the installer writes a player only with `--history`, whose
-  boot and stock captures were taken on the owner's player with earlier
-  tools. A new player's first installation takes its own: the boot evidence
-  and the stock read in the same entry before the write.
+- [ ] The user's installation without a history (owner, 2026-10-08: the
+  history is the developers' evidence; a user needs none). Every run decides
+  by digests in one USB Boot entry: the boot evidence read there (the
+  bootloader's selection and the kernel, so the player runs the reviewed
+  FiiO version), then the identity probe of the first rootfs blocks
+  compared with the images known: stock (from the user's FiiO update) and
+  each boot release's image (reproducible since this stage: its digest and
+  its first blocks' digest recorded with the release; the images before
+  2.57.5 listed by their recorded digests, the owner's player holding
+  `615d16c7…`). A known image is installed over or updated; an unknown one,
+  or another FiiO version, stops the run before anything is written and
+  offers the way back to stock: FiiO's own Local upgrade (no version gate,
+  its zip at the card's root; the owner checks it later) or ours through USB
+  Boot. After the write, the first start's check as now. No history, no
+  captures, no review pin moved after each write for the user; `--history`
+  stays the developers' way.
+- [ ] The installer for users as one archive in the boot release
+  (`disc-installer-<v>.tar.gz`, owner, 2026-10-08): `install.py` with the
+  scripts, profiles, catalogs and source pins it needs, this release's files
+  (the boot programs, the USB payloads, the menu) and the default server and
+  Disc Player; nothing to clone. Not in it: FiiO's update (the user's),
+  diskOS's files (fetched by their pins), Python 3.11+, libusb,
+  squashfs-tools and openssl (checked, with the command that installs each).
+  The user's runs kept outside it (`~/Library/Application Support/SNOWSKY
+  DISC`, `~/.local/share/snowsky-disc`). macOS and Linux first; Windows
+  later (WinUSB, with the ready-to-run installers under "Later").
 - [ ] The computer's check explains libusb and Docker where they are missing.
 - [ ] The README's guide: what is installed, the risk, the way back, the
   packages.
