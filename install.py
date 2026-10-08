@@ -54,7 +54,8 @@ def main():
     parser.add_argument('--run', help="With --restore: back to stock with that installer run's package, whatever the player holds")
     parser.add_argument('--resume', help="Go on with a run whose write stopped before the writer: its card and backup stand, "
                                          'the write follows in a fresh entry (with --history, --diskos, --libusb)')
-    parser.add_argument('--diskos', help="diskOS's checkout at the writer's pinned revision (the reviewed tools check it)")
+    parser.add_argument('--diskos', help="diskOS's checkout at the writer's pinned revision (default: its pinned files, "
+                                         "fetched once and kept in work/downloads)")
     parser.add_argument('--libusb', help='The libusb library the reviewed tools load')
     args = parser.parse_args()
     if args.run and not args.restore:

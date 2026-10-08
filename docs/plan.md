@@ -1234,9 +1234,17 @@ layer and the emulator's checkout to build the image.
 - [ ] A light image builder of our own (Python and `squashfs-tools`), with
   the emulator's reader of FiiO's update fetched at its pinned revision
   rather than the emulator's image with its qemu build.
-- [ ] diskOS's writer and SPL fetched at their pinned revision, as the diskOS
+- [x] diskOS's writer and SPL fetched at their pinned revision, as the diskOS
   package already is (`catalog.py fetch --name diskos --download`, checked
-  from a clean clone on 2026-10-06).
+  from a clean clone on 2026-10-06). Done 2026-10-08: the six files the
+  tools read (the writer, its source, the SPL and its source, `flasher.py`,
+  `usbboot.c`), by the digests the reader, writer and probe profiles pin, from
+  the revision `firmware/sources/diskos.json` names: a checkout given with
+  `--diskos`, a copy kept in `work/downloads`, or fetched file by file (about
+  15 MB, 5 s here) and checked; none of them is kept in this repository
+  (owner: the SPL carries vendor-origin DDR bytes that diskOS itself has not
+  cleared for redistribution). The review gives the same plans with the
+  fetched copy as with the owner's checkout (`test_sources`).
 - [ ] A first installation without a history (owner's question,
   2026-10-07): the installer writes a player only with `--history`, whose
   boot and stock captures were taken on the owner's player with earlier

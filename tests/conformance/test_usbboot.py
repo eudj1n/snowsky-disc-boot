@@ -123,6 +123,11 @@ class ReviewedTests(unittest.TestCase):
         (boot/'metadata-main.bin').write_bytes(b'page')
         self.history = usbboot.History(dict(bootCapture=boot, stockCapture=self.root/'stock-capture', previousReview=self.root/'review.json',
                                             previousImage=previous/'combined.bin', writeCapture=self.root/'w', readbackCapture=self.root/'r'))
+        # The stand-in tools take '/diskos' as given; its pinned files are scripts/sources.py's (test_sources).
+        from unittest import mock
+        patcher = mock.patch.object(flow.sources, 'differs', return_value=[])
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def reviewed(self, *faults):
         tools = Tools(self, faults)

@@ -148,7 +148,7 @@ the review pin may change, both plans computed again and compared, one writer ca
 closed in every case; an unknown writer outcome stops everything). The SPL runs once an entry: the
 write's session finds the clean DDR diagnostic the check's SPL left and runs none (a second SPL's
 DDR training fails too often). A write that stopped before the writer ran
-(`failed-before-writer`) goes on with `install.py --resume <run> --history … --diskos … --libusb …`:
+(`failed-before-writer`) goes on with `install.py --resume <run> --history … --libusb …`:
 that run's card stands, the same package is prepared again, and in a fresh entry the first blocks
 are checked again and the write follows. The player then starts the new system once
 and the owner answers yes or no. The card carries the written image's SHA-256
@@ -176,12 +176,14 @@ added about 27 minutes for nothing new) (`collect_rootfs.py --mode rootfs-digest
 read's and the previous image's (`readback.py verify --digest`). Until those first runs on
 the player agree, the full read stays the evidence and the read by digest never stops an
 installation: its outcome and its time are kept beside the full read (`beside-full-read.json`). The run writes the next `history.json` (its `previousTarget` says candidate or
-restore) and keeps `usb/history-used.json`: `install.py --restore --run <run> --diskos … --libusb …`
+restore) and keeps `usb/history-used.json`: `install.py --restore --run <run> --libusb …`
 takes the player back to stock with that run's package whatever it holds now: straight to stock
 when the player holds that run's own image (its write observed complete), else after a backup that
-is only compared with the images it may be. The diskOS checkout must be at the writer's pinned revision
-(`646212d`; a checkout moved elsewhere fails the tools' pin checks), and while a package is in use
-the sources it pins are not edited.
+is only compared with the images it may be. diskOS's files the tools read (its writer, its SPL and the
+sources they are checked by) are those of the revision `firmware/sources/diskos.json` names
+(`646212d`), each by the digest the reader, writer and probe profiles pin (`scripts/sources.py`):
+`--diskos` gives a checkout, otherwise a copy kept in `work/downloads/diskos-<rev>` or, once, the six
+files fetched from that revision (about 15 MB) and checked; this repository keeps none of them.
 Without either, the step says how the player is written instead.
 
 `--guest` puts the emulator's guest in the player's place (`scripts/installer/guest.py` over
