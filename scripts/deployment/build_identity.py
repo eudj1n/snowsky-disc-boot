@@ -45,7 +45,7 @@ def prepare(p, output, page_policy=None, collector=None, staging=False):
                                     ('BATCH_REQUEST_ADDRESS', collector['profile']['request_address']),
                                     ('BATCH_RESULT_ADDRESS', collector['profile']['result_address'])]:
                     header.write(f'#define {name} 0x{value:x}\n')
-                if collector['mode'] == 'rootfs-digest':
+                if collector.get('mode') == 'rootfs-digest':  # a boot evidence scope names no mode
                     header.write('#define ROOTFS_DIGEST 1\n')
             else:
                 header.write(f'#define METADATA_PAGE {page_policy["page"]}\n')
@@ -112,16 +112,17 @@ def main():
             'Output must be inside ignored build/ or work/')
     output.mkdir(parents=True, exist_ok=False)
     prepare(p, output, page_policy, collector, staging=args.mode == 'staging-check')
-    image = os.environ.get('DISC_TOOLCHAIN_IMAGE', 'diskos-ui-builder')
+    image = os.environ.get('DISC_TOOLCHAIN_IMAGE', TOOLCHAIN_IMAGE)
     image_id = subprocess.check_output(['docker', 'image', 'inspect', '--format', '{{.Id}}', image], text=True).strip()
     subprocess.run(['docker', 'run', '--rm', '--platform', 'linux/amd64', '--network', 'none',
                     '-v', f'{ROOT}:/src:ro', '-v', f'{output}:/out', '-w', '/out', image_id,
                     'sh', '/src/scripts/deployment/link_identity.sh'], check=True)
+    compiler = toolchain(image_id)
     binary = (output/'identity.bin').read_bytes()
     require(inspect_elf((output/'identity.elf').read_bytes(), p) == binary, 'ELF/raw image mismatch')
     report = {'schema_version': 1, 'version': base['version'], 'firmware_profile_sha256': fingerprint(base),
               'purpose': args.mode, 'page_policy': page_policy, 'collector_policy': collector,
-              'reader_profile_sha256': fingerprint(p), 'reader_profile': p, 'toolchain_image': image_id,
+              'reader_profile_sha256': fingerprint(p), 'reader_profile': p, 'toolchain': compiler,
               'source_sha256': {name: digest(ROOT/name) for name in source_paths()},
               'artifacts': {n: digest(output/n) for n in ('identity.elf', 'identity.bin', 'identity_layout.h', 'identity.ld')},
               'bytes': len(binary), 'entry': p['load_address'],
@@ -129,6 +130,21 @@ def main():
               'physical_qualified': False, 'device_access_performed': False}
     (output/'build.json').write_text(json.dumps(report, indent=2)+'\n')
     print(json.dumps({'output': str(output), 'bytes': len(binary), 'physical_qualified': False}))
+
+
+# The boot layer's own toolchain (device/Dockerfile.toolchain), which builds disc-boot too; its compiler gives
+# the payloads diskOS's toolchain gave, byte for byte (2026-10-08, the five of the sixth write's run).
+TOOLCHAIN_IMAGE = 'disc-native-toolchain'
+
+
+def toolchain(image):
+    """The compiler as it names itself (its target and version): the same on every computer with the same
+    toolchain, unlike the image's id, so a payload's build.json is the same wherever it is built."""
+    out = subprocess.run(['docker', 'run', '--rm', '--platform', 'linux/amd64', '--network', 'none', image, 'sh', '-c',
+                          '"${CROSS}gcc" -dumpmachine && "${CROSS}gcc" --version | head -n 1'],
+                         capture_output=True, text=True, check=True).stdout.splitlines()
+    require(len(out) >= 2 and out[0].strip() and out[1].strip(), 'The toolchain did not name its compiler')
+    return {'target': out[0].strip(), 'compiler': out[1].strip()}
 
 
 if __name__ == '__main__':

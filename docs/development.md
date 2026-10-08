@@ -311,8 +311,15 @@ only after the release files ran on the player in a system that stayed up (owner
 Its files are built from
 `build/mips` by `scripts/release.py`: the boot menu's package `disc-menu-<version>.zip`,
 `disc-boot-<version>-mips.tar.gz` (`disc-boot` and `disc-usb-console` for the image
-`install.py` builds from FiiO's update) and `SHA256SUMS`. The image is never a release file,
-and debug builds stay local.
+`install.py` builds from FiiO's update), from 2.57.5 `disc-usb-payloads-<version>.tar.gz` (the
+programs the installer runs from the player's RAM in USB Boot: the metadata read, the readback, the
+read by digest, the staging check, the identity probe and the boot evidence's two, each with its
+`build.json`, built with the boot layer's own toolchain, `disc-native-toolchain`, whose compiler gives
+diskOS's toolchain's payloads byte for byte; `build.json` names the compiler, not the image's id, so a
+build is the same on any computer; diskOS's pinned files are fetched for it unless `--diskos` names
+them) and `SHA256SUMS`. The installer takes the payloads from the release by its record's digest and
+compiles nothing; with `--boot-build`, or for a release before 2.57.5, it builds them with Docker. The
+image is never a release file, and debug builds stay local.
 
 ```sh
 bash scripts/build.sh mips

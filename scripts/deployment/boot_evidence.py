@@ -68,11 +68,11 @@ def build(base,reader,policy,diskos,output):
     output=output.resolve()
     check(any(output.is_relative_to(ram.ROOT/n) for n in ('build','work')),'Build must be ignored')
     output.mkdir(parents=True,exist_ok=False)
-    image=os.environ.get('DISC_TOOLCHAIN_IMAGE','diskos-ui-builder')
+    image=os.environ.get('DISC_TOOLCHAIN_IMAGE',builder.TOOLCHAIN_IMAGE)
     image_id=subprocess.check_output(['docker','image','inspect','--format','{{.Id}}',image],text=True).strip()
     manifest=dict(schema_version=1,purpose='boot-evidence',firmware_sha256=fingerprint(base),
                   reader_sha256=fingerprint(reader),policy_sha256=fingerprint(policy),sources=source_pins(),
-                  scopes=scopes(policy),artifacts={},toolchain_image=image_id,nand_writes=False)
+                  scopes=scopes(policy),artifacts={},toolchain=builder.toolchain(image_id),nand_writes=False)
     for scope in scopes(policy):
         dest=output/scope['name'];dest.mkdir()
         builder.prepare(reader,dest,policy['page_policy'],scope)

@@ -67,15 +67,47 @@ def digest(path):
 
 
 def names(version):
-    return f'disc-menu-{version}.zip', f'disc-boot-{version}-mips.tar.gz'
+    return f'disc-menu-{version}.zip', f'disc-boot-{version}-mips.tar.gz', f'disc-usb-payloads-{version}.tar.gz'
+
+
+# The programs the installer runs from the player's RAM in USB Boot (plan, stage 6: built once here, with the boot
+# layer's toolchain, and taken from the release by their digest, so a user's computer compiles nothing).
+PAYLOAD_MODES = ('metadata', 'rootfs', 'rootfs-digest', 'rootfs-probe', 'staging-check')
+PAYLOAD_FILES = ('build.json', 'identity.elf', 'identity.bin', 'identity_layout.h', 'identity.ld')
+EVIDENCE_SCOPES = ('uboot', 'ota')
+
+
+def build_payloads(firmware, diskos, output):
+    """Every payload into output/<mode>, and the boot evidence's into output/boot-evidence (Docker, the boot
+    layer's toolchain image, scripts/deployment/build_identity.py and boot_evidence.py)."""
+    import subprocess
+    tools = ROOT/'scripts/deployment'
+    for mode in PAYLOAD_MODES:
+        subprocess.run([sys.executable, '-B', str(tools/'build_identity.py'), '--version', firmware, '--mode', mode,
+                        '--diskos', str(diskos), '--output', str(Path(output)/mode)], check=True, capture_output=True)
+    subprocess.run([sys.executable, '-B', str(tools/'boot_evidence.py'), 'build', '--version', firmware,
+                    '--diskos', str(diskos), '--output', str(Path(output)/'boot-evidence')], check=True, capture_output=True)
+
+
+def payload_members(built):
+    """(name in the archive, source) of every file the installer's tools read from the payloads' builds."""
+    built = Path(built)
+    members = [(f'{mode}/{name}', built/mode/name) for mode in PAYLOAD_MODES for name in PAYLOAD_FILES]
+    members.append(('boot-evidence/build.json', built/'boot-evidence/build.json'))
+    members += [(f'boot-evidence/{scope}/{name}', built/'boot-evidence'/scope/name)
+                for scope in EVIDENCE_SCOPES for name in PAYLOAD_FILES if name != 'build.json']
+    return members
 
 
 def kit(version, mips, output):
     """disc-boot and disc-usb-console with the build id and the licence, as a tar.gz whose bytes
     depend on nothing but theirs."""
-    top = f'disc-boot-{version}'
-    members = [('disc-boot', mips/'disc-boot', 0o755), ('disc-usb-console', mips/'disc-usb-console', 0o755),
-               ('build-id', mips/'build-id', 0o644), ('LICENSE', ROOT/'LICENSE', 0o644)]
+    tarball(f'disc-boot-{version}', [('disc-boot', mips/'disc-boot', 0o755), ('disc-usb-console', mips/'disc-usb-console', 0o755),
+                                    ('build-id', mips/'build-id', 0o644), ('LICENSE', ROOT/'LICENSE', 0o644)], output)
+
+
+def tarball(top, members, output):
+    """members (name, source, mode) under top, as a tar.gz whose bytes depend on nothing but theirs."""
     raw = io.BytesIO()
     with tarfile.open(fileobj=raw, mode='w', format=tarfile.USTAR_FORMAT) as tar:
         for name, source, mode in members:
@@ -89,7 +121,7 @@ def kit(version, mips, output):
     output.write_bytes(packed.getvalue())
 
 
-def build(version, output, mips=ROOT/'build/mips', release=True):
+def build(version, output, mips=ROOT/'build/mips', release=True, diskos=None, payloads=build_payloads):
     firmware = firmware_of(version, release)
     mips, output = Path(mips), Path(output)
     build_id = (mips/'build-id').read_text().strip() if (mips/'build-id').exists() else ''
@@ -98,7 +130,7 @@ def build(version, output, mips=ROOT/'build/mips', release=True):
     if output.exists() and any(output.iterdir()):
         raise ReleaseError(f'{output} is not empty')
     output.mkdir(parents=True, exist_ok=True)
-    menu_zip, kit_name = names(version)
+    menu_zip, kit_name, _ = names(version)
     with tempfile.TemporaryDirectory() as temp:
         folder = Path(temp)/'disc-menu'
         (folder/'bin').mkdir(parents=True)
@@ -110,7 +142,16 @@ def build(version, output, mips=ROOT/'build/mips', release=True):
         package.describe(folder, 'disc-menu', version, 'menu', 'bin/mq_ui', profiles=[firmware], homepage=REPOSITORY)
         package.zip_package(folder, output/menu_zip)
     kit(version, mips, output/kit_name)
-    files = {name: dict(bytes=(output/name).stat().st_size, sha256=digest(output/name)) for name in (menu_zip, kit_name)}
+    payload_name = names(version)[2]
+    if diskos is None:
+        import sources
+        diskos = sources.fetch(firmware)
+    (ROOT/'work').mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=ROOT/'work', prefix='release-payloads-') as temp:
+        payloads(firmware, diskos, Path(temp)/'built')
+        tarball(f'disc-usb-payloads-{version}', [(name, source, 0o644) for name, source in payload_members(Path(temp)/'built')],
+                output/payload_name)
+    files = {name: dict(bytes=(output/name).stat().st_size, sha256=digest(output/name)) for name in names(version)}
     (output/'SHA256SUMS').write_text(''.join(f'{f["sha256"]}  {name}\n' for name, f in sorted(files.items())))
     return dict(version=version, firmware=firmware, buildId=build_id, files=files)
 
@@ -166,10 +207,34 @@ def boot_release(firmware, releases=RELEASES):
     if not found:
         raise ReleaseError(f'no release of the boot layer is recorded for firmware {firmware}')
     _, data, name = max(found, key=lambda item: item[0])
-    record = data['files'][name]
-    return dict(version=data['version'], buildId=data['buildId'], name=name,
-                archive=dict(url=data.get('urls', {}).get(name) or url(data['version'], name),
-                             sha256=record['sha256'], size=record['bytes']))
+    archive = lambda file: dict(url=data.get('urls', {}).get(file) or url(data['version'], file),
+                                sha256=data['files'][file]['sha256'], size=data['files'][file]['bytes'])
+    payloads = f'disc-usb-payloads-{data["version"]}.tar.gz'
+    # Releases before 2.57.5 carry no payloads: the installer builds them then (Docker, the boot layer's toolchain).
+    return dict(version=data['version'], buildId=data['buildId'], name=name, archive=archive(name),
+                payloads=dict(name=payloads, archive=archive(payloads)) if payloads in data['files'] else None)
+
+
+def extract_payloads(archive, version, output):
+    """The payloads' builds from the release's archive (already checked by its digest) into output/<mode> and
+    output/boot-evidence, every file the tools read and nothing else."""
+    output = Path(output)
+    if output.exists():
+        raise ReleaseError(f'{output} exists; choose a fresh folder')
+    top = f'disc-usb-payloads-{version}'
+    wanted = {name for name, _ in payload_members(Path('.'))}
+    with tarfile.open(archive, 'r:gz') as tar:
+        members = {m.name: m for m in tar.getmembers()}
+        if set(members) != {f'{top}/{name}' for name in wanted}:
+            raise ReleaseError('the payloads archive does not hold exactly the payloads')
+        for name in sorted(wanted):
+            member = members[f'{top}/{name}']
+            if not member.isfile():
+                raise ReleaseError(f'{name} is not a regular file in the payloads archive')
+            target = output/name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(tar.extractfile(member).read())
+    return output
 
 
 def extract_boot(archive, version, build_id, output):
@@ -234,6 +299,7 @@ def main():
     b.add_argument('--version', required=True)
     b.add_argument('--output', type=Path, required=True)
     b.add_argument('--mips', type=Path, default=ROOT/'build/mips')
+    b.add_argument('--diskos', type=Path, help="diskOS's pinned files for the payloads (default: fetched, scripts/sources.py)")
     b.add_argument('--not-a-release', action='store_true', help='A build that is not a release (CI artifacts): a suffixed version')
     r = sub.add_parser('record', help='Record accepted release files in releases/<version>.json')
     r.add_argument('--version', required=True)
@@ -246,7 +312,7 @@ def main():
     args = parser.parse_args()
     try:
         if args.command == 'build':
-            result = build(args.version, args.output, args.mips, release=not args.not_a_release)
+            result = build(args.version, args.output, args.mips, release=not args.not_a_release, diskos=args.diskos)
         elif args.command == 'record':
             result = record(args.version, args.dist, args.accepted)
         else:
