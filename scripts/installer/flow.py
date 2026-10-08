@@ -24,6 +24,11 @@ from installer import tui
 from installer import usbboot
 
 ROOT = Path(__file__).resolve().parents[2]
+# Where libusb's packages put it: Homebrew (Apple silicon, Intel), Debian/Ubuntu and Fedora's multiarch folders.
+LIBUSB_PLACES = ('/opt/homebrew/lib/libusb-1.0.0.dylib', '/usr/local/lib/libusb-1.0.0.dylib',
+                 '/usr/lib/*-linux-gnu/libusb-1.0.so.0', '/lib/*-linux-gnu/libusb-1.0.so.0', '/usr/lib64/libusb-1.0.so.0',
+                 '/usr/lib/libusb-1.0.so.0')
+LIBUSB_HINT = 'install it (macOS: brew install libusb; Debian or Ubuntu: apt install libusb-1.0-0) or give it with --libusb.'
 STEPS = ['Check this computer', 'Firmware and image', 'Packages', 'The card', 'The player (USB Boot)', 'First boot']
 
 
@@ -234,7 +239,13 @@ class Installer:
             problems.append(f'The boot layer is not built ({", ".join(missing)}): bash scripts/build.sh mips.')
         if needed and not facts['emulator']:
             problems.append('The emulator checkout ' + ('runs the guest' if self.args.image else 'builds the image') + ' (--emulator).')
-        found = [f'Python {facts["python"]}'] + (['An image built before: no build'] if self.args.image else (
+        # libusb is needed only when the player itself is written (not with --dry-run, --simulate or --guest).
+        player = not (self.args.dry_run or self.args.simulate or self.args.guest)
+        facts['libusb'] = self.libusb() if player else None
+        if player and not facts['libusb']:
+            problems.append('libusb is needed to write the player: ' + LIBUSB_HINT)
+        found = [f'Python {facts["python"]}'] + ([f'libusb {facts["libusb"]}'] if facts['libusb'] else []) + (
+            ['An image built before: no build'] if self.args.image else (
             [f'squashfs-tools {facts["squashfs"]} and openssl: the image is built here'] if facts['squashfs'] else [])) + (
             ['Docker ' + ('runs' if facts['docker'] else 'does not run'), 'Emulator ' + (facts['emulator'] or 'not found')] if needed else [])
         self.say('Check this computer', found + problems)
@@ -471,10 +482,11 @@ class Installer:
              'run down; then hold Volume Down and connect the cable.')
 
     def reviewed_tools(self, image, history, work=None):
-        if not self.args.libusb:
-            raise Stop('the player is written through the reviewed tools: give --libusb (the libusb library they load)')
+        libusb = self.libusb()
+        if not libusb:
+            raise Stop('the player is written through libusb, which was not found: ' + LIBUSB_HINT)
         return usbboot.Reviewed(load_profile()['version'], work or self.work/'usb', Path(image).parent, self.diskos(),
-                                self.args.libusb, history, run=self.runner, progress=self.session_progress(),
+                                libusb, history, run=self.runner, progress=self.session_progress(),
                                 payloads=self.release_payloads())
 
     def release_payloads(self):
@@ -500,6 +512,18 @@ class Installer:
             return release.extract_payloads(archive, chosen['version'], folder)
         except release.ReleaseError as error:
             raise Stop(str(error))
+
+    def libusb(self):
+        """The libusb library the reviewed tools load (plan, stage 6): --libusb, else where its packages put it on
+        macOS (Homebrew) and Linux; None when it is not there. A history pins the file's digest, so a developer's
+        player keeps the one it was written with."""
+        if self.args.libusb:
+            return self.args.libusb
+        for candidate in LIBUSB_PLACES:
+            for path in sorted(Path('/').glob(candidate.lstrip('/'))):
+                if path.is_file():
+                    return str(path)
+        return None
 
     def diskos(self):
         """diskOS's writer, SPL and the sources they are checked by (plan, stage 6): the checkout given with
@@ -634,7 +658,7 @@ class Installer:
             self.write_and_read(reviewed, title, image, backup)
         except usbboot.ReviewedError as error:
             raise Stop(f'{error}. The run\'s evidence is in {self.work/"usb"}; nothing was retried. '
-                       f'The way back to stock: install.py --restore --run {self.work} --libusb …')
+                       f'The way back to stock: install.py --restore --run {self.work}')
 
     def write_and_read(self, reviewed, title, image, backup):
         """After the backup: the write in a fresh entry, the owner's look at the new system's start,
@@ -702,7 +726,7 @@ class Installer:
             self.write_and_read(reviewed, title, image, dict(reviewed.identity(strict=True), resumes=str(run)))
         except usbboot.ReviewedError as error:
             raise Stop(f'{error}. The run\'s evidence is in {self.work/"usb"}; nothing was retried. '
-                       f'The way back to stock: install.py --restore --run {self.work} --libusb …')
+                       f'The way back to stock: install.py --restore --run {self.work}')
 
     def restore_from_run(self):
         """install.py --restore --run DIR: back to stock with that run's package, from whatever the player
@@ -756,7 +780,7 @@ class Installer:
             self.say(title, [
                 f'The image is ready: {Path(image).name}.',
                 'The player is written through the reviewed tools with its installation history (--history) and libusb '
-                '(--libusb); diskOS\'s writer and SPL come from their pinned revision (or --diskos). '
+                '(found, or --libusb); diskOS\'s writer and SPL come from their pinned revision (or --diskos). '
                 'Without a player: --simulate (a simulated NAND) or --guest (the emulator\'s guest).'])
             self.done('player', image=str(image), written=False)
             return

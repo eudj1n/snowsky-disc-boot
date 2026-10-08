@@ -1293,7 +1293,11 @@ layer and the emulator's checkout to build the image.
   The user's runs kept outside it (`~/Library/Application Support/SNOWSKY
   DISC`, `~/.local/share/snowsky-disc`). macOS and Linux first; Windows
   later (WinUSB, with the ready-to-run installers under "Later").
-- [ ] The computer's check explains libusb and Docker where they are missing.
+- [x] The computer's check explains libusb and Docker where they are missing
+  (2026-10-08): libusb is found where Homebrew or the system's packages put
+  it (`--libusb` only to name another), and a missing one is said with the
+  command that installs it; the image needs squashfs-tools and openssl,
+  said the same way, and Docker only for the guest (`test_installer`).
 - [ ] The README's guide: what is installed, the risk, the way back, the
   packages.
 - [ ] The whole path from a clean clone, in CI where it can run (no player)

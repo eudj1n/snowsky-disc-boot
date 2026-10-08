@@ -139,8 +139,8 @@ beside the image the same way (`RESTORE`). `--fault no-device`, `bad-blocks=N,M`
 `write-stops=N` and `readback-flip=N` show how each failure stops the run with the backup's place
 and nothing retried. With `--history` (this player's `history.json`: its boot and stock captures, and the last
 installation's review, image, write and readback, or the stage capture of a first one),
-`--diskos` (the checkout at the writer's pinned revision, which the tools check) and
-`--libusb`, the step runs the reviewed tools in `scripts/installer/usbboot.py`, the order of
+diskOS's pinned files (`--diskos`, or fetched) and libusb (found, or `--libusb`), the step runs the
+reviewed tools in `scripts/installer/usbboot.py`, the order of
 [build and flash](build-and-flash.md) steps 3 to 5 as the owner runs it: the package offline,
 then, in one entry into USB Boot, the identity check (`CHECK`: the first rootfs blocks by the
 reviewed probe read, about a minute, which must be the history's image's; a full backup restored
@@ -149,7 +149,7 @@ the review pin may change, both plans computed again and compared, one writer ca
 closed in every case; an unknown writer outcome stops everything). The SPL runs once an entry: the
 write's session finds the clean DDR diagnostic the check's SPL left and runs none (a second SPL's
 DDR training fails too often). A write that stopped before the writer ran
-(`failed-before-writer`) goes on with `install.py --resume <run> --history … --libusb …`:
+(`failed-before-writer`) goes on with `install.py --resume <run> --history …`:
 that run's card stands, the same package is prepared again, and in a fresh entry the first blocks
 are checked again and the write follows. The player then starts the new system once
 and the owner answers yes or no. The card carries the written image's SHA-256
@@ -177,7 +177,7 @@ added about 27 minutes for nothing new) (`collect_rootfs.py --mode rootfs-digest
 read's and the previous image's (`readback.py verify --digest`). Until those first runs on
 the player agree, the full read stays the evidence and the read by digest never stops an
 installation: its outcome and its time are kept beside the full read (`beside-full-read.json`). The run writes the next `history.json` (its `previousTarget` says candidate or
-restore) and keeps `usb/history-used.json`: `install.py --restore --run <run> --libusb …`
+restore) and keeps `usb/history-used.json`: `install.py --restore --run <run>`
 takes the player back to stock with that run's package whatever it holds now: straight to stock
 when the player holds that run's own image (its write observed complete), else after a backup that
 is only compared with the images it may be. diskOS's files the tools read (its writer, its SPL and the

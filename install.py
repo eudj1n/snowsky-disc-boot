@@ -53,10 +53,11 @@ def main():
     parser.add_argument('--restore', action='store_true', help="Back to stock: the restore image, the same path to the player")
     parser.add_argument('--run', help="With --restore: back to stock with that installer run's package, whatever the player holds")
     parser.add_argument('--resume', help="Go on with a run whose write stopped before the writer: its card and backup stand, "
-                                         'the write follows in a fresh entry (with --history, --diskos, --libusb)')
+                                         'the write follows in a fresh entry (with --history)')
     parser.add_argument('--diskos', help="diskOS's checkout at the writer's pinned revision (default: its pinned files, "
                                          "fetched once and kept in work/downloads)")
-    parser.add_argument('--libusb', help='The libusb library the reviewed tools load')
+    parser.add_argument('--libusb', help='The libusb library the reviewed tools load (default: where Homebrew or the '
+                                         'system packages put it)')
     args = parser.parse_args()
     if args.run and not args.restore:
         parser.error('--run names the run whose package takes the player back to stock: give --restore too')
