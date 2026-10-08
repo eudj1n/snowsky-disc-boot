@@ -1,6 +1,7 @@
 """What the installer puts on the card (contract, "Installation for users"): the chosen packages
 for the recovery with Play, the default apps of the chosen server in Apps/, and the console's
 marker (owner, 2026-10-02/03: written and left in place)."""
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -101,6 +102,23 @@ def stage_apps(entries, card, places, allow_download, workdir):
         archive = catalog.obtain(entry['source'], places, workdir, allow_download)
         staged.append(dict(name=entry['name'], version=entry['version'], path=str(unpack_app(archive, entry, Path(card)/'Apps'))))
     return staged
+
+
+EXPECTED = Path('.disc/boot/expected-rootfs.json')
+CHECKED = Path('.disc/boot/rootfs-check.json')
+
+
+def expect_image(card, image):
+    """The image this run writes, for the boot layer's check at its first start (plan, stage 4c):
+    its SHA-256 and length on the card; an earlier check's outcome leaves, so the one found later is
+    this image's."""
+    data = Path(image).read_bytes()
+    record = dict(schema=1, sha256=hashlib.sha256(data).hexdigest(), bytes=len(data), image=Path(image).name)
+    path = Path(card)/EXPECTED
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(record) + '\n')
+    (Path(card)/CHECKED).unlink(missing_ok=True)
+    return record
 
 
 def write_marker(card):

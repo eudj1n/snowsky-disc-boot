@@ -146,8 +146,13 @@ training fails too often a second time in one entry. A write that stopped before
 (`failed-before-writer`) goes on with `install.py --resume <run> --history … --diskos … --libusb …`:
 that run's card and backup stand (the backup compared again with the history's image), the same
 package is prepared again, and the write follows in a fresh entry. The player then starts the new system once
-and the owner answers yes or no; a fresh entry (`READ`, a session after the writer does not start
-in its entry) reads it back and compares every byte by the approved exact plan, both USB journals
+and the owner answers yes or no. The card carries the written image's SHA-256
+(`.disc/boot/expected-rootfs.json`); with the cable connected again while the new system runs,
+the installer reads its boot layer's check of the root device over the USB console
+(`.disc/boot/rootfs-check.json`, a minute or two after its start) and keeps it with the owner's
+word in `usb/first-start/`: a match stands for the readback (the write's journal audited alone,
+the history naming that folder, plan, stage 4c). Without it, or when it differs, a fresh entry
+(`READ`) reads it back and compares every byte by the approved exact plan, both USB journals
 are audited, and a yes is kept with its time in the readback's `owner-boot-confirmation.json`,
 between the write and the readback, where the next installation's review looks for it. A no takes
 the player back to stock (owner, 2026-10-05: the way back is stock, from any state): the player

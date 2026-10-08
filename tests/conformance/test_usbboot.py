@@ -287,6 +287,8 @@ class ReviewedTests(unittest.TestCase):
         tools = self.tools = Tools(self, getattr(self, 'tools_faults', ()))
         installer = flow.Installer(args, tui.Screen(look='plain', stream=io.StringIO()), runner=tools)
         installer.interactive = words is not None
+        # The first start's check over the USB console (plan, stage 4c): none unless a test gives one.
+        installer.fetch_check = getattr(self, 'fetch', lambda sha256, card: None)
         self.asked = {}
         remaining = list(words or [])
 
@@ -328,6 +330,39 @@ class ReviewedTests(unittest.TestCase):
         self.assertEqual((record['write_session_id'], record['readback_session_id']), ('write-session', read['session_id']))
         self.assertIs(record['automated_boot_test'], False)
         self.assertTrue(record['reported_at'].endswith('Z'))
+
+    def test_the_first_start_s_check_stands_for_the_readback(self):
+        """The new system's boot layer checked the written image at its first start (plan, stage 4c):
+        read over the USB console, it stands for the readback, which does not run; the history names
+        that proof. A check that differs or does not come back leaves the readback to run."""
+        fetched = []
+
+        def fetch(sha256, card):
+            fetched.append((sha256, card))
+            return (json.dumps(dict(schema=1, expected=sha256, actual=sha256, bytes=self.image.stat().st_size,
+                                    device='/dev/mtdblock_bbt_ro2', match=True, seconds=2.0, error=None, build='b')) + '\n').encode()
+        self.fetch = fetch
+        code, installer, tools = self.install(['BACKUP', 'WRITE', 'yes', 'the menu came up'])
+        self.assertEqual(code, 0, installer.report['status'])
+        expected = json.loads((self.root/'run/card/.disc/boot/expected-rootfs.json').read_text())
+        self.assertEqual(expected['sha256'], hashlib.sha256(self.image.read_bytes()).hexdigest())
+        self.assertEqual(fetched, [(expected['sha256'], '/tmp/sdcard')])
+        self.assertNotIn('audit_usb_readback.py', tools.calls)
+        self.assertFalse([c for c in tools.calls if 'collect_rootfs.py acquire' in c and 'read' in c][1:])
+        proof = self.root/'run/usb/first-start'
+        self.assertEqual(sorted(p.name for p in proof.iterdir()), ['fetch.json', 'owner-boot-confirmation.json', 'rootfs-check.json'])
+        fetch_record = json.loads((proof/'fetch.json').read_text())
+        self.assertEqual(fetch_record['rootfs_check_sha256'], hashlib.sha256((proof/'rootfs-check.json').read_bytes()).hexdigest())
+        history = json.loads((self.root/'run/usb/history.json').read_text())
+        self.assertEqual(Path(history['readbackCapture']).resolve(), proof.resolve())
+
+    def test_a_first_start_check_that_differs_leaves_the_readback_to_run(self):
+        self.fetch = lambda sha256, card: (json.dumps(dict(schema=1, expected=sha256, actual='0' * 64, match=False, error=None)) + '\n').encode()
+        code, installer, tools = self.install(['BACKUP', 'WRITE', 'yes', 'fine', 'READ'])
+        self.assertEqual(code, 0, installer.report['status'])
+        self.assertIn('audit_usb_readback.py', tools.calls)
+        history = json.loads((self.root/'run/usb/history.json').read_text())
+        self.assertTrue(history['readbackCapture'].endswith('/read'), history['readbackCapture'])
 
     def test_no_read_by_digest_goes_with_an_installation(self):
         """Three reads by digest beside the backup brought page ticks of zero, 27 minutes each

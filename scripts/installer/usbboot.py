@@ -433,19 +433,23 @@ class Reviewed:
                              name=f'exact-{target}')
         return dict(capture=str(out), image=image.name, exact=exact['status'])
 
-    def audit(self, target='candidate'):
-        """Both journals reconstructed offline; the write's against the plan it carried out."""
-        write, read = self.work/folder('write', target), self.work/folder('read', target)
-        for name, run, build, extra in (('audit_usb_write.py', write, self.meta, ['--staging-build', self.staging_build]),
-                                        ('audit_usb_readback.py', read, self.readback_build, [])):
+    def audit(self, target='candidate', read=True):
+        """The journals reconstructed offline; the write's against the plan it carried out. Without a
+        readback (the first start's check proved the write, plan, stage 4c) the write's alone."""
+        write, readback = self.work/folder('write', target), self.work/folder('read', target)
+        sessions = [('audit_usb_write.py', write, self.meta, ['--staging-build', self.staging_build])]
+        if read:
+            sessions.append(('audit_usb_readback.py', readback, self.readback_build, []))
+        for name, run, build, extra in sessions:
             self.need(self.tool(name, '--run', run, '--package', self.package, '--artifacts', self.artifacts, '--build', build,
                                 *extra, '--diskos', self.diskos, '--target', target, '--output', run/'offline-review.json'), name)
-        return dict(write=str(write/'offline-review.json'), read=str(read/'offline-review.json'))
+        return dict(write=str(write/'offline-review.json'), **({'read': str(readback/'offline-review.json')} if read else {}))
 
-    def next_history(self, image, target='candidate'):
-        """This installation, or its way back to stock, as the next one's history."""
+    def next_history(self, image, target='candidate', proof=None):
+        """This installation, or its way back to stock, as the next one's history: its readback, or
+        (proof) its first start's check (plan, stage 4c), as the proof of its write."""
         data = dict(self.history.data, previousReview=str(self.package/'installation-review.json'), previousImage=str(image),
-                    writeCapture=str(self.work/folder('write', target)), readbackCapture=str(self.work/folder('read', target)),
+                    writeCapture=str(self.work/folder('write', target)), readbackCapture=str(proof or self.work/folder('read', target)),
                     previousTarget=target)
         data.pop('stageCapture', None)
         (self.work/'history.json').write_text(json.dumps(data, indent=2) + '\n')
