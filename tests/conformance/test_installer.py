@@ -140,17 +140,23 @@ class InstallerTests(unittest.TestCase):
         import argparse
         from unittest import mock
         from installer import flow
-        library = self.root/'lib/libusb-1.0.0.dylib'
+        # Homebrew's lib holds a link to the Cellar's file: the file itself is named, the review pins only regular files.
+        library = self.root/'Cellar/libusb/1.0.30/lib/libusb-1.0.0.dylib'
         library.parent.mkdir(parents=True)
         library.write_bytes(b'lib')
+        (self.root/'lib').mkdir()
+        (self.root/'lib/libusb-1.0.0.dylib').symlink_to('../Cellar/libusb/1.0.30/lib/libusb-1.0.0.dylib')
         installer = flow.Installer.__new__(flow.Installer)
         installer.args = argparse.Namespace(libusb=None)
         with mock.patch.object(flow, 'LIBUSB_PLACES', (str(self.root/'nowhere.dylib'), str(self.root/'lib/libusb-*.dylib'))):
-            self.assertEqual(installer.libusb(), str(library))
+            self.assertEqual(installer.libusb(), str(library.resolve()))
+            self.assertFalse(Path(installer.libusb()).is_symlink())
         with mock.patch.object(flow, 'LIBUSB_PLACES', (str(self.root/'nowhere.dylib'),)):
             self.assertIsNone(installer.libusb())
         installer.args = argparse.Namespace(libusb='/given/libusb.dylib')
         self.assertEqual(installer.libusb(), '/given/libusb.dylib')
+        installer.args = argparse.Namespace(libusb=str(self.root/'lib/libusb-1.0.0.dylib'))
+        self.assertEqual(installer.libusb(), str(library.resolve()), 'a link given is followed too')
         self.assertIn('brew install libusb', flow.LIBUSB_HINT)
         self.assertIn('apt install libusb-1.0-0', flow.LIBUSB_HINT)
 

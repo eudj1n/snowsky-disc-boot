@@ -517,12 +517,14 @@ class Installer:
         """The libusb library the reviewed tools load (plan, stage 6): --libusb, else where its packages put it on
         macOS (Homebrew) and Linux; None when it is not there. A history pins the file's digest, so a developer's
         player keeps the one it was written with."""
+        # The file itself: the places are links to it (Homebrew's lib, the .so.0 names), and the reviewed tools pin
+        # only regular files (a link is refused by the review, after the player's reads).
         if self.args.libusb:
-            return self.args.libusb
+            return str(Path(self.args.libusb).resolve())
         for candidate in LIBUSB_PLACES:
             for path in sorted(Path('/').glob(candidate.lstrip('/'))):
                 if path.is_file():
-                    return str(path)
+                    return str(path.resolve())
         return None
 
     def diskos(self):
