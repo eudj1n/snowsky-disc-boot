@@ -1409,6 +1409,11 @@ the only installer. Play at power-on stays the recovery path only.
   A move alone first, in its own PR: the same programs, only the paths in
   the build, CI, `release.py` and the documents change (the build id
   changes with them).
+- [ ] The documentation split, after the layout's move (owner, 2026-10-09):
+  for users (the README, the installation guide, what is installed and its
+  risks, the way back to stock, the CHANGELOG) and for developers
+  (development, architecture, contract, reviews, observations, this plan),
+  each in its own place, with the links between them kept.
 - [ ] The menu's three screens: the interface (today's), the services'
   autostart, installing and removing (the card's staged packages shown
   there; never automatic). A specimen page and numbered decisions first;
