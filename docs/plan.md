@@ -1048,7 +1048,7 @@ a write with all of it. Each item with its host tests and the guest.
   2026-10-07: "ой как сложно у нас всё"): after the write, a review of what
   each piece of evidence pins, keeping what proves the right image goes to
   the right player.
-- [ ] A short identity check instead of the full backup (owner, 2026-10-07:
+- [x] A short identity check instead of the full backup (owner, 2026-10-07:
   the way back is only ever stock, so the backup's bytes restore nothing).
   The backup's one remaining job is to show that the player holds the
   history's image before the write: a read of a few blocks (the probe's 2
@@ -1068,7 +1068,11 @@ a write with all of it. Each item with its host tests and the guest.
   than `FF` (the pre-install review's rule). A first installation adds the
   short read of the boot blocks (which rootfs the bootloader selects) to the
   same session: one short read, then the write in a fresh entry.
-- [ ] The check after the write at the first start instead of the USB
+  Done with a history (2026-10-08, branch `next-image`): `usbboot.identity`,
+  the reviewed probe read of 2 blocks compared with the history's image
+  (`CHECK`), the write in the same entry; `test_usbboot`. Without a history:
+  stage 6.
+- [x] The check after the write at the first start instead of the USB
   readback (owner, 2026-10-07). The boot layer, at the first start after an
   installation, reads the rootfs partition as the kernel presents it (the
   view the system boots from, its bad blocks skipped by the kernel's
@@ -1084,6 +1088,10 @@ a write with all of it. Each item with its host tests and the guest.
   included); then the guest. The USB readback stays the way when the result
   does not come back or differs. With both items an installation takes the
   write (about 9 minutes) and a first start, against about an hour now.
+  Done (2026-10-08, `next-image`): boot's `rootfs_check` (`test_boot`), the
+  installer's `expected-rootfs.json` and its fetch over the USB console into
+  `usb/first-start/` (`test_usbboot`), the review taking it as the previous
+  write's proof (`test_installed_candidate`; the owner's history passes).
 - [ ] One USB Boot entry for an installation (owner, 2026-10-07: easier for
   the user, as diskOS's single `usbboot` run of about 20 minutes, 18 of them a
   blind wait; and users install without a history). What kept sessions out
@@ -1103,12 +1111,14 @@ a write with all of it. Each item with its host tests and the guest.
     entry): the first probe found what the power-on left in TCSM (random
     bytes), ran the SPL and read 132 records; the second found the clean
     diagnostic, ran no SPL, passed its RAM checks and read the same blocks.
-  - [ ] The installation in one entry: without a history, the boot blocks'
+  - [x] The installation in one entry: without a history, the boot blocks'
     short read (which rootfs the bootloader selects, as the owner's boot
     capture of 2026-09); the identity check of a few rootfs blocks; the
     review offline in seconds while the player waits; the write; then the
     first start's check (above), fetched over the USB console, and a
     readback in a fresh entry only when it is missing or differs.
+    With a history done (2026-10-08): `CHECK` then `WRITE` in one entry, then
+    the first start's check. Without one: stage 6.
   - [ ] The review's two ways: with a history, the identity check against
     the history's image and, for the previous write, its readback or its
     first start's check (the expected image, a match, the primary root
@@ -1125,7 +1135,7 @@ a write with all of it. Each item with its host tests and the guest.
   readback in 24 min 3 s, every byte the image's, both audits passed, the
   owner's "it is ok": 58 minutes on the player against about 1 h 45 min
   (`first-write-observation.md`, "The fifth write").
-- [ ] Found at its first starts (the player's boot log over the USB console,
+- [x] Found at its first starts (the player's boot log over the USB console,
   2026-10-07), each to fix with a test:
   - The installer left a package staged by an earlier run on the card: the
     first try of the day (stopped at its review) staged the menu, the server
@@ -1163,6 +1173,11 @@ then the tags. Run from a clean clone of `2.x` on 2026-10-06, `install.py
 --dry-run` stopped at its first check: it needs a local build of the boot
 layer and the emulator's checkout to build the image.
 
+  All fixed on `next-image` (2026-10-08) with their tests: the card cleared,
+  the running package left as it is, the count cleared when proven packages
+  are ready (`boot_guest`'s probe now writes its slot to the disk before its
+  request, so its boot-loop step runs the tentative version), the recovery's
+  Play release, the progress by the held asks' measured times.
 - [ ] The boot layer from the release file (`disc-boot-<v>-mips.tar.gz`) by
   the digests of its record, not a local build (the item above).
 - [ ] A light image builder of our own (Python and `squashfs-tools`), with
