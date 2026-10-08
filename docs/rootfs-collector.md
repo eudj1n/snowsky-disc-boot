@@ -115,6 +115,28 @@ the exact `--approved-plan-sha256`. Old CPU/RAM/metadata authorizations do not
 cover this new operation. The caller must explicitly connect the intended unit
 in mask-ROM; no device-mode change is attempted by the host.
 
+A probe session's audit reconstructs it offline from its saved files alone and
+makes no USB calls (save the `plan` output as the plan file first):
+
+```sh
+python3 scripts/deployment/audit_usb_probe.py \
+  --run work/rootfs-probe-<n> --plan work/rootfs-probe-plan-<n>.json \
+  --build build/rootfs-probe-new --diskos /path/to/diskos \
+  --output work/rootfs-probe-<n>/offline-review.json
+```
+
+It checks the plan's scope against the collector, writer and page profiles
+read as files, the payload and the SPL by their digests, every record, the
+marker pages and the pages of the first good blocks, the first blocks
+(`logical-image.bin`), each batch and the USB journal call by call (the entry's
+DDR diagnostic, with the SPL run only when it is not clean, and the held
+completion asks). Its report, `saved-probe-trace-matches`, gives the first
+blocks' SHA-256: what the installation without a history compares with the
+images known (`firmware/images`, plan stage 6). The boot evidence has its own
+audit (`audit_usb_boot.py`, [boot selection](boot-selection.md)); both share
+the reconstruction of records and calls in `usb_trace_audit.py`. Synthetic
+sessions of the fake ROM run in GitHub Actions (`test_audit_usb_probe`).
+
 The proposed first step uses `build/rootfs-probe-001/` and
 `work/rootfs-probe-plan-001.json`, review hash:
 `bb003279bc07b1b6c473800675e0032f4b5badc580ab6ae7f2ff31e54481868f`.
