@@ -63,6 +63,14 @@ class Tools:
             (out/'metadata-main.bin').write_bytes(b'page')
         elif tool == 'collect_rootfs.py' and args[0] == 'plan':
             stdout = json.dumps(dict(plan=dict(protocol_call_limit=100), plan_sha256='digest-plan'))
+        elif tool == 'collect_rootfs.py' and self.value(command, '--mode') == 'rootfs-probe':
+            # The identity check (plan, stage 4c): the first blocks of what the player holds, the
+            # history's image unless a test says otherwise.
+            out.mkdir(parents=True)
+            (out/'result.json').write_text(json.dumps(dict(status='rootfs-probe-collected', session_id=f'identity-{len(self.calls)}')))
+            previous = self.test.history.data.get('previousImage')
+            blocks = Path(previous).read_bytes()[:262144] if previous else b'stock blocks'
+            (out/'logical-image.bin').write_bytes(b'other' + blocks[5:] if 'identity-differs' in self.faults else blocks)
         elif tool == 'collect_rootfs.py' and self.value(command, '--mode') == 'rootfs-digest':
             # The read by digest beside a full read: the digests of the pages the full read left.
             out.mkdir(parents=True)
@@ -124,17 +132,18 @@ class ReviewedTests(unittest.TestCase):
     def test_the_installation_follows_the_procedure(self):
         reviewed, tools = self.reviewed()
         reviewed.prepare()
-        backup = reviewed.backup()
+        backup = reviewed.identity()
         written = reviewed.write()
         read = reviewed.readback()
         reviewed.audit()
-        # Four payloads: the metadata read, the readback, the read by digest, the staging check (plan, stage 4c).
-        self.assertEqual(tools.calls, ['build_identity.py']*4 + ['installation_review.py',
-                                       'collect_rootfs.py acquire', 'readback.py plan', 'readback.py verify',
+        # Five payloads: the metadata read, the readback, the read by digest, the staging check and the
+        # identity check's probe (plan, stage 4c); the probe read in place of a backup.
+        self.assertEqual(tools.calls, ['build_identity.py']*5 + ['installation_review.py',
+                                       'collect_rootfs.py plan', 'collect_rootfs.py acquire',
                                        'writer_transport.py plan', 'writer_transport.py acquire',
                                        'collect_rootfs.py acquire', 'readback.py plan', 'readback.py verify',
                                        'audit_usb_write.py', 'audit_usb_readback.py'])
-        self.assertEqual(backup['matches'], 'combined.bin', 'the backup is what the history says is installed')
+        self.assertEqual(backup['matches'], 'combined.bin', 'the first blocks are the image the history says is installed')
         # The staging check's build goes to the review, the write and its audit.
         staging = str(self.root/'usb/build-staging')
         for name in ('installation_review.py', 'writer_transport.py', 'audit_usb_write.py'):
@@ -149,6 +158,14 @@ class ReviewedTests(unittest.TestCase):
                          ('write-session', self.image.name, 'saved-logical-readback-matches'))
         history = json.loads(reviewed.next_history(self.image).read_text())
         self.assertEqual(history['previousImage'], str(self.image))
+
+    def test_a_player_that_does_not_hold_its_history_s_image_is_not_written(self):
+        reviewed, tools = self.reviewed('identity-differs')
+        reviewed.prepare()
+        with self.assertRaises(usbboot.ReviewedError) as stopped:
+            reviewed.identity()
+        self.assertIn('does not hold combined.bin', str(stopped.exception))
+        self.assertNotIn('writer_transport.py acquire', tools.calls)
 
     def test_an_unknown_outcome_stops_everything_and_closes_admission(self):
         reviewed, tools = self.reviewed('outcome-unknown')
@@ -319,7 +336,7 @@ class ReviewedTests(unittest.TestCase):
         """The order the next installation's review checks (installed_candidate.py): written <
         the owner's answer < the readback's start, with both sessions named; backup and write in
         one entry into USB Boot, the readback in a fresh one."""
-        code, installer, tools = self.install(['BACKUP', 'WRITE', 'yes', 'the stock UI came up, the volume works', 'READ'])
+        code, installer, tools = self.install(['CHECK', 'WRITE', 'yes', 'the stock UI came up, the volume works', 'READ'])
         self.assertEqual(code, 0, installer.report['status'])
         acquired = [c for c in self.asked['yes'] if c.endswith('acquire')]
         self.assertEqual(acquired[-1], 'writer_transport.py acquire', 'asked after the write, before the readback session')
@@ -342,7 +359,7 @@ class ReviewedTests(unittest.TestCase):
             return (json.dumps(dict(schema=1, expected=sha256, actual=sha256, bytes=self.image.stat().st_size,
                                     device='/dev/mtdblock_bbt_ro2', match=True, seconds=2.0, error=None, build='b')) + '\n').encode()
         self.fetch = fetch
-        code, installer, tools = self.install(['BACKUP', 'WRITE', 'yes', 'the menu came up'])
+        code, installer, tools = self.install(['CHECK', 'WRITE', 'yes', 'the menu came up'])
         self.assertEqual(code, 0, installer.report['status'])
         expected = json.loads((self.root/'run/card/.disc/boot/expected-rootfs.json').read_text())
         self.assertEqual(expected['sha256'], hashlib.sha256(self.image.read_bytes()).hexdigest())
@@ -358,7 +375,7 @@ class ReviewedTests(unittest.TestCase):
 
     def test_a_first_start_check_that_differs_leaves_the_readback_to_run(self):
         self.fetch = lambda sha256, card: (json.dumps(dict(schema=1, expected=sha256, actual='0' * 64, match=False, error=None)) + '\n').encode()
-        code, installer, tools = self.install(['BACKUP', 'WRITE', 'yes', 'fine', 'READ'])
+        code, installer, tools = self.install(['CHECK', 'WRITE', 'yes', 'fine', 'READ'])
         self.assertEqual(code, 0, installer.report['status'])
         self.assertIn('audit_usb_readback.py', tools.calls)
         history = json.loads((self.root/'run/usb/history.json').read_text())
@@ -367,7 +384,7 @@ class ReviewedTests(unittest.TestCase):
     def test_no_read_by_digest_goes_with_an_installation(self):
         """Three reads by digest beside the backup brought page ticks of zero, 27 minutes each
         (owner, 2026-10-06): an installation no longer runs one."""
-        code, installer, tools = self.install(['BACKUP', 'WRITE', 'yes', 'fine', 'READ'])
+        code, installer, tools = self.install(['CHECK', 'WRITE', 'yes', 'fine', 'READ'])
         self.assertEqual((code, installer.report['status']), (0, 'prepared'))
         self.assertNotIn('digest', installer.report['steps'][4]['backup'])
         self.assertFalse((self.root/'run/usb/digest-backup').exists())
@@ -377,7 +394,7 @@ class ReviewedTests(unittest.TestCase):
         """The new system did not start: straight to stock in a fresh entry (the player holds this
         run's own image, nothing to back up), the owner's look at stock, stock's readback; the
         history is the restore."""
-        code, installer, tools = self.install(['BACKUP', 'WRITE', 'no', 'its UI restarts without end',
+        code, installer, tools = self.install(['CHECK', 'WRITE', 'no', 'its UI restarts without end',
                                                'RESTORE', 'yes', 'stock starts, the volume works', 'READ'])
         self.assertEqual((code, installer.report['status']), (0, 'restored'))
         self.assertEqual([c for c in tools.calls if c in ('writer_transport.py acquire', 'collect_rootfs.py acquire')],
@@ -401,34 +418,34 @@ class ReviewedTests(unittest.TestCase):
         self.assertEqual((code, installer.report['status']), (0, 'restored'))
         self.assertNotIn('installation_review.py', tools.calls)
         usb = self.root/'run/usb'
-        self.assertFalse((usb/'restore-backup').exists())
+        self.assertFalse((usb/'restore-identity').exists())
         self.assertEqual(json.loads((usb/'history.json').read_text())['previousTarget'], 'restore')
         for folder in ('restore-write', 'restore-read'):
             shutil.rmtree(usb/folder)
         (usb/'write/result.json').unlink()        # the write's outcome unknown: what the player holds is not known
         shutil.rmtree(self.root/'again')
-        code, installer, tools = self.install(['BACKUP', 'RESTORE', 'yes', 'stock is back', 'READ'], restore=True, run=str(self.root/'run'))
+        code, installer, tools = self.install(['CHECK', 'RESTORE', 'yes', 'stock is back', 'READ'], restore=True, run=str(self.root/'run'))
         self.assertEqual((code, installer.report['status']), (0, 'restored'))
-        self.assertTrue((usb/'restore-backup/result.json').is_file())
+        self.assertTrue((usb/'restore-identity/result.json').is_file())
 
     def test_a_write_stopped_before_the_writer_goes_on_from_its_backup(self):
-        """install.py --resume (2026-10-06: the SPL's DDR check failed in the write's session, the
-        third of the backup's entry): the player holds what the backup read, so the backup stands,
-        compared again offline; the write and the readback each in a fresh entry."""
+        """install.py --resume (2026-10-06: the SPL's DDR check failed in the write's session): the
+        same package, then in a fresh entry the player's first blocks checked again and the write."""
         self.install()
         usb = self.root/'run/usb'
         for folder in ('read', 'history.json'):
             shutil.rmtree(usb/folder) if (usb/folder).is_dir() else (usb/folder).unlink()
         (usb/'write/result.json').write_text(json.dumps(dict(status='failed-before-writer', writer_execution_attempted=False,
                                                               page_execution_attempted=False)))
-        code, installer, tools = self.install(['WRITE', 'yes', 'the menu, then stock', 'READ'], resume=str(self.root/'run'))
+        code, installer, tools = self.install(['CHECK', 'WRITE', 'yes', 'the menu, then stock', 'READ'], resume=str(self.root/'run'))
         self.assertEqual((code, installer.report['status']), (0, 'prepared'))
         acquired = [c for c in tools.calls if c.endswith('acquire')]
-        self.assertEqual(acquired, ['writer_transport.py acquire', 'collect_rootfs.py acquire'], 'no backup, no digest: the write, the readback')
+        self.assertEqual(acquired, ['collect_rootfs.py acquire', 'writer_transport.py acquire', 'collect_rootfs.py acquire'],
+                         'the identity check, the write, the readback')
         player = next(s for s in installer.report['steps'] if s['step'] == 'player')
-        self.assertEqual((player['backup']['takenBy'], player['backup']['matches']), (str((self.root/'run').resolve()), 'combined.bin'))
+        self.assertEqual((player['backup']['resumes'], player['backup']['matches']), (str((self.root/'run').resolve()), 'combined.bin'))
         again = self.root/'again/usb'
-        self.assertTrue((again/'backup/exact-review.json').is_file(), 'the backup compared again with the history\'s image')
+        self.assertTrue((again/'identity/logical-image.bin').is_file(), 'the first blocks checked again')
         self.assertTrue((again/'history.json').is_file())
         # A write that reached the writer, or ended unknown, is no place to go on from.
         shutil.rmtree(self.root/'again')

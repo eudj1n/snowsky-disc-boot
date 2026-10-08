@@ -172,6 +172,8 @@ class Reviewed:
         self.profile = Path(profile or ROOT/'firmware/installers'/f'v{version}.json')
         self.package, self.meta, self.readback_build = self.work/'package', self.work/'build-metadata', self.work/'build-readback'
         self.digest_build = self.work/'build-digest'
+        # The identity check's probe read (plan, stage 4c): the first rootfs blocks, in place of a backup.
+        self.probe_build = self.work/'build-probe'
         # The staging check (plan, stage 4c): the image region checked and the image hashed on the player.
         self.staging_build = self.work/'build-staging'
         self.log = self.work/'commands.log'
@@ -248,7 +250,7 @@ class Reviewed:
     def prepare(self):
         # The digest payload (plan, stage 4b) is built beside the reviewed ones; it runs only beside a full read.
         for mode, out in (('metadata', self.meta), ('rootfs', self.readback_build), ('rootfs-digest', self.digest_build),
-                          ('staging-check', self.staging_build)):
+                          ('staging-check', self.staging_build), ('rootfs-probe', self.probe_build)):
             self.need(self.tool('build_identity.py', '--version', self.version, '--mode', mode, '--diskos', self.diskos, '--output', out),
                       f'the {mode} payload')
         history = (['--previous-review', self.history['previousReview'], '--previous-image', self.history['previousImage'],
@@ -341,6 +343,42 @@ class Reviewed:
     def image_sha(self, image):
         report = load_json(Path(image).parent/'report.json')
         return report['artifacts'][Path(image).name]['sha256']
+
+    def identity(self, strict=True, name='identity'):
+        """What the player holds now, by its first rootfs blocks (plan, stage 4c): the reviewed probe
+        read (2 blocks, about a minute), the first session of the installation's one entry into USB
+        Boot, compared with the image the history says is installed; before the way back to stock,
+        which any state may take, only named among the images it may be. In place of a full backup:
+        the way back is only ever stock, so a backup's bytes restore nothing."""
+        out = self.work/name
+        page = Path(self.history['bootCapture'])/'metadata-main.bin'
+        planned = self.tool('collect_rootfs.py', 'plan', '--mode', 'rootfs-probe', '--version', self.version,
+                            '--build', self.probe_build, '--diskos', self.diskos, '--metadata-page', page)
+        self.need(planned, 'the identity check\'s plan')
+        plan = json.loads(planned.stdout)
+        self.need(self.session('collect_rootfs.py', 'acquire', '--mode', 'rootfs-probe', '--version', self.version,
+                               '--build', self.probe_build, '--diskos', self.diskos, '--metadata-page', page,
+                               '--libusb', self.libusb, '--approved-plan-sha256', plan['plan_sha256'], '--output', out,
+                               output=out, calls=expected_calls(plan['plan']), label='Checking what the player holds'),
+                  'the identity check')
+        result = load_json(out/'result.json')
+        if result.get('status') != 'rootfs-probe-collected':
+            raise ReviewedError(f'the identity check ended {result.get("status")!r}')
+        blocks = (out/'logical-image.bin').read_bytes()
+
+        def holds(image):
+            with open(image, 'rb') as source:
+                return bool(blocks) and source.read(len(blocks)) == blocks
+        if strict:
+            previous = self.history.get('previousImage')
+            if previous and not holds(previous):
+                raise ReviewedError(f'the player does not hold {Path(previous).name}, the image its history names')
+            return dict(capture=str(out), matches=Path(previous).name if previous else None, bytes=len(blocks))
+        known = [self.artifacts/load_json(self.package/'candidate-write-plan.json')['plan']['image_name']]
+        if self.history.get('previousImage'):
+            known.append(Path(self.history['previousImage']))
+        return dict(capture=str(out), matches=next((Path(i).name for i in known if Path(i).is_file() and holds(i)), None),
+                    bytes=len(blocks))
 
     def backup(self, strict=True, name='backup'):
         """What is installed now, read in a session of its own. Before a candidate's write it must be

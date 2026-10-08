@@ -517,11 +517,12 @@ class Installer:
             self.say(title, ['Preparing the installation package (offline: payloads, the review, the plans).'])
             prepared = reviewed.prepare()
             self.confirm(title, [f'The package is ready: write plan {prepared["write"][:12]}…, readback plan {prepared["read"][:12]}….',
-                                 self.ENTER, 'Next: the backup (what the player holds now); the write follows in a fresh entry.'],
-                         'BACKUP')
-            # No read by digest beside it any more (owner, 2026-10-06): three runs of 27 minutes each
-            # brought page ticks of zero (the player's CP0 Count stands still in USB Boot).
-            backup = reviewed.backup(strict=not restore)
+                                 self.ENTER, 'Next, in this one entry: a check of what the player holds (about a minute), '
+                                 'then the write.'], 'CHECK')
+            # The first blocks in place of a full backup (owner, 2026-10-07): the way back is only ever
+            # stock, so a backup's bytes restore nothing; the write follows in the same entry, whose
+            # SPL is not run again (ram_transport.bring_up).
+            backup = reviewed.identity(strict=not restore)
             if restore:
                 return self.stock_back(reviewed, title, dict(backup=backup))
             self.write_and_read(reviewed, title, image, backup)
@@ -532,8 +533,9 @@ class Installer:
     def write_and_read(self, reviewed, title, image, backup):
         """After the backup: the write in a fresh entry, the owner's look at the new system's start,
         the readback in a fresh entry, the audits and the next history."""
-        self.confirm(title, [f'The backup is {backup["capture"]}' + (f', the same as {backup["matches"]}.' if backup['matches'] else '.'),
-                             self.ENTER, 'Next, in this fresh entry: the image with the boot layer, written once. '
+        self.confirm(title, [f'The player holds {backup["matches"]}, as its history says.' if backup.get('matches') else
+                             f'What the player holds is in {backup["capture"]}.',
+                             'Next, in the same entry (stay connected): the image with the boot layer, written once. '
                              'Its outcome is never retried.'], 'WRITE')
         written = reviewed.write('candidate')
         answer = self.start_answer(title, 'the new system')
@@ -565,16 +567,17 @@ class Installer:
     def resume_write(self):
         """install.py --resume RUN: a candidate's installation whose write stopped before the writer
         ran (the SPL's DDR check failed in a later session of the backup's entry, 2026-10-06): the
-        player still holds what that run's backup read, so the backup stands, checked again here;
-        this run prepares the same package and goes on with the write in a fresh entry."""
+        player still holds what it held; this run prepares the same package and, in a fresh entry, checks
+        the player's first blocks again (plan, stage 4c) and goes on with the write."""
         title = 'The player (USB Boot)'
         run = Path(self.args.resume).resolve()
         report, used = load_json_safe(run/'report.json'), load_json_safe(run/'usb/history-used.json')
         image = next((s.get('image') for s in report.get('steps', []) if s.get('step') == 'firmware'), None)
-        backup, written = load_json_safe(run/'usb/backup/result.json'), load_json_safe(run/'usb/write/result.json')
+        before = load_json_safe(run/'usb/identity/result.json') or load_json_safe(run/'usb/backup/result.json')
+        written = load_json_safe(run/'usb/write/result.json')
         untouched = (written.get('status') == 'failed-before-writer' and written.get('writer_execution_attempted') is False
                      and written.get('page_execution_attempted') is False)
-        if not image or backup.get('status') != 'rootfs-collected' or not untouched:
+        if not image or before.get('status') not in ('rootfs-probe-collected', 'rootfs-collected') or not untouched:
             raise Stop(f'{run} is not a run whose write stopped before the writer after its backup: start a new installation')
         history = usbboot.History.load(self.args.history)
         if used != json.loads(json.dumps(history.data, default=str)):
@@ -582,16 +585,14 @@ class Installer:
         self.done('firmware', image=str(image), profile=load_profile()['version'], resumed=str(run))
         try:
             reviewed = self.reviewed_tools(image, history)
-            self.say(title, [f'Going on with {run.name}: its write stopped before the writer, so the player holds what its backup read.',
+            self.say(title, [f'Going on with {run.name}: its write stopped before the writer, so the player holds what it held.',
                              'Preparing the installation package again (offline: payloads, the review, the plans).'])
             prepared = reviewed.prepare()
             if prepared['write'] != load_json_safe(run/'usb/package/candidate-write-plan.json').get('plan_sha256'):
                 raise usbboot.ReviewedError(f'the write plan differs from the one {run.name} prepared')
-            shutil.copytree(run/'usb/backup', reviewed.work/'backup')
-            previous = Path(history['previousImage'])
-            reviewed.compare(reviewed.work/'backup', Path(history['bootCapture'])/'metadata-main.bin', previous, reviewed.image_sha(previous))
-            self.write_and_read(reviewed, title, image, dict(capture=str(reviewed.work/'backup'), matches=previous.name,
-                                                             takenBy=str(run)))
+            self.confirm(title, [self.ENTER, 'Next, in this one entry: a check of what the player holds (about a minute), '
+                                 'then the write.'], 'CHECK')
+            self.write_and_read(reviewed, title, image, dict(reviewed.identity(strict=True), resumes=str(run)))
         except usbboot.ReviewedError as error:
             raise Stop(f'{error}. The run\'s evidence is in {self.work/"usb"}; nothing was retried. '
                        f'The way back to stock: install.py --restore --run {self.work} --diskos … --libusb …')
@@ -615,10 +616,11 @@ class Installer:
                                  'The way back to stock writes stock\'s rootfs over it.'])
                 return self.stock_back(reviewed, title, dict(run=str(run), holds='this run\'s image'))
             self.confirm(title, [f'The way back to stock with the package of {run.name}.', self.ENTER, self.STUCK,
-                                 'Next: the backup (what the player holds now); stock\'s rootfs follows in a fresh entry.'], 'BACKUP')
-            backup = reviewed.backup(strict=False, name='restore-backup')
-            self.say(title, [f'The backup is {backup["capture"]}' + (f', the same as {backup["matches"]}.' if backup['matches'] else
-                                                                       ', an image this run does not know.')])
+                                 'Next: a check of what the player holds (its first blocks, for the record); stock\'s rootfs '
+                                 'follows in a fresh entry.'], 'CHECK')
+            backup = reviewed.identity(strict=False, name='restore-identity')
+            self.say(title, [f'The player holds {backup["matches"]}.' if backup['matches'] else
+                             'The player holds an image this run does not know.'])
             self.stock_back(reviewed, title, dict(backup=backup, run=str(run)))
         except usbboot.ReviewedError as error:
             raise Stop(f'{error}. The evidence is in {run/"usb"}; nothing was retried.')
