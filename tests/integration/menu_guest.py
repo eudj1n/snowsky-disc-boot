@@ -133,6 +133,9 @@ def run(menu, output):
     time.sleep(1.5)
     moved = frame('volume-down')
     assert pixel(moved, 70, 180) == (0x3a, 0x35, 0x30) and pixel(moved, 70, 132) != (0x3a, 0x35, 0x30), 'the pill moved down'
+    # After a start with Play the menu takes no Play gesture in its first 2 s (the recovery's own
+    # release, reported when the key is let go): this Play comes after them.
+    time.sleep(1.0)
     buttons.pulse(0xfa)
     keys_taken()
     ui = bg.ui_runs(TWO)
