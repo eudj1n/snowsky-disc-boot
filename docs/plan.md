@@ -1094,13 +1094,15 @@ a write with all of it. Each item with its host tests and the guest.
   entry clean in all 11 (`first-write-observation.md`, "The second SPL of a
   USB Boot entry"). The design (2026-10-07), tools kept apart rather than
   merged into one session:
-  - [ ] The SPL once an entry: a session first reads the DDR diagnostic the
-    SPL leaves in TCSM; the clean one of this entry (`d1a6c0de 9 0 0 0`)
-    means DDR is up and the SPL is not run again; a fresh entry holds zeros
-    there (the reviewed SPL's padding) and runs it. Each tool (the reads, the
-    boot evidence, the write) plans and audits both starts. A read-only
-    experiment on the player first: two probe reads in one entry, the second
-    without the SPL.
+  - [x] The SPL once an entry (`ram_transport.bring_up`): a session first
+    reads the DDR diagnostic the SPL leaves in TCSM; the clean one of this
+    entry (`d1a6c0de 9 0 0 0`) means DDR is up and the SPL is not run again;
+    anything else (a fresh entry) runs it. Each tool (the reads, the boot
+    evidence, the write) plans and audits both starts (`test_collect_rootfs`,
+    `test_writer_transport`). On the player (2026-10-08, read-only, one
+    entry): the first probe found what the power-on left in TCSM (random
+    bytes), ran the SPL and read 132 records; the second found the clean
+    diagnostic, ran no SPL, passed its RAM checks and read the same blocks.
   - [ ] The installation in one entry: without a history, the boot blocks'
     short read (which rootfs the bootloader selects, as the owner's boot
     capture of 2026-09); the identity check of a few rootfs blocks; the
