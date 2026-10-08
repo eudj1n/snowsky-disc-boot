@@ -59,6 +59,24 @@ class InstallationReviewTests(unittest.TestCase):
             self.w.layout['installation_review_sha256']=writer.fingerprint(self.bundle)
             with self.subTest(state=state),self.assertRaises(writer.ram.probe.ProbeError):self.validate()
 
+    def test_the_previous_write_is_proven_by_its_readback_or_its_first_start_check(self):
+        image=dict(name='candidate.bin',bytes=4,sha256='a'*64)
+        state=lambda **proof:dict(kind='installed-candidate',freshness_verified=False,new_image_staged=False,
+                                  previous_review_sha256='b'*64,image=image,**proof)
+        readback=dict(status='saved-logical-readback-matches',image_sha256='a'*64,freshness_verified=False)
+        check=dict(schema=1,expected='a'*64,actual='a'*64,match=True,error=None)
+        cases=[(state(exact_readback=readback),True),(state(exact_readback=None,first_start_check=check),True),
+               (state(exact_readback=None,first_start_check=dict(check,actual='c'*64,match=False)),False),
+               (state(exact_readback=None,first_start_check=dict(check,expected='c'*64,actual='c'*64)),False),
+               (state(exact_readback=None,first_start_check=None),False),(state(exact_readback=None),False)]
+        for value,accepted in cases:
+            self.bundle['source_state']=value
+            self.w.layout['installation_review_sha256']=writer.fingerprint(self.bundle)
+            with self.subTest(state=value,accepted=accepted):
+                if accepted:self.assertEqual(self.validate(),writer.fingerprint(self.bundle))
+                else:
+                    with self.assertRaises(writer.ram.probe.ProbeError):self.validate()
+
     def test_rebound_invalid_boot_scope_and_tail_contract_refused(self):
         original=copy.deepcopy(self.bundle)
         for change in ('boot','readback','scope','freshness'):
