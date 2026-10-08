@@ -1217,9 +1217,23 @@ the only installer. Play at power-on stays the recovery path only.
   there; never automatic). A specimen page and numbered decisions first;
   no screen before it works. The manager's "Player software" becomes
   read-only with a hint.
-- [ ] Several services (owner, 2026-10-07, to shape the architecture):
-  `service/<name>/` as `ui/<name>/`, each with its own lifecycle, an
-  autostart flag and limits; disc-server keeps its paths.
+- [ ] The roles, laid out before other players run the boot layer (owner,
+  2026-10-08): `controller`, at most one, the server (it owns the player's
+  protocol, listens on the network and updates itself through its
+  manager); `service`, any number with distinct names, background jobs
+  (disc-health, disc-network) that listen on no network port and report
+  through their status files, each with its own lifecycle, an autostart
+  flag and limits; `ui` and `menu` as now. Boot API 2:
+  `/usr/data/disc-boot/controller/` (`a`, `b`, `state.json`, `request`) and
+  `service/<name>/` as `ui/<name>/`; the status folder's `controller.json`
+  and `service/<name>.json`. The move without a reinstallation: the new
+  boot program renames `service/` to `controller/` once, atomically, and
+  logs it; a package of boot API 1 with the role `service` (disc-server up
+  to 2.57.5) is installed and run as the controller; the server reads
+  `controller.json`, else `service.json`, and its next package says
+  `controller` with boot API 2. The server finds every other path in its
+  environment (`$DISC_BOOT_INACTIVE`, `$DISC_BOOT_REQUEST`, …), so its
+  binary does not change for the move.
 - [ ] disc-health and disc-network are built here, as the menu is (owner,
   2026-10-08): native code beside `device/menu`, the same toolchain, released
   with the boot layer's numbers (`disc-health-<v>.zip`,
@@ -1227,8 +1241,8 @@ the only installer. Play at power-on stays the recovery path only.
   them in the same entry as the image and boot installs them at the first
   start. Neither needs the server: each writes a small status file of its
   own in the boot layer's status folder, which the server shows (as it
-  shows `ui.json` and `menu.json`). The installer's defaults (proposed, for
-  the owner): disc-health ticked (it only reads), disc-network offered but
+  shows `ui.json` and `menu.json`). The installer's defaults (owner,
+  2026-10-08): disc-health ticked (it only reads), disc-network offered but
   not ticked until it has run on the owner's player.
 - [ ] disc-health (owner, 2026-10-07): a read-only, offline journal of the
   battery, temperature, uptime, crashes, card errors and free space, shown
