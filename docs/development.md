@@ -151,7 +151,8 @@ and the releases' images), or stops before anything is written and names FiiO's 
 the way back; `decision.json` says what it found. The write (`WRITE`) takes the admission the
 review computed for the run (`--installer-profile`, the tracked profile untouched) and runs only
 in that entry; its first start's check proves it as below, the readback following only when the
-check does not come back. A no takes the player back to stock with the evidence of a new entry
+check does not come back. The user answers yes or no about the start, without the words a
+history keeps for the developers. A no takes the player back to stock with the evidence of a new entry
 (`usb-back/`, where the review knows this run's own image); `--restore` writes stock's rootfs the
 same way. Without a terminal (`--yes`) the card is staged and the player is not written.
 The payloads come from the boot release (`disc-usb-payloads-<v>.tar.gz`, the boot evidence's

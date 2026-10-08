@@ -556,8 +556,10 @@ class Installer:
                   'holding Play (press the power key briefly and let Play go once the logo shows); the menu shows '
                   'Installing.')
 
-    def start_answer(self, title, what, then=None):
-        """The owner's look at a new system's first start: (started normally, words, time UTC), or None."""
+    def start_answer(self, title, what, then=None, words=True):
+        """The owner's look at a new system's first start: (started normally, words, time UTC), or None. words:
+        a few words of what was seen, the developers' evidence for the next review with a history; a user
+        without one answers yes or no only (owner, 2026-10-08)."""
         if not self.interactive:
             return None
         self.say(title, [f'Written. Disconnect the cable: leaving USB Boot, the player restarts into {what} by itself. '
@@ -569,6 +571,8 @@ class Installer:
             self.say(title, ['Type yes or no.'])
             word = self.input().strip().lower()
         reported = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+        if not words:
+            return word == 'yes', word, reported
         self.say(title, ['Describe what you saw, in a few words.'])
         return word == 'yes', self.input().strip() or word, reported
 
@@ -664,7 +668,7 @@ class Installer:
                              'Next, in the same entry (stay connected): the image with the boot layer, written once. '
                              'Its outcome is never retried.'], 'WRITE')
         written = reviewed.write('candidate')
-        answer = self.start_answer(title, 'the new system', self.PLAY_AFTER)
+        answer = self.start_answer(title, 'the new system', self.PLAY_AFTER, words=not known)
         if answer is not None and not answer[0]:
             # Straight back to stock (owner, 2026-10-05): the player holds this run's own image,
             # known from the writer's completion; reading it back would only cost time.
@@ -744,7 +748,7 @@ class Installer:
         self.confirm(title, [f'The player holds {self.holds(decision)}.', 'Next, in the same entry (stay connected): stock\'s '
                              'rootfs, written once. Its outcome is never retried.'], 'RESTORE')
         written = reviewed.write('restore')
-        answer = self.start_answer(title, 'stock')
+        answer = self.start_answer(title, 'stock', words=False)
         audits = reviewed.audit('restore', read=False)
         self.say(title, ['Stock\'s rootfs is written: the writer finished, after the image was checked in the player\'s RAM; '
                          'the USB journal of the write audited.'] + ([] if answer and answer[0] else

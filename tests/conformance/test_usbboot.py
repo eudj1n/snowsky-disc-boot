@@ -570,7 +570,7 @@ class KnownPathTests(ReviewedTests):
 
     def test_a_user_installs_in_one_entry_and_the_first_start_proves_it(self):
         self.fetch = self.check_matches
-        code, installer, tools = self.install_known(['', 'CARD', 'CHECK', 'WRITE', 'yes', 'the menu came up'])
+        code, installer, tools = self.install_known(['', 'CARD', 'CHECK', 'WRITE', 'yes'])
         self.assertEqual((code, installer.report['status']), (0, 'prepared'))
         player = next(s for s in installer.report['steps'] if s['step'] == 'player')
         self.assertEqual((player['written'], player['target'], player['history']), (True, 'candidate', None))
@@ -578,6 +578,8 @@ class KnownPathTests(ReviewedTests):
         usb = self.root/'run/usb'
         self.assertFalse((usb/'history.json').exists(), 'a user keeps no history')
         self.assertTrue((usb/'first-start/rootfs-check.json').is_file())
+        record = json.loads((usb/'first-start/owner-boot-confirmation.json').read_text())
+        self.assertEqual(record['owner_answer'], 'yes', 'a user answers yes or no only')
         acquired = [c for c in tools.calls if c.endswith('acquire')]
         self.assertEqual(acquired, ['ram_transport.py acquire', 'boot_evidence.py acquire', 'collect_rootfs.py acquire',
                                     'writer_transport.py acquire'], 'one entry: three reads and the write; no readback')
@@ -590,7 +592,7 @@ class KnownPathTests(ReviewedTests):
         self.assertNotIn('writer_transport.py acquire', tools.calls)
 
     def test_restore_takes_a_known_player_back_to_stock_in_one_entry(self):
-        code, installer, tools = self.install_known(['CHECK', 'RESTORE', 'yes', 'stock is back'], restore=True)
+        code, installer, tools = self.install_known(['CHECK', 'RESTORE', 'yes'], restore=True)
         self.assertEqual((code, installer.report['status']), (0, 'restored'))
         write = next(c for c in tools.commands if Path(c[2]).name == 'writer_transport.py' and c[3] == 'acquire')
         self.assertEqual(write[write.index('--target') + 1], 'restore')
@@ -600,14 +602,13 @@ class KnownPathTests(ReviewedTests):
         self.assertFalse((self.root/'run/usb/history.json').exists())
 
     def test_a_no_goes_back_to_stock_with_the_evidence_of_a_new_entry(self):
-        code, installer, tools = self.install_known(['', 'CARD', 'CHECK', 'WRITE', 'no', 'it restarts without end',
-                                                     'CHECK', 'RESTORE', 'yes', 'stock is back'])
+        code, installer, tools = self.install_known(['', 'CARD', 'CHECK', 'WRITE', 'no', 'CHECK', 'RESTORE', 'yes'])
         self.assertEqual((code, installer.report['status']), (0, 'restored'))
         self.assertEqual([c for c in tools.calls if c.endswith('acquire')],
                          ['ram_transport.py acquire', 'boot_evidence.py acquire', 'collect_rootfs.py acquire', 'writer_transport.py acquire']*2)
         back = self.root/'run/usb-back'
         self.assertTrue((back/'package/decision.json').is_file() and (back/'restore-write').is_dir())
-        self.assertEqual(installer.report['wayBack']['candidateAnswer'], 'it restarts without end')
+        self.assertEqual(installer.report['wayBack']['candidateAnswer'], 'no', 'yes or no only, no words')
 
     def test_without_a_terminal_the_player_is_not_written(self):
         from unittest import mock

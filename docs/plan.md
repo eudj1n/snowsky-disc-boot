@@ -1270,12 +1270,14 @@ layer and the emulator's checkout to build the image.
   release carries them (2.57.5). Done 2026-10-09: the check names
   squashfs-tools and openssl with their install commands and asks about
   Docker only for `--guest` (`test_installer`).
-- [ ] The user answers only yes or no at the first start (owner, 2026-10-08):
+- [x] The user answers only yes or no at the first start (owner, 2026-10-08):
   the words are the developers' evidence (`owner-boot-confirmation.json`,
-  read by the next review with a history), never needed without one. To
-  weigh: no question at all when the first start's check comes back (the
-  system started and holds the written image), the question only when it
-  does not (then it decides the way back to stock).
+  read by the next review with a history), never needed without one. Done
+  2026-10-09: without a history, and on the way back to stock, the
+  installer asks yes or no only (`test_usbboot`). To weigh still: no
+  question at all when the first start's check comes back (the system
+  started and holds the written image), the question only when it does not
+  (then it decides the way back to stock).
 - [x] diskOS's writer and SPL fetched at their pinned revision, as the diskOS
   package already is (`catalog.py fetch --name diskos --download`, checked
   from a clean clone on 2026-10-06). Done 2026-10-08: the six files the
