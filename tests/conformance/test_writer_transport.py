@@ -160,7 +160,7 @@ class WriterTransportTests(unittest.TestCase):
         self.layout['installation_review_sha256']=writer.fingerprint(bundle)
 
     def plan(self, mode='stage'):
-        if mode=='write':self.bind_review()
+        if mode=='write':(self.bind_known if getattr(self,'known',False) else self.bind_review)()
         return writer.make_plan(self.base,self.cpu,self.reader,self.transport,self.layout,self.inputs,mode)
 
     def rom(self, fault=None, at=0, **busy):
@@ -495,6 +495,52 @@ class WriterTransportTests(unittest.TestCase):
         done = self.audit(folders, subprocess, output, plan)
         self.assertEqual(done.returncode, 0, done.stderr[-2000:])
         self.assertEqual(json.loads(done.stdout)['executions'], [self.reader['load_address']]*3 + [plan['writer_entry']])
+
+    def bind_known(self):
+        """A review without a history (plan, stage 6): what the player holds, known by its first blocks."""
+        self.bind_review()
+        bundle = self.inputs['installation_review']
+        bundle['source_state'] = dict(kind='known-image', found=dict(kind='stock', sha256='a'*64, first_blocks_sha256='b'*64),
+                                      first_blocks_sha256='b'*64, same_entry_required=True, new_image_staged=False,
+                                      freshness_verified=False)
+        self.layout['installation_review_sha256'] = writer.fingerprint(bundle)
+
+    def test_a_write_without_a_history_runs_only_in_the_entry_of_its_evidence(self):
+        self.layout['physical_write_admitted'] = True
+        self.inputs['completion'] = {**self.inputs['completion'],'staging_sample_bytes':65536}
+        self.known = True
+        self.assertTrue(self.plan('write')['same_entry_required'])
+        self.assertFalse(self.plan('stage')['same_entry_required'])
+        # A fresh entry: stopped at the DDR diagnostic, before any SPL.
+        fake = self.rom()
+        result, _ = self.run_rom(fake, 'write')
+        self.assertEqual(result['status'], 'failed-before-writer')
+        self.assertIn('USB Boot entry', result['error'])
+        self.assertEqual(fake.execute_addresses, [])
+        self.assertFalse(result['spl_execution_attempted'] or result['writer_execution_attempted'])
+        # In the entry of its evidence (another session ran the SPL there): the write goes on.
+        fake = self.rom()
+        self.run_rom(fake)
+        result, _ = self.run_rom(fake, 'write')
+        self.assertEqual(result['status'], 'writer-completion-observed', result.get('error'))
+        self.assertTrue(result['spl_skipped'])
+
+    def test_only_a_review_without_a_history_brings_the_admission_of_its_run(self):
+        proposed = self.root/'proposed-installer-profile.json'
+        def run(layout, bundle):
+            proposed.write_text(json.dumps(layout))
+            return writer.run_layout(self.base,self.reader,self.transport,self.layout_policy(),proposed,bundle)
+        tracked = self.layout_file()
+        known = dict(source_state=dict(kind='known-image'))
+        admitted = dict(tracked, physical_write_admitted=True, installation_review_sha256='c'*64)
+        self.assertEqual(run(admitted, known), admitted)
+        for layout, bundle in ((admitted, dict(source_state=dict(kind='installed-candidate'))), (admitted, None),
+                               (dict(admitted, writer_wait_ms=admitted['writer_wait_ms']+1), known)):
+            with self.subTest(bundle=bundle), self.assertRaises(writer.ram.probe.ProbeError):
+                run(layout, bundle)
+
+    def layout_policy(self):
+        return writer.ram.load_metadata_policy(self.base,self.reader)
 
     def test_the_write_audit_reconstructs_the_staging_check_and_the_asks(self):
         self.layout['physical_write_admitted'] = True

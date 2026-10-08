@@ -1313,8 +1313,14 @@ layer and the emulator's checkout to build the image.
     (`firmware/images` `exercised`); an admission computed for the run in the
     package, never written to `firmware/installers`
     ([installation review](installation-review.md)). `test_known_review`.
-  - [ ] The write refused unless it runs in the same entry (its SPL skipped),
-    with the admission the package computed for the run.
+  - [x] The write refused unless it runs in the same entry (its SPL skipped),
+    with the admission the package computed for the run (2026-10-08): a
+    `known-image` review's write plan carries `same_entry_required`, and a
+    session that finds no clean DDR diagnostic stops before any SPL
+    (`ram_transport.bring_up`); `writer_transport.py --installer-profile` takes
+    the package's admission only for such a review, differing from the
+    tracked profile only in its admission and pin (`run_layout`).
+    `test_writer_transport`.
   - [ ] The installer's user path (no `--history`), and `--restore` without
     a history.
   - [ ] On the owner's player after FiiO's Local upgrade back to stock (the

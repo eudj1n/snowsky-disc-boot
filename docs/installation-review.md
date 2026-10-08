@@ -217,9 +217,10 @@ The bundle's `source_state` is `known-image` with what the player holds
 (`found`), its first blocks, and `same_entry_required`; `validate_binding`
 accepts it only with those. The package keeps the proposed admission
 (`proposed-installer-profile.json`) and `decision.json`, what the installer
-tells the user; nothing is written to `firmware/installers`. That the write
-takes this admission and runs only in the same entry is the next step of the
-plan. `test_known_review` runs both sessions on the fake ROMs, audits them and
+tells the user; nothing is written to `firmware/installers`. The write takes
+this admission with `--installer-profile` and runs only in the same entry
+([writer transport](writer-transport.md#a-write-without-a-history-plan-stage-6)).
+`test_known_review` runs both sessions on the fake ROMs, audits them and
 reviews them, with an unknown image, an ABI no player ran, a way back that is
 not stock, other plans and other entries refused.
 

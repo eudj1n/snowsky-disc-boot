@@ -418,6 +418,10 @@ def bring_up(session, spl, record, upload):
     found = session.read(p['diagnostic_address'], 20)
     record['entry_diagnostic'] = found.hex()
     record['spl_skipped'] = found == CLEAN_DDR
+    # A write without a history belongs to the USB Boot entry of its evidence (plan, stage 6): that
+    # entry's SPL ran already, so a fresh entry stops here, before any SPL.
+    check(record['spl_skipped'] or not record.get('plan', {}).get('same_entry_required'),
+          'This write belongs to the USB Boot entry its evidence was read in, and the player has left it: start again')
     if record['spl_skipped']:
         return found
     upload(p['spl_load_address'], spl)
