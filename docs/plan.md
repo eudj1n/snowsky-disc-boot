@@ -1367,7 +1367,7 @@ layer and the emulator's checkout to build the image.
     `/usr/data/disc-boot` stayed through the Local upgrade, so the first
     installation of a new user's packages is tested in stage 7, after a
     removal of everything ours.
-- [ ] The installer for users as one archive in the boot release
+- [x] The installer for users as one archive in the boot release
   (`disc-installer-<v>.tar.gz`, owner, 2026-10-08): `install.py` with the
   scripts, profiles, catalogs and source pins it needs, this release's files
   (the boot programs, the USB payloads, the menu) and the default server and
@@ -1377,6 +1377,16 @@ layer and the emulator's checkout to build the image.
   The user's runs kept outside it (`~/Library/Application Support/SNOWSKY
   DISC`, `~/.local/share/snowsky-disc`). macOS and Linux first; Windows
   later (WinUSB, with the ready-to-run installers under "Later").
+  Done 2026-10-09 (`release.py installer`, [development](development.md#releases)):
+  the archive holds `install.py`, `console.py`, the scripts, profiles,
+  catalogs, earlier records, the payloads' sources and the image's files at
+  the release's commit, this release's files and the catalog's default
+  server and apps (`packages/`), and `installer.json` (this release, whose
+  record names the archive's digest, so it is never inside); the same bytes
+  on every build, rebuilt and checked by the release workflow. From the
+  unpacked archive the installer takes its own packages first and keeps the
+  runs in the user's folder. `test_release`, `test_installer` (the archive
+  unpacked and run without the repository, offline).
 - [x] The computer's check explains libusb and Docker where they are missing
   (2026-10-08): libusb is found where Homebrew or the system's packages put
   it (`--libusb` only to name another), and a missing one is said with the

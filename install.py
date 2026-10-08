@@ -14,7 +14,9 @@ through USB Boot with the reviewed tools (--history) and records its first boot.
 
 Packages are taken from local files with their catalog digest (--from) or downloaded from
 their published address and checked by that digest (not with --offline). The run's report is
-work/install-*/report.json.
+work/install-*/report.json; from the installer's archive (disc-installer-<version>.tar.gz) its
+own packages come first, and the runs are kept outside it (macOS: ~/Library/Application
+Support/SNOWSKY DISC/runs; Linux: ~/.local/share/snowsky-disc/runs).
 """
 import argparse
 from pathlib import Path

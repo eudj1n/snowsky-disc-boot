@@ -342,11 +342,28 @@ them) and `SHA256SUMS`. The installer takes the payloads from the release by its
 compiles nothing; with `--boot-build`, or for a release before 2.57.5, it builds them with Docker. The
 image is never a release file, and debug builds stay local.
 
+From 2.57.5 a release also holds the installer for users, `disc-installer-<version>.tar.gz`
+(`release.py installer`, plan, stage 6): `install.py` with what it reads from this repository at
+the release's commit (the scripts, the profiles, the catalogs, the earlier releases' records, the
+payloads' sources and the files the image takes; no tests or documents but the README), this
+release's three files and the catalog's default server and its default apps (`packages/`, found by
+their digests with `--from` or downloaded), and `installer.json`, this release as its record will
+name it. The record names the archive's digest, so the archive never holds its own record; it is
+the same bytes from the same commit and files, and the release workflow builds it again and checks
+it like the others. Local changes to its files refuse the build, and so does a catalog that does
+not offer this release's menu by default: update `catalog/packages.json` before the archive. Run
+from where it was unpacked, `install.py` takes its own packages first and keeps the user's runs
+and downloads outside it (macOS: `~/Library/Application Support/SNOWSKY DISC`; Linux:
+`$XDG_DATA_HOME` or `~/.local/share`, `snowsky-disc`), so a newer archive replaces the folder
+without losing them.
+
 ```sh
 bash scripts/build.sh mips
-python3 scripts/release.py build --version 2.57.2 --output work/release-2.57.2/dist
-# the guest accepts these files (menu_guest.py, install.py --guest), then:
-python3 scripts/release.py record --version 2.57.2 --dist work/release-2.57.2/dist --accepted "<what ran>" \
+python3 scripts/release.py build --version 2.57.5 --output work/release-2.57.5/dist
+# catalog/packages.json offers disc-menu-2.57.5.zip by its address and digest (committed), then:
+python3 scripts/release.py installer --version 2.57.5 --dist work/release-2.57.5/dist --from <server and apps>
+# the guest accepts these files from the unpacked archive (install.py --guest), the player runs them, then:
+python3 scripts/release.py record --version 2.57.5 --dist work/release-2.57.5/dist --accepted "<what ran>" \
   --image work/<run>/image   # from 2.57.5: the image the guest ran, so a player holding it is known
 ```
 
@@ -354,7 +371,7 @@ python3 scripts/release.py record --version 2.57.2 --dist work/release-2.57.2/di
 download address (`https://github.com/eudj1n/snowsky-disc-boot/releases/download/v<version>/<file>`)
 with the same digests. The catalog also names snowsky-disc-server's release (`disc-server`, its
 address on that repository and the digest its own record keeps) and diskOS's recipe. Pushing the tag `v<version>` runs `.github/workflows/release.yml`: the
-synthetic tests, the toolchain from its recipe, the MIPS build, `release.py build` and `check`
+synthetic tests, the toolchain from its recipe, the MIPS build, `release.py build`, `installer` and `check`
 (the files must be the recorded ones and the catalog must agree), then a draft release with
 the files and notes; the owner publishes it. `.github/workflows/ci.yml` builds the same files for
 each pull request and each merge into `2.x` (not for a change of documents alone) as a 14-day artifact (`<firmware>.0-ci.<commit>`, never a release). The workflows

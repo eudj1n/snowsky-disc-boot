@@ -1,5 +1,6 @@
 name: Release draft
 # A tag v<firmware>.<number> (v2.57.1) builds the release files again from the pinned toolchain,
+# with the installer's archive (the default server and apps downloaded by their catalog digests),
 # requires them to be the recorded, guest-accepted ones (releases/<version>.json) and the
 # catalog's entries for them to match, and leaves a draft release; the owner publishes it.
 on:
@@ -31,6 +32,7 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           python3 scripts/release.py build --version "$version" --output dist
+          python3 scripts/release.py installer --version "$version" --dist dist
           python3 scripts/release.py check --version "$version" --dist dist --notes notes.md
       - name: The draft release
         env:

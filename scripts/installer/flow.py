@@ -32,6 +32,14 @@ LIBUSB_HINT = 'install it (macOS: brew install libusb; Debian or Ubuntu: apt ins
 STEPS = ['Check this computer', 'Firmware and image', 'Packages', 'The card', 'The player (USB Boot)', 'First boot']
 
 
+def data_home():
+    """Where the installer keeps a user's runs and downloads when it runs from its archive (plan, stage 6), so a
+    newer archive replaces the old one without losing them: the platform's folder for an application's data."""
+    if sys.platform == 'darwin':
+        return Path.home()/'Library/Application Support/SNOWSKY DISC'
+    return Path(os.environ.get('XDG_DATA_HOME') or Path.home()/'.local/share')/'snowsky-disc'
+
+
 def fetch_check_over_console(sha256, card, wait=300):
     """The boot layer's check for this image (.disc/boot/rootfs-check.json on the player's card),
     read over the USB console, waiting for the port and the outcome at most wait seconds: its bytes,
@@ -95,13 +103,18 @@ class Installer:
     def __init__(self, args, screen=None, runner=subprocess.run):
         self.args, self.screen, self.runner = args, screen or tui.Screen(), runner
         self.interactive = not args.yes and screen is None and sys.stdin.isatty() and self.screen.look != 'plain'
-        self.work = Path(args.work or ROOT/'work'/time.strftime('install-%Y%m%d-%H%M%S')).resolve()
+        # From the installer's archive (installer.json beside install.py) the runs are the user's, outside it;
+        # from the repository they stay in work/.
+        self.archive = release.INSTALLER_MANIFEST.exists()
+        base = data_home() if self.archive else ROOT/'work'
+        runs = base/'runs' if self.archive else base
+        self.work = Path(args.work or runs/time.strftime('install-%Y%m%d-%H%M%S')).resolve()
         self.report = dict(started=time.strftime('%Y-%m-%dT%H:%M:%S'), dryRun=args.dry_run, guest=bool(args.guest), steps=[])
         self.step, self.guest, self.ota = 0, None, None
         # Where archives are looked for by their digest: --from, the places given on the way, and
         # the downloads of earlier runs (work/downloads, kept: each is checked by its digest again).
-        self.downloads = ROOT/'work/downloads'
-        self.places = [Path(p) for p in args.packages_from] + [self.downloads]
+        self.downloads = base/'downloads'
+        self.places = [Path(p) for p in args.packages_from] + [self.downloads] + ([ROOT/'packages'] if self.archive else [])
         # The first start's check over the USB console (plan, stage 4c); tests replace it.
         self.fetch_check, self.image, self.expected = fetch_check_over_console, None, None
 
