@@ -1205,6 +1205,46 @@ layer and the emulator's checkout to build the image.
 - [ ] The whole path from a clean clone, in CI where it can run (no player)
   and on a clean computer.
 
+## Stage 7 — the menu's three screens and services beside the server (owner, 2026-10-07/08)
+
+After stage 6. The owner's concept (2026-10-07): the server manages only its
+own web apps and its updates; the boot packages (menus, interfaces,
+services) are installed and removed in the menu on the player, boot staying
+the only installer. Play at power-on stays the recovery path only.
+
+- [ ] The menu's three screens: the interface (today's), the services'
+  autostart, installing and removing (the card's staged packages shown
+  there; never automatic). A specimen page and numbered decisions first;
+  no screen before it works. The manager's "Player software" becomes
+  read-only with a hint.
+- [ ] Several services (owner, 2026-10-07, to shape the architecture):
+  `service/<name>/` as `ui/<name>/`, each with its own lifecycle, an
+  autostart flag and limits; disc-server keeps its paths.
+- [ ] disc-health (owner, 2026-10-07): a read-only, offline journal of the
+  battery, temperature, uptime, crashes, card errors and free space, shown
+  by the server's diagnostics.
+- [ ] disc-network (owner, 2026-10-08): the player keeps several Wi-Fi
+  networks (home, office) and joins whichever is in range without the
+  password again. Why it does not today (static analysis of V2.57's
+  `mq_player`, not yet observed on a player): the stock connection
+  (`connect_wifi`) removes every saved network before it adds the new one
+  and saves, so `/usr/data/wpa_supplicant.conf` holds one network; the
+  Wi-Fi screen always asks the password and its "Forget" and "Reconnect"
+  send nothing; `fix_wpa_conf_ssid` rewrites the file's first `ssid=` line
+  through a 4 KiB buffer. The service: after a stock connection
+  (`wpa_state=COMPLETED`, the file's time steady) it keeps the new
+  network's block in its own store (mode 0600, on the player, never on the
+  card); it adds the others after stock's own (`add_network`,
+  `set_network`, `enable_network`, optionally `priority`, `save_config`),
+  again at boot and when Wi-Fi turns on; a few networks only (the 4 KiB).
+  Its API and the server show names, never keys (a PSK in hex is the
+  password). "Reset all" clears its networks too (owner: before selling the
+  player, these settings go with the rest): the store lives in
+  `/usr/data/fiio/wifi/`, which stock's reset removes, or the service
+  notices the reset (the stock header alone and that folder gone). The
+  emulator has no Wi-Fi: checked with a stand-in `wpa_cli` on the guest,
+  then on the player.
+
 ## Later
 
 - The emulator repository keeps only its qemu part (owner, 2026-10-02): a
