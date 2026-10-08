@@ -913,7 +913,15 @@ name ([observation](first-write-observation.md)).
   it is ever tagged, goes on the commit that built it. Checked with
   `test_package`, `test_catalog`, `test_release` (22) and `test_installer`,
   `test_metadata_policy` (17).
-- [x] The catalog names disc-server 2.57.3 as the default (2026-10-07): the
+- [x] The catalog names disc-server 2.57.5 as the default (2026-10-08): 2.57.4's
+  build, whose apps catalog offers Disc Player 1.0.0, the page's first public
+  release; 2.57.4 to 2.57.5 through the manager on the guest (boot 2.57.3's
+  image), confirmed in 187 s, Disc Player 1.0.0 installed through it
+  (snowsky-disc-server `releases/2.57.5.json`, `26d19b4c…`). Its address
+  answers once its tag's draft is published. An installer run with
+  `--offline` that keeps the server ticked needs that zip and Disc Player
+  1.0.0's among its `--from` folders.
+- [x] The catalog named disc-server 2.57.3 as the default (2026-10-07): the
   manager reloads itself after a confirmed switch and says the boot layer's
   decision in words; updated from 2.57.2 through the manager on the owner's
   player (snowsky-disc-server `releases/2.57.3.json`, `5a3e63a8…`).
