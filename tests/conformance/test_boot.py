@@ -43,7 +43,7 @@ class BootTests(unittest.TestCase):
             (self.root/name).mkdir(parents=True, exist_ok=True)
         (self.root/'proc/mounts').write_text('/dev/root / squashfs ro 0 0\n')
         self.env = dict(os.environ, DISC_TEST_LEAK='1', DISC_BOOT_FIXTURE_ROOT=str(self.root),
-                        DISC_BOOT_FIXTURE_TIMING='confirm=1,grace=1,window=30,backoff=0.1,card=2,ui=30,menu=2,pair=0.3,install=4')
+                        DISC_BOOT_FIXTURE_TIMING='confirm=1,grace=1,window=30,backoff=0.1,card=2,ui=30,menu=20,pair=0.3,install=4')
         self.data = self.root/'usr/data/disc-boot'
         self.run_dir = self.root/'run/disc-boot'
         self.addCleanup(self.cleanup)
@@ -68,7 +68,7 @@ class BootTests(unittest.TestCase):
             target.chmod(mode)
             listed[path] = dict(size=len(data), sha256=hashlib.sha256(data).hexdigest(), mode=f'{mode:04o}')
         manifest = dict(schema=1, name=name, version=version, role=role, bootApi=1, arch='fixture',
-                        profiles=[PROFILE], entry=entry, args=[], ready=5, files=listed)
+                        profiles=[PROFILE], entry=entry, args=[], ready=30, files=listed)
         if edit:
             edit(manifest)
         (directory/'package.json').write_text(json.dumps(manifest))
@@ -931,20 +931,21 @@ exit 0
         self.early()
         # The boot's first start of the pair: no player ran yet, so the player waits for the choice.
         player = self.launch_player()
-        until = time.monotonic() + 5
+        until = time.monotonic() + 30
         while not (self.run_dir/'ui/player.json').exists() and time.monotonic() < until:
             time.sleep(0.05)
         self.assertEqual(self.player_status()['launch'], 'waiting')
         self.assertIsNone(player.poll())
-        # The menu answers and hands over in its own process: the chosen UI starts at once.
-        self.launch().wait(timeout=10)
-        self.assertEqual(self.runs(), ['menu', 'beta'])
+        # The menu answers and hands over in its own process: the chosen UI starts at once. The waits are
+        # bounds for the events, generous for a busy computer (2026-10-08).
+        self.launch().wait(timeout=30)
+        self.assertEqual(self.runs(), ['menu', 'beta'], self.boot_log())
         # The offer: each package's title (else its name) and version, stock's UI with the firmware's.
         offered = json.loads((self.root/'out/choices.json').read_text())['entries']
         self.assertEqual(offered, [dict(ui='alpha', title='Alpha UI', version='1', confirmed=True),
                                    dict(ui='beta', title='beta', version='1', confirmed=True),
                                    dict(ui='stock', version=PROFILE)])
-        player.wait(timeout=10)
+        player.wait(timeout=30)
         self.assertEqual(self.players(), ['launcher ui', f'stock ui {self.root}/opt/disc-boot/guard'])
         self.assertEqual({k: self.player_status()[k] for k in ('launch', 'name')}, {'launch': 'package', 'name': 'beta'})
         self.assertEqual((self.choice()['ui'], self.choice()['by']), ('beta', 'menu'))
@@ -1055,6 +1056,9 @@ exit 0
         self.assertIn('exited without an answer', self.choice()['note'])
 
     def test_a_menu_that_never_answers_is_stopped(self):
+        # The menu's bound short here only: elsewhere a busy computer must not stop a menu that answers
+        # (2026-10-08: the hand-over test failed under load with the 2 s every test had).
+        self.env['DISC_BOOT_FIXTURE_TIMING'] = self.env['DISC_BOOT_FIXTURE_TIMING'].replace('menu=20,', 'menu=2,')
         self.stock_ui()
         self.two_uis()
         self.set_global(ui='beta')

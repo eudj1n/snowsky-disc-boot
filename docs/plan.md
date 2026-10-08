@@ -1384,9 +1384,17 @@ layer and the emulator's checkout to build the image.
   said the same way, and Docker only for the guest (`test_installer`).
 - [ ] The README's guide: what is installed, the risk, the way back, the
   packages.
-- [ ] Two timing tests fail now and then under the full suite's load and pass
+- [x] Two timing tests fail now and then under the full suite's load and pass
   alone (`test_usb_console`'s unmounted card, `test_boot`'s menu hand-over
-  order, 2026-10-08): wait for the event, not for a time.
+  order, 2026-10-08): wait for the event, not for a time. Done 2026-10-09,
+  reproduced with the tests run 16 at once (15 of 16 failed): the console
+  test unmounted the card once the gadget was bound, before the start's
+  marker check (now it waits for the shell's answer); the boot fixture gave
+  the menu 2 s and a package 5 s to be ready, real bounds of the boot program
+  that a busy computer missed (now 20 s and 30 s, the short ones only where a
+  test checks the bound itself), and the hand-over test's own waits are 30 s
+  bounds for the events. 16 at once: none failed; `test_boot` takes as long
+  as before.
 - [ ] The whole path from a clean clone, in CI where it can run (no player)
   and on a clean computer.
 
