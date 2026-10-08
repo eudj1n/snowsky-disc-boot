@@ -103,6 +103,44 @@ class InstalledCandidateTests(unittest.TestCase):
         self.assertEqual(plan,self.wp)
         self.assertIn('writer-result.bin',pins['write']['files'])
 
+    def first_start(self, **changes):
+        """The previous write's proof from its first start (plan, stage 4c): the boot layer's check of
+        the root device, fetched over the USB console, and the owner's word."""
+        folder = self.r.root/'first-start'
+        folder.mkdir(exist_ok=True)
+        record = dict(schema=1, expected=self.r.digest, actual=self.r.digest, bytes=self.image['bytes'],
+                      # The fixture's table has rootfs alone, index 0 (the player's: 2, mtdblock_bbt_ro2).
+                      device='/dev/mtdblock_bbt_ro0', match=True, seconds=1.5, error=None, build='2506f166236f')
+        record.update(changes.pop('record', {}))
+        (folder/'rootfs-check.json').write_text(json.dumps(record))
+        fetch = dict(via='usb-console', fetched_at='2026-01-01T00:00:06+00:00', write_session_id='write',
+                     rootfs_check_sha256=install.file_pin(folder/'rootfs-check.json', 100000)['sha256'])
+        fetch.update(changes.pop('fetch', {}))
+        owner = dict(observation='owner-confirmed-normal-first-boot', reported_at='2026-01-01T00:00:05+00:00',
+                     owner_answer='it is ok', write_session_id='write', automated_boot_test=False, native_process_verified=False)
+        owner.update(changes.pop('owner', {}))
+        (folder/'fetch.json').write_text(json.dumps(fetch)); (folder/'owner-boot-confirmation.json').write_text(json.dumps(owner))
+        r = self.r
+        return update.assess(self.prior_path, r.image, self.wdir, folder, self.current, self.prior['images']['restore'],
+                             self.prior['evidence'], r.base, r.reader, r.policy, r.metadata, 'd'*64)
+
+    def test_accepts_the_first_start_check_in_place_of_a_readback(self):
+        state, plan, pins = self.first_start()
+        self.assertEqual((state['kind'], state['exact_readback'], state['first_start_check']['match']), ('installed-candidate', None, True))
+        self.assertEqual(sorted(pins['first_start']['files']), ['fetch.json', 'owner-boot-confirmation.json', 'rootfs-check.json'])
+        self.assertNotIn('readback', pins)
+
+    def test_a_first_start_check_that_does_not_prove_the_written_image_is_refused(self):
+        other = '0' * 64
+        for changes in (dict(record=dict(actual=other)), dict(record=dict(expected=other, actual=other)), dict(record=dict(match=False)),
+                        dict(record=dict(device='/dev/mtdblock_bbt_ro4')), dict(record=dict(bytes=4096)), dict(record=dict(error='short')),
+                        dict(fetch=dict(fetched_at='2026-01-01T00:00:01+00:00')), dict(fetch=dict(rootfs_check_sha256=other)),
+                        dict(fetch=dict(write_session_id='other')), dict(fetch=dict(via='card')),
+                        dict(owner=dict(write_session_id='other')), dict(owner=dict(owner_answer=' ')),
+                        dict(owner=dict(reported_at='2026-01-01T00:00:01+00:00'))):
+            with self.subTest(changes=changes), self.assertRaises(install.ram.probe.ProbeError):
+                self.first_start(**changes)
+
     def test_accepts_a_previous_way_back_to_stock(self):
         """The last installation was the restore (2026-10-05): its plan, image and exact readback are
         the review's restore ones, and the next review starts from it."""

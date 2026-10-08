@@ -127,7 +127,7 @@ def make_plan(base,cpu,reader,transport,policy,inputs):
              payload_bytes={n:len(v) for n,v in inputs['payloads'].items()},
              batch_limit=batches,record_limit=sum(counts)*2+1+counts[0]*ppb,
              boot_main_bytes_limit=counts[0]*ppb*page['main_bytes'],
-             protocol_call_limit=160+batches*53,
+             protocol_call_limit=163+batches*53,
              session_budget_ms=policy['profile']['session_budget_ms'],
              nand_commands=['0x9f','0x0f','0x13','0x0b'],writer_executions=0,
              steps=['one SPL; bounded RAM checks; compared partition-specific read payloads',

@@ -135,6 +135,25 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(installer.run(), 1)
         self.assertIn('disc-menu 9: no local file with sha256', installer.report['status'])
 
+    def test_what_an_earlier_run_staged_and_this_one_did_not_choose_leaves_the_card(self):
+        """2026-10-07: a server staged by a run that stopped at its review was installed by the next
+        run's Play, which had chosen only the menu."""
+        card = self.root/'card'
+        card.mkdir()
+        result, _ = self.install('--card', str(card), '--yes')
+        self.assertEqual(result.returncode, 0, result.stdout)
+        old_ui = card/'.disc/boot/install/ui/old-ui'
+        old_ui.mkdir(parents=True)
+        (old_ui/'package.json').write_text('{}')
+        result, report = self.install('--card', str(card), '--yes', '--package', 'disc-menu')
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertTrue((card/'.disc/boot/install/menu/package.json').exists())
+        self.assertFalse((card/'.disc/boot/install/service').exists(), 'the earlier run\'s server is gone')
+        self.assertFalse(old_ui.exists())
+        step = next(s for s in report['steps'] if s['step'] == 'card')
+        self.assertEqual(sorted(step['cleared']), ['.disc/boot/install/service', '.disc/boot/install/ui/old-ui'])
+        self.assertIn('no longer staged', result.stdout)
+
     def test_packages_are_chosen_by_role(self):
         data = json.loads(self.catalog.read_text())
         other = dict(data['entries'][0], name='other-server', default=False)

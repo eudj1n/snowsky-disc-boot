@@ -67,7 +67,7 @@ while :; do
     [ -f "$job" ] || continue
     id=${job##*/}; id=${id%.job}
     grep -qx "$id" "$data/done" 2>/dev/null && continue
-    echo "$id" >> "$data/done"
+    echo "$id" >> "$data/done"; sync
     read action < "$job"
     if [ "$action" = activate ]; then
       inactive="${DISC_BOOT_INACTIVE:?}"
@@ -75,6 +75,8 @@ while :; do
       cp -R "$card/.disc/probe/$id/." "$inactive/"
       # A FAT card keeps no modes: the package lists them.
       while read path mode; do chmod "$mode" "$inactive/$path"; done < "$inactive/modes"
+      # On the disk before the request, as a package's update does: a power cut keeps the slot whole.
+      sync
       "$DISC_BOOT_PROGRAM" verify service "$inactive" > "$data/verify-$id.json"
     fi
     case "$action" in
@@ -439,7 +441,9 @@ def run(output):
     # The boot-loop count clears only once the restored version has run its 180 s again.
     confirmed('2')
     # 9. Power lost while a new version is tentative, three times: the fourth boot is stock (boot-loop);
-    #    Play then runs the platform again and the version confirms, which clears the count.
+    #    Play then runs the platform again and the version confirms, which clears the count. The new
+    #    version runs at each start (the probe's slot is on the disk before its request): a start that
+    #    falls back to the confirmed one is healthy and clears the count (stage 4c).
     power('off')
     job(work, 'activate', '6')
     power('on')
@@ -447,7 +451,9 @@ def run(output):
     time.sleep(5)
     power('cut', unsynced=True)
     counts = []
-    for _ in range(2):
+    # The start that activated it ran the confirmed version first (the job is the running probe's),
+    # whose readiness cleared the count: three starts with the tentative one follow.
+    for _ in range(3):
         power('on')
         counts.append(boot_status().get('unconfirmedBoots'))
         service(lambda s: s['version'] == '6' and s['state'] == 'ready', 'version 6 tentative again', 300)

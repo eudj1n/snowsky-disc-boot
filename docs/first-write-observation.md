@@ -242,7 +242,9 @@ does not retry it.
 | A second, after a read | clean 3 times, failed once (this one) |
 | A second, after the writer | failed both times |
 
-The plan's remedy is one SPL per entry. A later session skips the SPL when this entry's SPL left
+The plan's remedy is one SPL per entry. It held on the player on 2026-10-08: two read-only probe
+sessions in one entry, the first running the SPL (TCSM held the power-on's random bytes), the
+second finding its clean diagnostic and running none, both reading the same 132 records. A later session skips the SPL when this entry's SPL left
 a clean diagnostic and its RAM pattern passes succeed. A session stopped at the diagnostic asks
 for a fresh entry and runs again; it never got as far as the NAND. Not filed with diskOS
 (owner).

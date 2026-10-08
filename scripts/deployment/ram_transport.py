@@ -84,6 +84,10 @@ def load_completion(base, transport, directory=PROFILES):
         check(type(p.get(key)) is int and low <= p[key] <= high, f'Invalid completion {key}')
     sample = p.get('staging_sample_bytes')
     check(type(sample) is int and 0 < sample <= 16*1024*1024 and sample % 65536 == 0, 'Invalid staging hash sample')
+    # What the player took (2026-10-07), for an installation's progress only.
+    expected = p.get('expected_ms', {})
+    check(type(expected) is dict and set(expected) <= {'staging_check', 'staging_sample', 'writer'}
+          and all(type(v) is int and 0 < v <= 1800000 for v in expected.values()), 'Invalid completion expected_ms')
     return p
 
 
@@ -154,7 +158,9 @@ def plan(base, cpu, reader, transport, inputs, mode):
                                policy_sha256=fingerprint(page_policy)) if page_policy else None),
                 interface=0, bulk_out=1, bulk_in=129, vendor_requests=[0, 1, 2, 4],
                 spl={'load':transport['spl_load_address'], 'entry':transport['spl_entry'],
-                     'bytes':len(inputs['spl']), 'diagnostic':transport['diagnostic_address']},
+                     'bytes':len(inputs['spl']), 'diagnostic':transport['diagnostic_address'],
+                     # Run unless this entry's SPL left its clean diagnostic (bring_up, plan, stage 4c).
+                     'once_an_entry':True},
                 ram_regions=[dict(name=n, address=a, bytes=s) for n, a, s in regions(reader)],
                 pattern_passes=2, pattern='SHAKE256(nonce + region-address); second pass bitwise complement',
                 payload_entry=reader['load_address'] if mode != 'ram-check' else None,
@@ -397,15 +403,36 @@ class Session:
         self.control(0)
 
 
-def observe(session, reader, inputs, mode, nonce, record):
-    session.control(0)
+CLEAN_DDR = struct.pack('<5I', 0xd1a6c0de, 9, 0, 0, 0)
+
+
+def bring_up(session, spl, record, upload):
+    """DDR up, with the SPL once a USB Boot entry (plan, stage 4c): the diagnostic the SPL leaves in
+    TCSM is read first, and the clean one means this entry's SPL ran and DDR is up, so it is not run
+    again (a second SPL re-runs the DDR bring-up, whose training failed in 3 of 6 re-runs, both after
+    the writer). Otherwise (a fresh entry: what the power-on left there) the SPL is uploaded and
+    compared (upload), run, and its diagnostic must be clean. The RAM passes that follow check DDR
+    either way. Returns the diagnostic."""
     p = session.config
-    session.write(p['spl_load_address'], inputs['spl'])
-    check(session.read(p['spl_load_address'], len(inputs['spl'])) == inputs['spl'], 'SPL SRAM readback mismatch')
+    session.control(0)
+    found = session.read(p['diagnostic_address'], 20)
+    record['entry_diagnostic'] = found.hex()
+    record['spl_skipped'] = found == CLEAN_DDR
+    if record['spl_skipped']:
+        return found
+    upload(p['spl_load_address'], spl)
     session.execute(p['spl_entry'], 'spl_execution_attempted')
-    diag = struct.unpack('<5I', session.read(p['diagnostic_address'], 20))
+    diag = session.read(p['diagnostic_address'], 20)
+    check(diag == CLEAN_DDR, 'SPL did not report clean DDR completion')
+    return diag
+
+
+def observe(session, reader, inputs, mode, nonce, record):
+    def upload(address, data):
+        session.write(address, data)
+        check(session.read(address, len(data)) == data, 'SPL SRAM readback mismatch')
+    diag = struct.unpack('<5I', bring_up(session, inputs['spl'], record, upload))
     record['ddr_diagnostic'] = dict(zip(('magic', 'stage', 'first_failure', 'status', 'failures'), diag))
-    check(diag == (0xd1a6c0de, 9, 0, 0, 0), 'SPL did not report clean DDR completion')
     for turn in range(2):
         patterns = []
         for name, address, length in regions(reader):

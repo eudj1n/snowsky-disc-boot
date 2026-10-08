@@ -38,6 +38,12 @@
 #define CODE_VOLUME_UP 0xfb
 #define CODE_VOLUME_DOWN 0xfc
 #define CODE_PLAY 0xfa
+/* Stock's key driver reports Play's double press and hold as codes of their own. */
+#define CODE_PLAY_HOLD 0x10c
+#define CODE_PLAY_DOUBLE 0x10d
+/* After a start with Play: Play's gestures this soon after the menu could answer are the release of
+   the recovery's own Play, which the driver reports when the key is let go (2026-10-07). */
+#define RECOVERY_RELEASE_MS 2000
 /* The power key held: stock's UI switches the player off on it (snowsky-disc-qemu's reading of
    stock; each key's code goes to the menu's output, so the player can confirm it). */
 #define CODE_POWER_HOLD 0x108
@@ -54,6 +60,8 @@ static int count, selected, chosen = -1, counting = 1, held[8], nheld;
 static long deadline, countdown_ms = COUNTDOWN_MS;
 /* boot's installation from the card ($DISC_BOOT_STATUS/install.json), and the power key's answer. */
 static int installing, inst_done, inst_total, off;
+static int recovery_start;            /* boot.json: this start had Play held at power-on */
+static long answerable_at = -1;       /* when the menu first could take an answer (ms) */
 static char inst_state[16], inst_current[48];
 static canvas frame;
 
@@ -250,6 +258,18 @@ static void input_open(const char *keys, const char *touch, const char *status) 
 #endif
 }
 
+/* boot.json says this start had Play held at power-on (its reason "recovery"). */
+static int started_with_play(const char *status) {
+    char p[PATH_MAX], buf[1024];
+    if (snprintf(p, sizeof(p), "%s/boot.json", status) >= (int)sizeof(p)) return 0;
+    FILE *f = fopen(p, "r");
+    if (!f) return 0;
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    buf[n] = 0;
+    return strstr(buf, "\"reason\":\"recovery\"") != NULL;
+}
+
 /* The row a touch at canvas (x, y) lands on, or -1. */
 static int row_at(int x, int y) {
     int top = first_row();
@@ -260,10 +280,16 @@ static int row_at(int x, int y) {
     return -1;
 }
 
+static int is_play(int code) { return code == CODE_PLAY || code == CODE_PLAY_HOLD || code == CODE_PLAY_DOUBLE; }
+
 static void key(int code, int value) {
     fprintf(stderr, "disc-menu: key 0x%x %d\n", code, value);
     if (value == 0) { let_go(code); return; }
     if (value != 1 || is_held(code) || installing) return;
+    if (recovery_start && is_play(code) && (answerable_at < 0 || now_ms() - answerable_at < RECOVERY_RELEASE_MS)) {
+        fprintf(stderr, "disc-menu: Play's release after the recovery, not an answer\n");
+        return;
+    }
     if (code == CODE_POWER_HOLD) { off = 1; return; }
     counting = 0;
     if (code == CODE_VOLUME_UP && selected > 0) selected--;
@@ -314,6 +340,7 @@ int main(void) {
     ring_prepare();
     fb_open(fb_path);
     input_open(keys, touch, status);
+    recovery_start = started_with_play(status);
     setvbuf(stderr, NULL, _IONBF, 0);
     deadline = now_ms() + countdown_ms;
     long shown = -1, polled = 0;
@@ -343,6 +370,7 @@ int main(void) {
             continue;
         }
         was_installing = 0;
+        if (answerable_at < 0) answerable_at = now;
         if (off) { render(now); show(); answer(run, launcher, "poweroff"); }
         if (counting && now >= deadline) { chosen = selected; counting = 0; }
         /* A frame on every change, and ten a second while the ring runs down. */

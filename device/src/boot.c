@@ -3,6 +3,7 @@
 #define _DARWIN_C_SOURCE
 #include "boot_util.h"
 #include "manifest.h"
+#include "sha256.h"
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -300,6 +301,16 @@ static void maybe_clear_loop(void) {
     }
     global_state g;
     if (!gstate_read(&g) && g.unconfirmed) { g.unconfirmed = 0; gstate_write(&g); }
+}
+
+/* A start whose service and chosen UI were confirmed before and are ready now is a healthy one:
+   the boot-loop count clears at once, not after their confirmation time again (2026-10-07: quick
+   restarts of a player whose packages were all confirmed reached the guard). Only a package not
+   yet confirmed keeps it counting until its confirmation. */
+static void proven_ready(void) {
+    int lock = state_lock();
+    maybe_clear_loop();
+    state_unlock(lock);
 }
 
 static void confirm(const char *domain) {
@@ -883,7 +894,7 @@ static void supervise_service(void) {
         while (!exited) {
             if (stopping) { stop_child(child); role_status("service", "stopped", m, &rs, failures, NULL); free(m); return; }
             if (waitpid(child, NULL, WNOHANG) == child) { exited = 1; break; }
-            if (!is_ready && exists(ready)) { is_ready = 1; ready_at = mono(); role_status("service", "ready", m, &rs, failures, NULL); }
+            if (!is_ready && exists(ready)) { is_ready = 1; ready_at = mono(); role_status("service", "ready", m, &rs, failures, NULL); proven_ready(); }
             if (!is_ready && mono() - started > m->ready) { stop_child(child); exited = timed_out = 1; break; }
             if (is_ready && !confirmed_now && mono() - ready_at >= t_confirm) {
                 confirm("service"); confirmed_now = 1; rs.confirmed = 1;
@@ -991,6 +1002,21 @@ static int card_for_install(char *root, size_t cap, int *own) {
     }
 }
 
+/* Two files with the same bytes (both readable). */
+static int same_file(const char *a, const char *b) {
+    FILE *x = fopen(a, "rb"), *y = x ? fopen(b, "rb") : NULL;
+    int same = x && y;
+    char p[4096], q[4096];
+    while (same) {
+        size_t n = fread(p, 1, sizeof(p), x), k = fread(q, 1, sizeof(q), y);
+        if (n != k || memcmp(p, q, n)) same = 0;
+        else if (n == 0) break;
+    }
+    if (x) fclose(x);
+    if (y) fclose(y);
+    return same;
+}
+
 static int install(const char *domain, const char *staged, char *note, size_t cap) {
     manifest *m = malloc(sizeof(*m));
     char err[200], slot[PATH_MAX], src[PATH_MAX], dst[PATH_MAX];
@@ -1007,6 +1033,21 @@ static int install(const char *domain, const char *staged, char *note, size_t ca
     lock = state_lock();
     role_state rs;
     if (rstate_read(domain, &rs)) { snprintf(note, cap, "refused: the role's state is unreadable"); goto out; }
+    /* The package that runs already, byte for byte (its manifest names every file's digest): nothing
+       to install, and its slot keeps its confirmation (2026-10-07: reinstalling the running server
+       made it tentative, and quick restarts then fed the boot-loop guard). */
+    if (rs.current) {
+        bpath(dst, DATA_DIR "/%s/%c/package.json", domain, rs.current);
+        bpath(slot, DATA_DIR "/%s/%c", domain, rs.current);
+        /* Only when the running slot still checks: a damaged one is installed afresh. */
+        if (snprintf(src, sizeof(src), "%s/package.json", staged) < (int)sizeof(src) && same_file(src, dst)
+            && !package_verify(slot, m, 1, err, sizeof(err))) {
+            remove_tree(staged);
+            snprintf(note, cap, "already installed %s %s", m->name, m->version);
+            r = 0;
+            goto out;
+        }
+    }
     char target = rs.current ? other(rs.current) : 'a';
     bpath(slot, DATA_DIR "/%s/%c", domain, target);
     if (remove_tree(slot) || mkdirs(slot, 0755)) { snprintf(note, cap, "refused: cannot prepare the slot"); goto out; }
@@ -1212,8 +1253,111 @@ static int cmd_early(void) {
     return 0;
 }
 
+/* The check after an installation at its first start (plan, stage 4c): the installer puts the
+   written image's SHA-256 and length on the card (.disc/boot/expected-rootfs.json); the system reads
+   that many bytes of the device its kernel booted from (root= in /proc/cmdline, a
+   /dev/mtdblock_bbt_ro<N>: the partition's good blocks in order, as the kernel mounts them),
+   hashes them and leaves the outcome on the card (.disc/boot/rootfs-check.json) and in the boot
+   log, once for each expected image. In the background, at a low priority, after stock has
+   mounted the card: nothing waits for it. */
+#define ROOTFS_CHECK_MAX (128LL * 1024 * 1024)
+
+static int root_device(char *out, size_t cap) {
+    char p[PATH_MAX], line[1024];
+    bpath(p, "/proc/cmdline");
+    FILE *f = fopen(p, "r");
+    if (!f) return -1;
+    char *ok = fgets(line, sizeof(line), f);
+    fclose(f);
+    if (!ok) return -1;
+    for (char *t = strtok(line, " \n"); t; t = strtok(NULL, " \n")) {
+        const char *prefix = "root=/dev/mtdblock_bbt_ro";
+        if (strncmp(t, prefix, strlen(prefix))) continue;
+        const char *n = t + strlen(prefix);
+        if (!*n || strspn(n, "0123456789") != strlen(n) || strlen(n) > 2) return -1;
+        snprintf(out, cap, "%s", t + 5);
+        return 0;
+    }
+    return -1;
+}
+
+static void rootfs_check(void) {
+    char path[PATH_MAX], buf[SMALL_FILE], expected[80] = "", out[1024], device[64], quoted[200];
+    size_t len;
+    double until = mono() + t_card;
+    while (!card_mounted()) { if (mono() >= until || stopping) return; pause_s(1); }
+    bpath(path, "%s/.disc/boot/expected-rootfs.json", card);
+    if (read_small(path, buf, sizeof(buf), &len)) return;
+    bjson j;
+    long long bytes = 0;
+    if (bjson_parse(&j, buf, len, 32)) { plog("rootfs check: expected-rootfs.json unreadable"); return; }
+    int bad = bjson_string(&j, bjson_find(&j, 0, "sha256"), expected, sizeof(expected)) || bjson_int(&j, bjson_find(&j, 0, "bytes"), &bytes);
+    bjson_free(&j);
+    if (bad || strlen(expected) != 64 || strspn(expected, "0123456789abcdef") != 64 || bytes <= 0 || bytes > ROOTFS_CHECK_MAX) {
+        plog("rootfs check: expected-rootfs.json names no image"); return;
+    }
+    /* Once for each expected image. */
+    bpath(path, "%s/.disc/boot/rootfs-check.json", card);
+    if (!read_small(path, buf, sizeof(buf), &len) && strstr(buf, expected)) return;
+    setpriority(PRIO_PROCESS, 0, 10);
+    double started = mono();
+    char actual[65] = "", error[120] = "";
+    if (root_device(device, sizeof(device))) { snprintf(error, sizeof(error), "no root=/dev/mtdblock_bbt_ro<N> in /proc/cmdline"); device[0] = 0; }
+    else {
+        char dev[PATH_MAX];
+        bpath(dev, "%s", device);
+        int fd = open(dev, O_RDONLY | O_CLOEXEC);
+        if (fd < 0) snprintf(error, sizeof(error), "cannot open %s: %s", device, strerror(errno));
+        else {
+            sha256_ctx c;
+            sha256_init(&c);
+            static uint8_t chunk[65536];
+            long long left = bytes;
+            while (left > 0 && !stopping) {
+                ssize_t r = read(fd, chunk, left < (long long)sizeof(chunk) ? (size_t)left : sizeof(chunk));
+                if (r < 0 && errno == EINTR) continue;
+                if (r <= 0) { snprintf(error, sizeof(error), "%s ended %lld bytes short%s%s", device, left, r < 0 ? ": " : "", r < 0 ? strerror(errno) : ""); break; }
+                sha256_update(&c, chunk, (size_t)r);
+                left -= r;
+            }
+            close(fd);
+            if (stopping) return;
+            if (!error[0]) { uint8_t d[32]; sha256_final(&c, d); sha256_hex(d, actual); }
+        }
+    }
+    int match = !error[0] && !strcmp(actual, expected);
+    json_str(quoted, sizeof(quoted), error);
+    int n = snprintf(out, sizeof(out),
+        "{\"schema\":1,\"expected\":\"%s\",\"actual\":%s%s%s,\"bytes\":%lld,\"device\":\"%s\",\"match\":%s,\"seconds\":%.1f,\"error\":%s,\"build\":\"%s\"}\n",
+        expected, actual[0] ? "\"" : "", actual[0] ? actual : "null", actual[0] ? "\"" : "", bytes, device, match ? "true" : "false",
+        mono() - started, error[0] ? quoted : "null", DISC_BUILD);
+    if (n > 0 && n < (int)sizeof(out)) {
+        write_atomic(path, out, (size_t)n, 0644);
+        bpath(path, RUN_DIR "/rootfs-check.json");
+        write_atomic(path, out, (size_t)n, 0644);
+    }
+    if (match) plog("rootfs check: %lld bytes of %s are the written image (%.1f s)", bytes, device, mono() - started);
+    else if (error[0]) plog("rootfs check: %s", error);
+    else plog("rootfs check: %s differs from the written image (%.12s, not %.12s)", device, actual, expected);
+}
+
+static void start_rootfs_check(void) {
+    pid_t first = fork();
+    if (first < 0) return;
+    if (first > 0) { waitpid(first, NULL, 0); return; }
+    setsid();
+    if (fork() != 0) _exit(0);
+    int in = open("/dev/null", O_RDONLY);
+    if (in >= 0) { dup2(in, 0); dup2(in, 1); dup2(in, 2); }
+    only_standard_descriptors();
+    signal(SIGTERM, on_term);
+    rootfs_check();
+    _exit(0);
+}
+
 static int cmd_start(void) {
     if (read_boot()) { blog("start: no boot decision"); return 0; }
+    start_rootfs_check();
     if (strcmp(mode, "platform")) { role_status("service", "stock-mode", NULL, NULL, 0, NULL); return 0; }
     pid_t first = fork();
     if (first < 0) return 0;
@@ -1312,6 +1456,7 @@ static void ui_watch(pid_t ui, const char *domain, const manifest *m, role_state
         pause_s(0.1);
     }
     role_status(domain, "ready", m, &rs, 0, NULL);
+    proven_ready();
     until = mono() + t_confirm;
     while (mono() < until) { if (!ui_alive(ui)) return; pause_s(0.1); }
     confirm(domain);

@@ -113,6 +113,25 @@ class MenuTests(unittest.TestCase):
         self.assertEqual(menu.wait(timeout=10), 0)
         self.assertEqual(self.answer(), 'beta')
 
+    def test_after_a_start_with_play_its_release_is_not_an_answer(self):
+        """Stock's key driver reports Play's gestures when the key is let go: after a start with Play
+        (boot.json's reason "recovery") they arrive once the menu runs, and answered the default on
+        the player (2026-10-07). Play's gestures in the first 2 s the menu can answer are that
+        release; Volume still moves the selection, and a later Play answers."""
+        (self.root/'status/boot.json').write_text('{"schema":1,"mode":"platform","reason":"recovery"}')
+        menu = self.start(countdown=60000)
+        time.sleep(0.3)
+        self.send('keys', event(1, 0x10d, 1), event(1, 0x10d, 0), event(1, PLAY, 1), event(1, PLAY, 0))
+        self.key(VOLUME_UP)
+        time.sleep(0.5)
+        self.assertIsNone(menu.poll(), 'the release of the recovery\'s Play chooses nothing')
+        self.assertEqual(self.pixel(70, 132), SELECTED, 'Volume still moves the selection to alpha')
+        time.sleep(1.8)
+        self.key(PLAY)
+        self.assertEqual(menu.wait(timeout=10), 0)
+        self.assertEqual(self.answer(), 'alpha')
+        self.assertIn("Play's release after the recovery", menu.stderr.read())
+
     def install(self, state, done=0, total=0, current=None):
         (self.root/'status/install.json').write_text(json.dumps(dict(schema=1, state=state, done=done, total=total, current=current)))
 

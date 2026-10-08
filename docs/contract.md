@@ -551,8 +551,13 @@ menu's `stock` entry is stock's UI with the `service` package running.
   earlier in the boot), the menu takes `event0` for itself (`EVIOCGRAB`),
   since that player reads the same keys there and would otherwise change
   the volume or start playback; taking it when no player runs is harmless.
-  A key already down when it starts counts only after its release. The
-  touch panel (`event1`) is the UI's own and may choose as well.
+  A key already down when it starts counts only after its release. Stock's
+  key driver reports Play's gestures (single `0xfa`, double `0x10d`, hold
+  `0x10c`) when the key is let go, so after a start with Play (`boot.json`'s
+  reason `recovery`) Play's gestures in the first 2 s the menu can answer are
+  the recovery's release, not an answer (2026-10-07); Volume and the touch
+  panel are not held back. The touch panel (`event1`) is the UI's own and
+  may choose as well.
 - Its countdown to the default is its own; `disc-menu`'s is 5 s (owner,
   2026-10-03).
 
@@ -579,6 +584,10 @@ menu's `stock` entry is stock's UI with the `service` package running.
   package).
 - The boot-loop count clears once the `service` package and the chosen UI
   are confirmed; the menu's answer is part of the boot, not a condition.
+  When both were confirmed before, it clears as soon as they are ready in
+  this start: only a package not yet confirmed keeps a start counting until
+  its confirmation (2026-10-07: quick restarts of a player whose packages
+  were all confirmed reached the guard).
 
 ### Recovery, environment and status
 
@@ -641,8 +650,11 @@ service package starts with its own `PATH` and does not need it.
   system), copies it into the role's inactive slot, verifies the copy with
   modes, makes it the tentative current one, removes the staged folder and
   writes `.disc/boot/result.json` (per role, and per name under `ui`:
-  installed, or why not). A refused package stays on the card. Each step
-  reaches the boot log.
+  installed, or why not). A refused package stays on the card. The package
+  that runs already, byte for byte (the same `package.json`, its slot still
+  checking), is not installed again: its slot keeps its confirmation, the
+  staged folder leaves the card and the note says "already installed". Each
+  step reaches the boot log.
 - `/run/disc-boot/install.json` tells the progress:
   `{"state": "waiting"|"installing"|"done", "done", "total", "current"}`.
   With Play the UI launcher always runs (`ui-launch`). It waits for `done`
@@ -683,6 +695,24 @@ A package must not write MTD devices, change FiiO's files in `/usr/data`
 (`fiio/`, `sn.txt` and the rest), signal stock processes, take stock's ports
 or create a USB gadget while the console owns the controller. Boot cannot
 enforce this: packages run as root, at the installer's risk.
+
+## The check after an installation (the first start)
+
+The installer that writes an image puts its SHA-256 and length on the card,
+`.disc/boot/expected-rootfs.json` (`{"schema": 1, "sha256", "bytes"}`). At
+each start, in any mode, boot looks for it once stock has mounted the card
+(at most 90 s), in a process of its own at a low priority that nothing waits
+for. When there is no outcome for that image yet, it reads that many bytes of
+the device its kernel booted from: `root=` in `/proc/cmdline`, which must be
+a `/dev/mtdblock_bbt_ro<N>` (the partition's good blocks in order, bad ones
+skipped, as the kernel mounts the root file system: `nand-kernel-review.md`),
+hashes them, and writes the outcome to the card,
+`.disc/boot/rootfs-check.json`, and to `/run/disc-boot/rootfs-check.json`:
+`{"schema": 1, "expected", "actual", "bytes", "device", "match", "seconds",
+"error", "build"}`, with a line in the boot log. Another root device, one
+shorter than the image or a read error is an error, never a match. The
+installer reads the outcome over the USB console; a match stands for the
+readback through USB Boot, which stays the way when it is missing or differs.
 
 ## Status (`/run/disc-boot/`)
 

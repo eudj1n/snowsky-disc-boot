@@ -114,6 +114,16 @@ each. The SPL's execution keeps its fixed wait. `completion_ask: false` is the
 fixed settle as before. The write session asks the same way after its staging
 check and its writer ([writer transport](writer-transport.md#completion-on-the-player)).
 
+A session reads the DDR diagnostic in TCSM before anything else
+(`ram_transport.bring_up`, plan, stage 4c): the clean one (`d1a6c0de 9 0 0 0`)
+is what this USB Boot entry's SPL left, DDR is up, and the SPL is not run
+again (a second SPL re-runs the DDR bring-up, whose training failed in 3 of 6
+re-runs, both after the writer); anything else (a fresh entry) uploads,
+compares and runs it as before. The RAM passes check DDR either way. The
+result keeps what was read (`entry_diagnostic`) and whether the SPL was
+skipped (`spl_skipped`); the audits follow that start, and the plans count
+the 3 calls of the read.
+
 These settings live in their own profile, `firmware/completion/v<version>.json`
 (`ram_transport.load_completion`, bound to the transport profile it is for),
 never in the transport or installer profile: every recorded session's

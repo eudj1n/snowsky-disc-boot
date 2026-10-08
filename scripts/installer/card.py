@@ -1,6 +1,7 @@
 """What the installer puts on the card (contract, "Installation for users"): the chosen packages
 for the recovery with Play, the default apps of the chosen server in Apps/, and the console's
 marker (owner, 2026-10-02/03: written and left in place)."""
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -36,6 +37,26 @@ def card_ok(path):
 def stage_packages(folders, card, profile):
     """Each chosen package where the recovery with Play finds it."""
     return [package.stage(folder, card, profile=profile) for folder in folders]
+
+
+def clear_unchosen(card, staged):
+    """What an earlier run staged and this one did not choose leaves the card, so that Play installs
+    only this run's choice (2026-10-07: a server staged by a run that stopped at its review was
+    installed by the next run's Play). Only folders under .disc/boot/install/; returns their paths."""
+    root = Path(card)/package.STAGING
+    keep = {('ui', s['name']) if s['role'] == 'ui' else (s['role'],) for s in staged}
+    found = [('service',), ('menu',)]
+    if (root/'ui').is_dir():
+        found += [('ui', p.name) for p in sorted((root/'ui').iterdir()) if p.is_dir() and not p.name.startswith('.')]
+    cleared = []
+    for place in found:
+        path = root.joinpath(*place)
+        if place not in keep and path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+            cleared.append(str(path.relative_to(card)))
+    if cleared:
+        os.sync()
+    return cleared
 
 
 def app_entries(server_folder):
@@ -81,6 +102,23 @@ def stage_apps(entries, card, places, allow_download, workdir):
         archive = catalog.obtain(entry['source'], places, workdir, allow_download)
         staged.append(dict(name=entry['name'], version=entry['version'], path=str(unpack_app(archive, entry, Path(card)/'Apps'))))
     return staged
+
+
+EXPECTED = Path('.disc/boot/expected-rootfs.json')
+CHECKED = Path('.disc/boot/rootfs-check.json')
+
+
+def expect_image(card, image):
+    """The image this run writes, for the boot layer's check at its first start (plan, stage 4c):
+    its SHA-256 and length on the card; an earlier check's outcome leaves, so the one found later is
+    this image's."""
+    data = Path(image).read_bytes()
+    record = dict(schema=1, sha256=hashlib.sha256(data).hexdigest(), bytes=len(data), image=Path(image).name)
+    path = Path(card)/EXPECTED
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(record) + '\n')
+    (Path(card)/CHECKED).unlink(missing_ok=True)
+    return record
 
 
 def write_marker(card):

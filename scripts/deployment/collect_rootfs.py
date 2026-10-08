@@ -65,7 +65,8 @@ def make_plan(base, cpu, reader, config, inputs, metadata):
         marker_reads=markers, data_reads=data, batch_limit=batches, batch_pages=MAX_PAGES,
         capture_bytes=(markers+data)*(48+(DIGEST_RECORD_BYTES if digest else 4428)),
         logical_bytes=data*(32 if digest else page['main_bytes']),
-        protocol_call_limit=12+12*sum(math.ceil(n/65536) for _,_,n in regions)+6+batches*per_batch,
+        # 3 more than before stage 4c: the DDR diagnostic read before the SPL (ram_transport.bring_up).
+        protocol_call_limit=15+12*sum(math.ceil(n/65536) for _,_,n in regions)+6+batches*per_batch,
         payload_entry=reader['load_address'], payload_bytes=len(inputs['payload']),
         ram_regions=[dict(name=n, address=a, bytes=s) for n,a,s in regions],
         nand_commands=['0x9f', '0x0f', '0x13', '0x0b'],
@@ -120,12 +121,7 @@ def write_compare(session, address, data):
 
 
 def bootstrap(session, inputs, nonce, record):
-    p = session.config
-    session.control(0)
-    write_compare(session, p['spl_load_address'], inputs['spl'])
-    session.execute(p['spl_entry'], 'spl_execution_attempted')
-    diag = struct.unpack('<5I', session.read(p['diagnostic_address'], 20))
-    check(diag == (0xd1a6c0de, 9, 0, 0, 0), 'SPL DDR diagnostic failed')
+    diag = struct.unpack('<5I', ram.bring_up(session, inputs['spl'], record, lambda a, d: write_compare(session, a, d)))
     record['ddr_diagnostic'] = list(diag)
     for turn in range(2):
         patterns = []

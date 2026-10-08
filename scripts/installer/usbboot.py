@@ -112,6 +112,59 @@ def session_fraction(calls_done, seconds, wait=None, writer_started=None):
     return min(0.99, seconds / (writer_started + wait))
 
 
+LONG_ASK_MS = 10000
+
+
+def held_asks(plan, completion=None):
+    """The held asks a session waits on for long (plan, stage 4c), in their order, with the seconds
+    each is expected to take: the completion profile's measurement, else its limit. None for a
+    plan without asks (the fixed waits: counted as before)."""
+    if not plan.get('completion_ask'):
+        return None
+    expected = (completion or {}).get('expected_ms', {})
+    asks = []
+    if plan.get('staging_check_ms'):
+        asks += [expected.get('staging_check', plan['staging_check_ms']) / 1000,
+                 expected.get('staging_sample', plan['staging_sample_ms']) / 1000]
+    if plan.get('writer_executions'):
+        asks.append(expected.get('writer', plan['writer_wait_ms']) / 1000)
+    return asks
+
+
+class Progress:
+    """A session's share done: its calls by their pace, and each long held ask by the clock against
+    its expected time, since the ROM is silent while the payload runs (2026-10-07: the region's
+    check held the bar still for two minutes, and the writer was counted as 15 minutes)."""
+
+    def __init__(self, calls, asks):
+        self.calls, self.asks = max(1, calls), list(asks)
+        self.done, self.k, self.ask_at, self.asked = 0, 0, None, 0.0
+
+    def feed(self, lines, now):
+        for line in lines:
+            if b'"phase": "attempt"' in line:
+                self.done += 1
+                if self.ask_at is None and self.k < len(self.asks) and b'"poll": true' in line:
+                    try:
+                        if json.loads(line).get('timeout_ms', 0) >= LONG_ASK_MS:
+                            self.ask_at = now
+                    except ValueError:
+                        pass
+            elif self.ask_at is not None and b'"phase": "return"' in line:
+                self.asked += now - self.ask_at
+                self.ask_at, self.k = None, self.k + 1
+
+    def fraction(self, now):
+        current = now - self.ask_at if self.ask_at is not None else 0.0
+        calls_time = max(0.0, now - self.asked - current)
+        if not self.done or calls_time <= 0:
+            return 0.0
+        ahead = sum(self.asks[self.k:])
+        total = calls_time / self.done * self.calls + self.asked + ahead
+        expected_now = self.asks[self.k] if self.k < len(self.asks) else 0.0
+        return min(0.99, (calls_time + self.asked + min(current, 0.95 * expected_now)) / total)
+
+
 class Reviewed:
     def __init__(self, version, work, artifacts, diskos, libusb, history, run=subprocess.run, profile=None, progress=None):
         self.version, self.work, self.artifacts = version, Path(work), Path(artifacts)
@@ -119,11 +172,21 @@ class Reviewed:
         self.profile = Path(profile or ROOT/'firmware/installers'/f'v{version}.json')
         self.package, self.meta, self.readback_build = self.work/'package', self.work/'build-metadata', self.work/'build-readback'
         self.digest_build = self.work/'build-digest'
+        # The identity check's probe read (plan, stage 4c): the first rootfs blocks, in place of a backup.
+        self.probe_build = self.work/'build-probe'
         # The staging check (plan, stage 4c): the image region checked and the image hashed on the player.
         self.staging_build = self.work/'build-staging'
         self.log = self.work/'commands.log'
         # progress(label, fraction, seconds) while a USB session runs (the installer's screen).
         self.progress = progress
+
+    def completion(self):
+        """The completion profile (the asks' expected times, for the progress), if there is one."""
+        path = ROOT/'firmware/completion'/f'v{self.version}.json'
+        try:
+            return json.loads(path.read_text())
+        except (OSError, ValueError):
+            return None
 
     # One reviewed tool, as the procedure runs it
 
@@ -137,7 +200,7 @@ class Reviewed:
             Path(stdout).write_text(result.stdout)
         return result
 
-    def session(self, name, *args, output, calls, label, writer=None):
+    def session(self, name, *args, output, calls, label, writer=None, asks=None):
         """A USB session's tool in the background, its journal (two lines a call) counted against
         the plan's call limit, with the tool and its checks as they are. A write (writer: the
         approved plan's writer entry and wait) counts in two phases: the calls up to the writer's
@@ -151,6 +214,7 @@ class Reviewed:
             log.write(' '.join(command) + '\n')
         journal, lines, offset, started, partial = Path(output)/'transfers.jsonl', 0, 0, time.monotonic(), b''
         writer_started = None
+        held = Progress(calls, asks) if asks is not None else None
         process = subprocess.Popen(command, cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         while process.poll() is None:
             try:
@@ -160,12 +224,15 @@ class Reviewed:
                     offset += len(chunk)
                 *complete, partial = (partial + chunk).split(b'\n')
                 lines += len(complete)
+                if held:
+                    held.feed(complete, time.monotonic() - started)
                 if writer and writer_started is None and any(is_writer_start(line, writer[0]) for line in complete):
                     writer_started = time.monotonic() - started
             except OSError:
                 pass
             now = time.monotonic() - started
-            self.progress(label, session_fraction(lines / 2 / calls, now, writer and writer[1], writer_started), now)
+            share = held.fraction(now) if held else session_fraction(lines / 2 / calls, now, writer and writer[1], writer_started)
+            self.progress(label, share, now)
             time.sleep(1)
         out, err = process.communicate()
         self.progress(label, 1.0, time.monotonic() - started)
@@ -183,7 +250,7 @@ class Reviewed:
     def prepare(self):
         # The digest payload (plan, stage 4b) is built beside the reviewed ones; it runs only beside a full read.
         for mode, out in (('metadata', self.meta), ('rootfs', self.readback_build), ('rootfs-digest', self.digest_build),
-                          ('staging-check', self.staging_build)):
+                          ('staging-check', self.staging_build), ('rootfs-probe', self.probe_build)):
             self.need(self.tool('build_identity.py', '--version', self.version, '--mode', mode, '--diskos', self.diskos, '--output', out),
                       f'the {mode} payload')
         history = (['--previous-review', self.history['previousReview'], '--previous-image', self.history['previousImage'],
@@ -277,6 +344,42 @@ class Reviewed:
         report = load_json(Path(image).parent/'report.json')
         return report['artifacts'][Path(image).name]['sha256']
 
+    def identity(self, strict=True, name='identity'):
+        """What the player holds now, by its first rootfs blocks (plan, stage 4c): the reviewed probe
+        read (2 blocks, about a minute), the first session of the installation's one entry into USB
+        Boot, compared with the image the history says is installed; before the way back to stock,
+        which any state may take, only named among the images it may be. In place of a full backup:
+        the way back is only ever stock, so a backup's bytes restore nothing."""
+        out = self.work/name
+        page = Path(self.history['bootCapture'])/'metadata-main.bin'
+        planned = self.tool('collect_rootfs.py', 'plan', '--mode', 'rootfs-probe', '--version', self.version,
+                            '--build', self.probe_build, '--diskos', self.diskos, '--metadata-page', page)
+        self.need(planned, 'the identity check\'s plan')
+        plan = json.loads(planned.stdout)
+        self.need(self.session('collect_rootfs.py', 'acquire', '--mode', 'rootfs-probe', '--version', self.version,
+                               '--build', self.probe_build, '--diskos', self.diskos, '--metadata-page', page,
+                               '--libusb', self.libusb, '--approved-plan-sha256', plan['plan_sha256'], '--output', out,
+                               output=out, calls=expected_calls(plan['plan']), label='Checking what the player holds'),
+                  'the identity check')
+        result = load_json(out/'result.json')
+        if result.get('status') != 'rootfs-probe-collected':
+            raise ReviewedError(f'the identity check ended {result.get("status")!r}')
+        blocks = (out/'logical-image.bin').read_bytes()
+
+        def holds(image):
+            with open(image, 'rb') as source:
+                return bool(blocks) and source.read(len(blocks)) == blocks
+        if strict:
+            previous = self.history.get('previousImage')
+            if previous and not holds(previous):
+                raise ReviewedError(f'the player does not hold {Path(previous).name}, the image its history names')
+            return dict(capture=str(out), matches=Path(previous).name if previous else None, bytes=len(blocks))
+        known = [self.artifacts/load_json(self.package/'candidate-write-plan.json')['plan']['image_name']]
+        if self.history.get('previousImage'):
+            known.append(Path(self.history['previousImage']))
+        return dict(capture=str(out), matches=next((Path(i).name for i in known if Path(i).is_file() and holds(i)), None),
+                    bytes=len(blocks))
+
     def backup(self, strict=True, name='backup'):
         """What is installed now, read in a session of its own. Before a candidate's write it must be
         the image the history says is installed; before the way back to stock, which any state may
@@ -343,7 +446,7 @@ class Reviewed:
                          '--libusb', self.libusb, '--approved-plan-sha256', approved['plan_sha256'], '--output', out,
                          output=out, calls=expected_calls(approved['plan']),
                          label='Writing stock\'s rootfs' if target == 'restore' else 'Writing the image',
-                         writer=writer_wait(approved['plan']))
+                         writer=writer_wait(approved['plan']), asks=held_asks(approved['plan'], self.completion()))
         finally:
             self.close_admission(proposed)
         result = load_json(out/'result.json')
@@ -368,19 +471,23 @@ class Reviewed:
                              name=f'exact-{target}')
         return dict(capture=str(out), image=image.name, exact=exact['status'])
 
-    def audit(self, target='candidate'):
-        """Both journals reconstructed offline; the write's against the plan it carried out."""
-        write, read = self.work/folder('write', target), self.work/folder('read', target)
-        for name, run, build, extra in (('audit_usb_write.py', write, self.meta, ['--staging-build', self.staging_build]),
-                                        ('audit_usb_readback.py', read, self.readback_build, [])):
+    def audit(self, target='candidate', read=True):
+        """The journals reconstructed offline; the write's against the plan it carried out. Without a
+        readback (the first start's check proved the write, plan, stage 4c) the write's alone."""
+        write, readback = self.work/folder('write', target), self.work/folder('read', target)
+        sessions = [('audit_usb_write.py', write, self.meta, ['--staging-build', self.staging_build])]
+        if read:
+            sessions.append(('audit_usb_readback.py', readback, self.readback_build, []))
+        for name, run, build, extra in sessions:
             self.need(self.tool(name, '--run', run, '--package', self.package, '--artifacts', self.artifacts, '--build', build,
                                 *extra, '--diskos', self.diskos, '--target', target, '--output', run/'offline-review.json'), name)
-        return dict(write=str(write/'offline-review.json'), read=str(read/'offline-review.json'))
+        return dict(write=str(write/'offline-review.json'), **({'read': str(readback/'offline-review.json')} if read else {}))
 
-    def next_history(self, image, target='candidate'):
-        """This installation, or its way back to stock, as the next one's history."""
+    def next_history(self, image, target='candidate', proof=None):
+        """This installation, or its way back to stock, as the next one's history: its readback, or
+        (proof) its first start's check (plan, stage 4c), as the proof of its write."""
         data = dict(self.history.data, previousReview=str(self.package/'installation-review.json'), previousImage=str(image),
-                    writeCapture=str(self.work/folder('write', target)), readbackCapture=str(self.work/folder('read', target)),
+                    writeCapture=str(self.work/folder('write', target)), readbackCapture=str(proof or self.work/folder('read', target)),
                     previousTarget=target)
         data.pop('stageCapture', None)
         (self.work/'history.json').write_text(json.dumps(data, indent=2) + '\n')

@@ -160,6 +160,28 @@ class BootTests(unittest.TestCase):
         # The key still chooses: Volume Up from the platform default means stock, Play means recovery.
         self.assertEqual(self.early('play')['mode'], 'platform')
 
+    def test_a_start_of_proven_packages_clears_the_count_once_they_are_ready(self):
+        """Packages confirmed before that are ready again make a healthy start: the count clears at
+        once, not after their confirmation time (2026-10-07: quick restarts of a player whose
+        packages were all confirmed reached the guard). A package not yet confirmed keeps it."""
+        self.env['DISC_BOOT_FIXTURE_TIMING'] = self.env['DISC_BOOT_FIXTURE_TIMING'].replace('confirm=1,', 'confirm=60,')
+        self.install('service', 'a', GOOD, confirmed=True)
+        self.early(); self.early()
+        self.assertEqual(self.global_state()['unconfirmed'], 2)
+        self.boot('start', check=True)
+        self.wait_status('service', 'ready')
+        deadline = time.monotonic() + 5
+        while self.global_state()['unconfirmed'] and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.assertEqual(self.global_state()['unconfirmed'], 0, 'cleared at ready, long before 60 s')
+        self.boot('stop', check=True)
+        self.install('service', 'b', GOOD, confirmed=False, previous='a')
+        self.early()
+        self.boot('start', check=True)
+        self.wait_status('service', 'ready')
+        time.sleep(1)
+        self.assertEqual(self.global_state()['unconfirmed'], 1, 'a tentative service keeps the count until its confirmation')
+
     # Manifests
 
     def verify(self, directory, role='service'):
@@ -411,6 +433,92 @@ exit 0
         self.assertEqual(self.status('service')['state'], 'stock-mode')
         self.assertFalse((self.run_dir/'supervisor.pid').exists())
 
+    # The check after an installation at its first start
+
+    def rootfs(self, image, tail=b'', cmdline='console=ttyS2,115200 root=/dev/mtdblock_bbt_ro2 rootfstype=squashfs ro'):
+        """The root device as the kernel presents it (the image, then what follows in the
+        partition), the kernel's arguments, the card mounted, and the image the installer expects."""
+        (self.root/'proc').mkdir(exist_ok=True)
+        (self.root/'proc/mounts').write_text('/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
+        (self.root/'proc/cmdline').write_text(cmdline + '\n')
+        (self.root/'dev').mkdir(exist_ok=True)
+        (self.root/'dev/mtdblock_bbt_ro2').write_bytes(image + tail)
+        boot = self.root/'tmp/sdcard/.disc/boot'
+        boot.mkdir(parents=True, exist_ok=True)
+        (boot/'expected-rootfs.json').write_text(json.dumps(dict(schema=1, sha256=hashlib.sha256(image).hexdigest(), bytes=len(image))))
+        return boot/'rootfs-check.json'
+
+    def checked(self, result, timeout=10):
+        deadline = time.monotonic() + timeout
+        while not result.exists() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        return json.loads(result.read_text())
+
+    def test_the_first_start_checks_the_written_image_where_the_kernel_reads_it(self):
+        """The installer's expected image on the card; the system hashes that many bytes of its root
+        device and leaves the outcome on the card and in the boot log, once (plan, stage 4c)."""
+        image = bytes(range(256)) * 4096
+        result = self.rootfs(image, tail=b'\xff' * 131072)
+        self.install('service', 'a', GOOD, confirmed=True)
+        self.early()
+        self.boot('start', check=True)
+        check = self.checked(result)
+        self.assertEqual((check['match'], check['actual'], check['bytes'], check['device'], check['error']),
+                         (True, hashlib.sha256(image).hexdigest(), len(image), '/dev/mtdblock_bbt_ro2', None))
+        self.assertEqual(json.loads((self.run_dir/'rootfs-check.json').read_text()), check)
+        self.assertIn('rootfs check: 1048576 bytes of /dev/mtdblock_bbt_ro2 are the written image', self.boot_log())
+        self.boot('stop', check=True)
+        # Done once: a later start leaves the outcome as it was.
+        written = result.stat().st_mtime_ns
+        self.early()
+        self.boot('start', check=True)
+        time.sleep(1.5)
+        self.assertEqual(result.stat().st_mtime_ns, written)
+        self.assertEqual(self.boot_log().count('rootfs check:'), 1)
+
+    def test_a_written_image_that_differs_is_said_so_in_stock_mode_too(self):
+        image = bytes(range(256)) * 4096
+        result = self.rootfs(image)
+        damaged = bytearray(image); damaged[500000] ^= 1
+        (self.root/'dev/mtdblock_bbt_ro2').write_bytes(bytes(damaged))
+        self.data.mkdir(parents=True, exist_ok=True)   # /usr/data/disc-boot is always there on the player
+        self.early('volume-up')
+        self.boot('start', check=True)
+        check = self.checked(result)
+        self.assertFalse(check['match'])
+        self.assertEqual(check['actual'], hashlib.sha256(bytes(damaged)).hexdigest())
+        self.assertIn('differs from the written image', self.boot_log())
+
+    def test_a_root_device_that_is_not_the_nand_view_is_not_read(self):
+        image = b'x' * 4096
+        for cmdline, error in (('root=/dev/mmcblk0p2 ro', 'no root=/dev/mtdblock_bbt_ro<N>'),
+                               ('root=/dev/mtdblock_bbt_ro2x ro', 'no root=/dev/mtdblock_bbt_ro<N>')):
+            with self.subTest(cmdline=cmdline):
+                result = self.rootfs(image, cmdline=cmdline)
+                if result.exists(): result.unlink()
+                self.early()
+                self.boot('start', check=True)
+                check = self.checked(result)
+                self.assertFalse(check['match'])
+                self.assertIn(error, check['error'])
+                self.boot('stop', check=True)
+        # A device shorter than the image: an error, not a match.
+        result = self.rootfs(image, cmdline='root=/dev/mtdblock_bbt_ro2 ro')
+        (self.root/'dev/mtdblock_bbt_ro2').write_bytes(image[:1000])
+        result.unlink(missing_ok=True)
+        self.early()
+        self.boot('start', check=True)
+        self.assertIn('ended 3096 bytes short', self.checked(result)['error'])
+
+    def test_without_an_expected_image_nothing_is_read(self):
+        self.rootfs(b'y' * 4096)
+        (self.root/'tmp/sdcard/.disc/boot/expected-rootfs.json').unlink()
+        self.early()
+        self.boot('start', check=True)
+        time.sleep(1.5)
+        self.assertFalse((self.root/'tmp/sdcard/.disc/boot/rootfs-check.json').exists())
+        self.assertNotIn('rootfs check', self.boot_log())
+
     # Recovery from the card
 
     def staged(self, role):
@@ -433,6 +541,32 @@ exit 0
         self.assertFalse(self.staged('service').exists())
         self.assertTrue(broken.exists(), 'a refused package stays on the card')
         self.assertEqual(oct((self.data/'service/a/bin/run').stat().st_mode & 0o777), '0o755')
+
+    def test_play_leaves_the_running_package_as_it_is(self):
+        """The package that runs already, byte for byte, is not installed again: its slot keeps its
+        confirmation (2026-10-07: a reinstalled server turned tentative and quick restarts then fed the
+        boot-loop guard). A damaged running slot is installed afresh."""
+        (self.root/'proc/mounts').write_text('/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
+        self.install('service', 'a', GOOD, confirmed=True, version='7')
+        self.package(self.staged('service'), GOOD, version='7')
+        self.early('play')
+        self.boot('start', check=True)
+        self.wait_status('service', 'confirmed')
+        result = json.loads((self.root/'tmp/sdcard/.disc/boot/result.json').read_text())
+        self.assertEqual(result['roles']['service'], dict(installed=True, note='already installed disc-server 7'))
+        self.assertEqual((self.role_state('service')['current'], self.role_state('service')['confirmed']), ('a', True))
+        self.assertFalse((self.data/'service/b/package.json').exists(), 'nothing installed into the other slot')
+        self.assertFalse(self.staged('service').exists(), 'taken off the card')
+        self.boot('stop', check=True)
+        # The running slot damaged: the same package goes into the other slot.
+        (self.data/'service/a/bin/run').write_text('#!/bin/sh\nexit 1\n')
+        self.package(self.staged('service'), GOOD, version='7')
+        self.early('play')
+        self.boot('start', check=True)
+        self.wait_status('service', 'confirmed')
+        result = json.loads((self.root/'tmp/sdcard/.disc/boot/result.json').read_text())
+        self.assertEqual(result['roles']['service']['note'], 'installed disc-server 7')
+        self.assertEqual(self.role_state('service')['current'], 'b')
 
     def test_play_with_a_ui_package_stops_no_running_ui(self):
         # With Play the launcher runs from the start and waits for the installation: a process named

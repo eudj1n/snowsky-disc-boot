@@ -5,5 +5,10 @@
   "completion_ask": true,
   "staging_check_ms": 600000,
   "staging_sample_ms": 60000,
-  "staging_sample_bytes": 1048576
+  "staging_sample_bytes": 1048576,
+  "expected_ms": {
+    "staging_check": 111000,
+    "staging_sample": 4300,
+    "writer": 246000
+  }
 }
