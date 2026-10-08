@@ -1302,7 +1302,12 @@ layer and the emulator's checkout to build the image.
   - [x] The identity probe's audit (`scripts/deployment/audit_usb_probe.py`,
     2026-10-08): the probe session reconstructed the same way, its report
     giving the first blocks' digest; the records and calls the two audits
-    rebuild shared in `usb_trace_audit.py`. `test_audit_usb_probe`.
+    rebuild shared in `usb_trace_audit.py`. `test_audit_usb_probe`. On a
+    player's session: the sixth write's identity check (2026-10-08, the
+    sources it pinned at `8fab64b`) matched, 300 calls and 132 records, its
+    first blocks `837ed890…`, recomputed the same from its records
+    (`readback.first_blocks`) and named release 2.57.3 by the known images,
+    the image the player held then.
   - [x] A review of its own (`source_state` `known-image`,
     `installation_review.py --known`, 2026-10-08): in one entry the metadata
     page (the entry's only SPL), the boot evidence with it, the identity
@@ -1321,8 +1326,16 @@ layer and the emulator's checkout to build the image.
     the package's admission only for such a review, differing from the
     tracked profile only in its admission and pin (`run_layout`).
     `test_writer_transport`.
-  - [ ] The installer's user path (no `--history`), and `--restore` without
-    a history.
+  - [x] The installer's user path (no `--history`), and `--restore` without
+    a history (2026-10-08): in a terminal, after `CHECK` the partition
+    table's page (the entry's SPL), the boot evidence and the identity probe,
+    the last two audited; the review `--known`; `WRITE` with the run's
+    admission in that entry; the first start's check, the readback only when
+    it does not come back; no history. A no goes back to stock with a new
+    entry's evidence (the review knowing this run's own image); `--restore`
+    the same way; an unknown image stops before anything is written, naming
+    FiiO's Local upgrade; without a terminal the card only
+    ([development](development.md)). `test_usbboot` (`KnownPathTests`).
   - [ ] On the owner's player after FiiO's Local upgrade back to stock (the
     owner's step, on its own go-ahead).
 - [ ] The installer for users as one archive in the boot release
