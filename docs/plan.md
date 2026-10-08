@@ -1215,8 +1215,22 @@ layer and the emulator's checkout to build the image.
   are ready (`boot_guest`'s probe now writes its slot to the disk before its
   request, so its boot-loop step runs the tentative version), the recovery's
   Play release, the progress by the held asks' measured times.
-- [ ] The boot layer from the release file (`disc-boot-<v>-mips.tar.gz`) by
-  the digests of its record, not a local build (the item above).
+- [x] The boot layer from the release file (`disc-boot-<v>-mips.tar.gz`) by
+  the digests of its record, not a local build (2026-10-08): the newest
+  release recorded for the firmware, found by its digest (`--from`, earlier
+  downloads) or downloaded, its build id the record's; `--boot-build` takes
+  `build/mips` for development (`test_release`). Its programs are the local
+  build's, byte for byte.
+- [x] The same update and boot release give the same image (2026-10-08): the
+  image built from 2.57.4's release file differed from the recorded one
+  (`5c89a583…` against `615d16c7…`) only in the build's time on the added
+  files and in the superblock. The additions now take the stock file
+  system's time, the stock folders keep theirs and the superblock is packed
+  with it: two builds gave one image (`4f8d68b6…`, `test_deployment`). An
+  image is then known by the update and the release, as the identity check
+  of a player without a history needs. The next boot release's image is the
+  first so built; across tools it holds while the same `mksquashfs` (4.5.1,
+  the emulator's image) packs it.
 - [ ] A light image builder of our own (Python and `squashfs-tools`), with
   the emulator's reader of FiiO's update fetched at its pinned revision
   rather than the emulator's image with its qemu build.

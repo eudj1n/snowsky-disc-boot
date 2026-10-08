@@ -54,6 +54,15 @@ class DeploymentTests(unittest.TestCase):
         path=self.elf();path.write_bytes(path.read_bytes()[:100])
         with self.assertRaises(ValueError):candidate.check_elf(path)
 
+    def test_the_additions_take_the_stock_file_systems_time(self):
+        """Plan, stage 6: the same update and boot release give the same image; the time comes from the
+        stock squashfs's superblock, never from the build."""
+        stock=self.root/'stock.squashfs'
+        stock.write_bytes(b'hsqs'+struct.pack('<II',1234,1757409300)+bytes(84))
+        self.assertEqual(candidate.stock_time(stock),1757409300)
+        stock.write_bytes(b'notsquashfs!')
+        with self.assertRaises(ValueError):candidate.stock_time(stock)
+
     def test_wrong_stock_refused(self):
         path=self.root/'stock';path.write_bytes(b'hsqs'+b'0'*100)
         with self.assertRaises(ValueError):candidate.check_stock(path, {'rootfs_size':8,'rootfs_sha256':'0'*64})
