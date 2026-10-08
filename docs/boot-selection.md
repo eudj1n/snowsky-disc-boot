@@ -101,7 +101,7 @@ For the current profile:
 - At most 2,097,152 bootloader main bytes, with an explicit physical block map.
 - At most 1,073 framed page/OOB records and 19 batch executions; fewer if boot
   blocks are bad. The metadata page is checked again during the data pass.
-- At most 1,167 USB protocol calls and 180 seconds for the entire session.
+- At most 1,170 USB protocol calls and 180 seconds for the entire session.
 - One SPL, at most 19 read-payload entries, no writer entry, NAND writes, retries,
   automatic reconnects or automatic power cycles.
 
@@ -141,6 +141,32 @@ python3 scripts/deployment/boot_evidence.py plan \
 Only after authorization, `acquire` takes those plan inputs plus `--libusb`, a
 fresh `--output`, and the exact `--approved-plan-sha256`. The player must be in USB Boot for this experiment.
 After the host closes normally, separately confirm normal stock reboot.
+
+The session's audit reconstructs it offline from its saved files alone and
+makes no USB calls (save the `plan` output as the plan file first):
+
+```sh
+python3 scripts/deployment/audit_usb_boot.py \
+  --run work/boot-evidence-<n> --plan work/boot-evidence-plan-<n>.json \
+  --build build/boot-evidence-<n> --diskos /path/to/diskos \
+  --output work/boot-evidence-<n>/offline-review.json
+```
+
+It reads the reviewed profiles as files and rebuilds the page and boot
+policies from them; it checks the plan against them, the build's payloads and
+the SPL by their digests, every record (request, nonce, sequence, page, CRC,
+chip ID, configuration, ECC, polls), the pages each scope had to read given
+the markers it found (bad blocks never read as data), the metadata page, the
+mapped bootloader, each OTA selector, every batch's request and result, and
+the USB journal call by call: the entry's DDR diagnostic and the SPL run only
+when it is not clean, the RAM patterns, both payloads, and each batch's held
+completion ask when the plan asks it. Its report, `saved-boot-trace-matches`,
+is the `offline-review.json` that `installation_review.py` takes for the boot
+evidence. It keeps the checks of the first observation's one-off audit
+(`work/audit-boot-evidence-001.py`) without its fixed page numbers and batch
+counts. Synthetic sessions of the fake ROM, at the reviewed profiles' full
+size, run in GitHub Actions (`test_audit_usb_boot`), with changed records,
+reads, journal rows, batch requests and result fields refused.
 
 Ten firmware-free tests cover complete scope, bad-block skipping, strict selector
 classification, input/manifest/profile drift, future-version selection, framing,
