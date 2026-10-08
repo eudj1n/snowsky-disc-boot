@@ -174,3 +174,52 @@ been performed. The next concrete request is authorization to activate this
 prepared profile and run **one candidate write**, followed only after confirmed
 return by the reviewed full read and exact comparison. Restoration is prepared
 but requires its own authorization and is never an automatic fallback.
+
+## Without a history: the known image (plan, stage 6, 2026-10-08)
+
+A user's installation keeps no history: `installation_review.py --known` takes
+the evidence of the USB Boot entry the write will run in, never a stock or
+stage capture or a previous installation:
+
+```sh
+python3 scripts/deployment/installation_review.py --known \
+  --diskos <diskOS files> --artifacts <run>/image --build <run>/build-metadata \
+  --staging-build <run>/build-staging --readback-build <run>/build-readback \
+  --boot-build <run>/build-boot-evidence --probe-build <run>/build-probe \
+  --boot-capture <run>/boot --probe-capture <run>/identity \
+  --libusb <libusb> --output <run>/package
+```
+
+- The boot evidence (`boot_evidence.py acquire`) and the identity probe
+  (`collect_rootfs.py acquire --mode rootfs-probe`), each with its independent
+  audit as `offline-review.json` (`audit_usb_boot.py`, `audit_usb_probe.py`),
+  must have carried out exactly the plans the review computes from the given
+  builds and the boot capture's metadata page, with the same libusb.
+- One entry: neither session ran the SPL (both read the clean DDR diagnostic
+  the entry's metadata read left), the boot evidence before the probe, over
+  the same enumeration (bus, address, ports).
+- The bootloader selects the primary rootfs (`boot_review.assess`, as before).
+- The probe's first blocks are recomputed from its records
+  (`readback.first_blocks`) and must name an image of `firmware/images`: stock
+  or one of ours (`known_images.py`). An unknown one, another FiiO version or a
+  changed image, stops the review: nothing is written, and FiiO's own update
+  (Local upgrade) is the way back to stock. The kernel is not read: FiiO's
+  update writes it with the rootfs, and none of our images touches it (the
+  owner accepted this and the first blocks as the image's identity).
+- The way back (`restore`) must be the stock image of the list, by its digest.
+- The write's ABI must be the one a player ran (`exercised` in
+  `firmware/images`: the sixth write's writer, SPL, metadata and staging
+  payloads, profiles, installer contract, image size, RAM regions and writer
+  entry), in place of a staging capture of the user's own player; every write
+  still runs the full staging checks before the writer.
+
+The bundle's `source_state` is `known-image` with what the player holds
+(`found`), its first blocks, and `same_entry_required`; `validate_binding`
+accepts it only with those. The package keeps the proposed admission
+(`proposed-installer-profile.json`) and `decision.json`, what the installer
+tells the user; nothing is written to `firmware/installers`. That the write
+takes this admission and runs only in the same entry is the next step of the
+plan. `test_known_review` runs both sessions on the fake ROMs, audits them and
+reviews them, with an unknown image, an ABI no player ran, a way back that is
+not stock, other plans and other entries refused.
+

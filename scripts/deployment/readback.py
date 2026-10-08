@@ -33,12 +33,19 @@ def image_digest(path, size, expected):
     require(digest.hexdigest() == expected, 'Image fingerprint mismatch')
 
 
-def make_plan(base, reader, policy, metadata, image_sha256, digest=False):
-    require(sha(image_sha256), 'Expected a reviewed image SHA-256')
+def make_plan(base, reader, policy, metadata, image_sha256, digest=False, probe_blocks=None):
+    """The capture of the writer's range a comparison expects. probe_blocks: the identity probe's
+    (collect_rootfs --mode rootfs-probe): only the first blocks, no reserve, and what they hold is
+    not known before (image_sha256 None)."""
+    require(sha(image_sha256) if probe_blocks is None else image_sha256 is None and not digest,
+            'Expected a reviewed image SHA-256')
     writer, chip = policy['writer'], policy['chip']
     layout = review_partitions(metadata, policy['kernel'], chip, writer)
     first = writer['start_block']
     blocks, reserve = writer['logical_blocks'], writer['bad_block_reserve']
+    if probe_blocks is not None:
+        require(type(probe_blocks) is int and 0 < probe_blocks <= blocks, 'Invalid probe size')
+        blocks, reserve = probe_blocks, 0
     count = blocks+reserve
     ppb = chip['pages_per_block']
     require(chip['factory_marker'] == dict(page_in_block=0, column=chip['page_bytes'], good_value=255),
@@ -48,7 +55,8 @@ def make_plan(base, reader, policy, metadata, image_sha256, digest=False):
             and first+count <= chip['blocks'], 'Invalid readback range')
     records = 2*count+blocks*ppb
     record = DIGEST_RECORD if digest else RECORD_BYTES
-    return dict(schema_version=1, operation='offline-logical-digest-readback' if digest else 'offline-logical-readback',
+    operation = 'offline-first-blocks' if probe_blocks else 'offline-logical-digest-readback' if digest else 'offline-logical-readback'
+    return dict(schema_version=1, operation=operation,
                 firmware_profile_sha256=fingerprint(base), reader_profile_sha256=fingerprint(reader),
                 policy_sha256=fingerprint(policy), metadata_sha256=layout['page_sha256'],
                 image_sha256=image_sha256, image_bytes=blocks*writer['block_bytes'],
@@ -140,6 +148,15 @@ def verify(records_path, image, expected_plan, base, reader, policy, metadata, n
         require(not source.read(1), 'Unexpected trailing bytes')
     require(result['image_sha256'] == plan['image_sha256'], 'Image changed during comparison')
     return dict(status='saved-logical-readback-matches', plan_sha256=fingerprint(plan), **result)
+
+
+def first_blocks(records_path, base, reader, policy, metadata, nonce, blocks):
+    """The identity probe's first blocks, recomputed from its saved records (plan, stage 6): every
+    record checked as a readback's, the blocks' marker pairs, then the pages of the first good
+    blocks. Returns their SHA-256 for the images known to be compared with; no image is assumed."""
+    plan = make_plan(base, reader, policy, metadata, None, probe_blocks=blocks)
+    result = _scan_records(records_path, plan, reader, policy, nonce, 1, lambda *page: None)
+    return dict(status='saved-first-blocks-read', plan_sha256=fingerprint(plan), image_bytes=plan['image_bytes'], **result)
 
 
 def verify_digest(records_path, image, expected_plan, base, reader, policy, metadata, nonce, first_sequence=1):

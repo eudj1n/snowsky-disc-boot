@@ -22,6 +22,10 @@ def entry(seed, **extra):
                 first_blocks_sha256=hashlib.sha256(blocks).hexdigest(), **extra)
 
 
+EXERCISED = dict({k: k[0]*64 if k[0] in 'abcdef' else 'e'*64 for k in known_images.EXERCISED_DIGESTS},
+                 image_bytes=2*BLOCKS, writer_entry=0x30, ram_regions=[dict(name='code', address=0, bytes=16)])
+
+
 class KnownImagesTests(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
@@ -31,9 +35,10 @@ class KnownImagesTests(unittest.TestCase):
         (self.root/'releases').mkdir()
         self.write_list(entry(1, name='stock.bin'), [entry(2, release='2.57.4', name='old.bin')])
 
-    def write_list(self, stock, earlier):
+    def write_list(self, stock, earlier, exercised=None):
         (self.root/'images/v2.57.json').write_text(json.dumps(dict(
-            schema_version=1, version='2.57', first_blocks_bytes=BLOCKS, stock=stock, earlier=earlier)))
+            schema_version=1, version='2.57', first_blocks_bytes=BLOCKS, stock=stock, earlier=earlier,
+            exercised=exercised or EXERCISED)))
 
     def load(self):
         return known_images.load('2.57', self.root/'images', self.root/'releases')
@@ -58,6 +63,17 @@ class KnownImagesTests(unittest.TestCase):
         self.write_list(entry(1, name='stock.bin'), [entry(1, release='2.57.4', name='same.bin')])
         with self.assertRaisesRegex(known_images.KnownImagesError, 'tell them apart'):
             self.load()
+
+    def test_the_exercised_write_abi_is_complete(self):
+        self.assertEqual(self.load()['exercised'], EXERCISED)
+        mine = known_images.load('2.57')['exercised']
+        self.assertEqual(mine['image_bytes'], known_images.load('2.57')['stock']['bytes'])
+        self.assertNotIn('note', mine)
+        for change in (dict(writer_sha256='x'), dict(image_bytes=0), dict(ram_regions=[]),
+                       dict(ram_regions=[dict(name='code', address=0)])):
+            self.write_list(entry(1, name='stock.bin'), [], dict(EXERCISED, **change))
+            with self.subTest(change=change), self.assertRaisesRegex(known_images.KnownImagesError, 'exercised'):
+                self.load()
 
     def test_a_release_records_the_image_the_guest_ran(self):
         folder = self.root/'build'
