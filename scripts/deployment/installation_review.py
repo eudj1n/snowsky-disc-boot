@@ -63,10 +63,14 @@ def validate_binding(bundle,base,cpu,reader,transport,layout,inputs):
     check(state.get('kind') in ('recorded-stock','installed-candidate')
           and state.get('freshness_verified') is False,'Missing historical source-state contract')
     if state['kind']=='installed-candidate':
-        check(state.get('new_image_staged') is False and sha(state.get('previous_review_sha256'))
-              and state.get('exact_readback',{}).get('status')=='saved-logical-readback-matches'
-              and state['exact_readback'].get('image_sha256')==state.get('image',{}).get('sha256')
-              and state['exact_readback'].get('freshness_verified') is False,
+        # The previous write's proof: its exact readback, or its first start's check of the written image
+        # (installed_candidate.first_start, plan stage 4c), never neither.
+        exact=state.get('exact_readback');first=state.get('first_start_check');image_sha=state.get('image',{}).get('sha256')
+        proven=(isinstance(exact,dict) and exact.get('status')=='saved-logical-readback-matches'
+                and exact.get('image_sha256')==image_sha and exact.get('freshness_verified') is False) or (
+                exact is None and isinstance(first,dict) and first.get('match') is True and first.get('error') is None
+                and sha(image_sha) and first.get('expected')==first.get('actual')==image_sha)
+        check(state.get('new_image_staged') is False and sha(state.get('previous_review_sha256')) and proven,
               'Invalid installed-candidate source state')
     check(bundle.get('physical_device_accessed') is False and bundle.get('flash_ready') is False
           and bundle.get('freshness_verified') is False and sha(bundle.get('libusb_sha256')),

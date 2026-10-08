@@ -434,13 +434,20 @@ class Installer:
                        lambda: self.screen.text(f'{gone} gone' + (f'  ·  {left}' if left else ''), tui.MUTED))
         return show
 
-    def start_answer(self, title, what):
+    # Leaving USB Boot restarts the player by itself into what was written (owner, 2026-10-08): a start
+    # with Play is possible only after that start, switched off and on again.
+    PLAY_AFTER = ('To install the packages staged on the card: once it has started, switch it off, then switch it on '
+                  'holding Play (press the power key briefly and let Play go once the logo shows); the menu shows '
+                  'Installing.')
+
+    def start_answer(self, title, what, then=None):
         """The owner's look at a new system's first start: (started normally, words, time UTC), or None."""
         if not self.interactive:
             return None
-        self.say(title, [f'Written. Disconnect the cable: the player starts {what} once. Let it start without holding a key: '
-                         'is the interface steady, do the volume and playback work, does the power key switch it off?',
-                         'Did it start normally? Type yes or no.'])
+        self.say(title, [f'Written. Disconnect the cable: leaving USB Boot, the player restarts into {what} by itself. '
+                         'Let it start without holding a key: is the interface steady, do the volume and playback work, '
+                         'does the power key switch it off?'] + ([then] if then else []) +
+                 ['Did it start normally? Type yes or no.'])
         word = self.input().strip().lower()
         while word not in ('yes', 'no'):
             self.say(title, ['Type yes or no.'])
@@ -538,7 +545,7 @@ class Installer:
                              'Next, in the same entry (stay connected): the image with the boot layer, written once. '
                              'Its outcome is never retried.'], 'WRITE')
         written = reviewed.write('candidate')
-        answer = self.start_answer(title, 'the new system')
+        answer = self.start_answer(title, 'the new system', self.PLAY_AFTER)
         if answer is not None and not answer[0]:
             # Straight back to stock (owner, 2026-10-05): the player holds this run's own image,
             # known from the writer's completion; reading it back would only cost time.
@@ -548,6 +555,7 @@ class Installer:
         if proof:
             audits = reviewed.audit('candidate', read=False)
             history = reviewed.next_history(image, proof=proof)
+            self.proven_start = True
             self.say(title, ['Written; the new system read its root device and found the written image, every byte by its '
                              'SHA-256; the USB journal of the write audited.', f'This installation\'s history: {history}'])
             self.done('player', image=str(image), written=True, simulated=False, target='candidate', backup=backup, write=written,
@@ -709,10 +717,19 @@ class Installer:
     def first_boot(self):
         if self.args.guest:
             return self.first_boot_guest()
-        self.say('First boot', ['Disconnect the cable and put the card in. Hold Play, press the power key briefly and let Play '
-                                'go once the logo shows (a power key held about ten seconds switches the player off): the boot '
-                                'layer installs the packages from the card and writes .disc/boot/result.json; the player page '
-                                'then answers on the network.'])
+        if getattr(self, 'proven_start', False):
+            # The first start was seen and its check fetched: nothing is left to do but what the card holds.
+            self.say('First boot', ['Done: the image is written, and its first start found it on the root device.',
+                                    'Packages staged on the card are installed at a start with Play (switch the player off, '
+                                    'then on holding Play); .disc/boot/result.json on the card says what was installed.',
+                                    f'This run\'s report: {self.work/"report.json"}'])
+            self.done('first boot', proven=True)
+            return
+        self.say('First boot', ['Disconnect the cable and put the card in: leaving USB Boot, the player restarts into the new '
+                                'system by itself. Once it has started, switch it off; then hold Play, press the power key '
+                                'briefly and let Play go once the logo shows (a power key held about ten seconds switches the '
+                                'player off): the boot layer installs the packages from the card and writes '
+                                '.disc/boot/result.json; the player page then answers on the network.'])
         self.done('first boot')
 
     def run(self):
