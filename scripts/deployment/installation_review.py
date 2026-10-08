@@ -13,7 +13,7 @@ import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from firmware_profile import fingerprint, sha
 from deployment import ram_transport as ram
-from deployment import boot_review, boot_evidence, preinstall, readback, collect_rootfs
+from deployment import boot_review, boot_evidence, preinstall, readback, collect_rootfs, known_images
 
 check=ram.check
 ROOT=ram.ROOT
@@ -60,8 +60,16 @@ def validate_binding(bundle,base,cpu,reader,transport,layout,inputs):
     check(bundle.get('context')==context(base,cpu,reader,transport,layout,inputs),'Installation inputs/profile/build changed')
     check(bundle.get('source_pins')==source_pins(),'Installation review sources changed; regenerate and review')
     state=bundle.get('source_state',{})
-    check(state.get('kind') in ('recorded-stock','installed-candidate')
+    check(state.get('kind') in ('recorded-stock','installed-candidate','known-image')
           and state.get('freshness_verified') is False,'Missing historical source-state contract')
+    if state['kind']=='known-image':
+        # No history (plan, stage 6): what the player holds, known by its first blocks read in the
+        # entry of the write, which must follow in that entry.
+        found=state.get('found',{})
+        check(state.get('same_entry_required') is True and state.get('new_image_staged') is False
+              and found.get('kind') in ('stock','release') and sha(found.get('sha256'))
+              and sha(found.get('first_blocks_sha256')) and state.get('first_blocks_sha256')==found['first_blocks_sha256'],
+              'Invalid known-image source state')
     if state['kind']=='installed-candidate':
         # The previous write's proof: its exact readback, or its first start's check of the written image
         # (installed_candidate.first_start, plan stage 4c), never neither.
@@ -90,7 +98,8 @@ def validate_binding(bundle,base,cpu,reader,transport,layout,inputs):
 def evidence(folder,kind):
     audit_name='offline-journal-review.json' if kind=='stock' else 'offline-review.json'
     result=load(folder/'result.json');request=load(folder/'request.json');audit=load(folder/audit_name)
-    expected={'boot':'boot-evidence-collected','stock':'rootfs-collected','stage':'writer-staging-verified'}[kind]
+    expected={'boot':'boot-evidence-collected','stock':'rootfs-collected','stage':'writer-staging-verified',
+              'probe':'rootfs-probe-collected'}[kind]
     check(result.get('status')==expected and result.get('cleanup_errors')==[]
           and result.get('physical_device_accessed') is True,'Incomplete physical evidence')
     p=result['plan'];h=fingerprint(p)
@@ -107,6 +116,10 @@ def evidence(folder,kind):
     if kind=='boot':
         check(audit.get('status')=='saved-boot-trace-matches' and audit.get('records')==result['records_completed']
               and 0<audit['calls']<=p['protocol_call_limit'],'Incomplete boot trace review')
+    if kind=='probe':
+        check(audit.get('status')=='saved-probe-trace-matches' and audit.get('records')==result['records_completed']
+              and audit.get('image_sha256')==result['logical_image_sha256']
+              and 0<audit['calls']<=p['protocol_call_limit'],'Incomplete identity probe trace review')
     if kind=='stock':
         check(audit.get('records')==result['records_completed'] and audit.get('spl_executions') in (0,1)
               and audit.get('batch_executions')==result['batch_executions']
@@ -182,16 +195,107 @@ def assemble(base,cpu,reader,transport,layout,inputs,restore_path,captures,libus
         freshness_verified=False,physical_device_accessed=False,flash_ready=False)
 
 
+def moment(value):
+    from datetime import datetime
+    result=datetime.fromisoformat(value)
+    check(result.tzinfo is not None,'Session timestamps require a timezone')
+    return result
+
+
+def same_entry(boot,probe):
+    """The boot evidence and the identity probe in one USB Boot entry (plan, stage 6): the entry's
+    SPL ran before both (the metadata read), neither ran it again (its clean DDR diagnostic), one
+    after the other over one enumeration of the player."""
+    check(all(r.get('spl_skipped') is True and r.get('spl_execution_attempted') is False for r in (boot,probe))
+          and boot.get('connection')==probe.get('connection') and isinstance(boot.get('connection'),dict)
+          and moment(boot['started_at'])<moment(boot['finished_at'])<=moment(probe['started_at'])<moment(probe['finished_at']),
+          'The boot evidence and the identity probe are not of one USB Boot entry')
+
+
+def assemble_known(base,cpu,reader,transport,layout,inputs,captures,plans,libusb,known):
+    """The installation without a history (plan, stage 6): its evidence read in the entry of the
+    write. The boot evidence (the bootloader selects the primary rootfs) and the identity probe (the
+    first rootfs blocks: an image known by their digest, stock or one of ours, so the player runs the
+    reviewed FiiO version) are this player's, each audited; the write's ABI is the one a player ran
+    (known['exercised']), in place of a staging capture of this player. plans: the boot evidence's and
+    the probe's plans computed now from the reviewed builds, which the sessions must have carried out."""
+    results={};pins={}
+    for kind in ('boot','probe'):
+        results[kind],pins[kind]=evidence(captures[kind],kind)
+        check(results[kind]['plan']==plans[kind],f'The {kind} session did not carry out the reviewed plan')
+    library=file_pin(libusb,16*1024*1024)
+    check(all(p['dependency_sha256']==library['sha256'] for p in pins.values()),'Unreviewed USB dependency')
+    same_entry(results['boot'],results['probe'])
+    current=inputs['candidate'];metadata=current['metadata'];meta_hash=ram.sha(metadata);policy=current['page_policy']
+    for result in results.values():
+        p=result['plan']
+        check(p['firmware_profile_sha256']==fingerprint(base) and p['reader_profile_sha256']==fingerprint(reader)
+              and p['probe_profile_sha256']==fingerprint(cpu) and p['transport_profile_sha256']==fingerprint(transport)
+              and p['metadata_sha256']==meta_hash,'Evidence firmware/reader/metadata mismatch')
+    bp=boot_evidence.load_policy(base,reader);profile=boot_review.load_bootloader(base,bp)
+    boot=boot_review.assess(captures['boot']/'records.bin',bytes.fromhex(results['boot']['nonce_hex']),base,reader,bp,profile)
+    check(boot['selected_route']=='primary' and boot['selected_rootfs']==policy['kernel']['metadata']['target']
+          and boot['metadata_sha256']==meta_hash,'Unqualified installation boot target')
+    probe=results['probe']
+    first=readback.first_blocks(captures['probe']/'records.bin',base,reader,policy,metadata,
+                                bytes.fromhex(probe['nonce_hex']),probe['plan']['logical_blocks'])
+    check(first['image_sha256']==probe['logical_image_sha256'] and first['capture_sha256']==probe['capture_sha256']
+          and first['image_bytes']==known['first_blocks_bytes'],'The probe\'s first blocks differ from its records')
+    kind,found=known_images.match_digest(known,first['image_sha256'])
+    check(kind is not None,'The player holds a rootfs this installer does not know (another FiiO version or a '
+          'changed image): nothing is written; FiiO\'s own update (Local upgrade) returns it to stock')
+    images={k:dict(name=v['image_name'],bytes=len(v['image']),sha256=ram.sha(v['image'])) for k,v in inputs.items()}
+    check(images['restore']['sha256']==known['stock']['sha256'] and images['restore']['bytes']==known['stock']['bytes'],
+          'The way back is not the reviewed stock image')
+    from deployment.writer_transport import validate_layout
+    regions=validate_layout(base,reader,transport,policy,layout);exercised=known['exercised']
+    for key,value in dict(writer_sha256=ram.sha(current['writer']),spl_sha256=ram.sha(current['spl']),
+                          metadata_payload_sha256=ram.sha(current['payload']),
+                          staging_payload_sha256=ram.sha(current['staging_payload']),
+                          firmware_profile_sha256=fingerprint(base),cpu_profile_sha256=fingerprint(cpu),
+                          reader_profile_sha256=fingerprint(reader),transport_profile_sha256=fingerprint(transport),
+                          page_policy_sha256=fingerprint(policy),completion_profile_sha256=fingerprint(current['completion']),
+                          installer_contract_sha256=fingerprint(layout_contract(layout)),image_bytes=len(current['image']),
+                          ram_regions=[dict(name=n,address=a,bytes=s) for n,a,s in regions],
+                          writer_entry=reader['load_address']+layout['writer_entry_offset']).items():
+        check(exercised.get(key)==value,'No player has run this write\'s '+key)
+    check(context(base,cpu,reader,transport,layout,current)==
+          context(base,cpu,reader,transport,layout,inputs['restore']),'Candidate/restore contexts differ')
+    found=dict(kind=kind,**{k:found[k] for k in ('name','bytes','sha256','first_blocks_sha256','release') if k in found})
+    source_state=dict(kind='known-image',found=found,first_blocks_sha256=first['image_sha256'],
+                      first_blocks=dict(bytes=first['image_bytes'],bad_blocks=first['bad_blocks'],
+                                        logical_to_physical=first['logical_to_physical']),
+                      known_images_sha256=fingerprint(known),same_entry_required=True,new_image_staged=False,
+                      freshness_verified=False)
+    return dict(schema_version=1,status='installation-inputs-reviewed',
+        context=context(base,cpu,reader,transport,layout,current),images=images,source_pins=source_pins(),
+        libusb_sha256=library['sha256'],evidence=pins,boot=boot,source_state=source_state,exercised=exercised,
+        postwrite_collection=current['readback_plan'],
+        exact_readback={k:readback.make_plan(base,reader,policy,metadata,v['sha256']) for k,v in images.items()},
+        scope='one write in the USB Boot entry of its evidence, checked at its first start; a way back to stock',
+        freshness_verified=False,physical_device_accessed=False,flash_ready=False)
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--version')
-    for n in ('diskos','artifacts','build','staging-build','readback-build','boot-capture','stock-capture','libusb','output'):
+    for n in ('diskos','artifacts','build','staging-build','readback-build','boot-capture','libusb','output'):
         p.add_argument('--'+n,type=Path,required=True)
-    p.add_argument('--stage-capture',type=Path)
+    p.add_argument('--stock-capture',type=Path);p.add_argument('--stage-capture',type=Path)
     for n in ('previous-review','previous-image','write-capture','readback-capture'):
+        p.add_argument('--'+n,type=Path)
+    p.add_argument('--known',action='store_true',help='No history (plan, stage 6): the boot evidence and the identity '
+                   'probe of this USB Boot entry, the image known by its first blocks')
+    for n in ('probe-capture','boot-build','probe-build'):
         p.add_argument('--'+n,type=Path)
     a=p.parse_args()
     installed=(a.previous_review,a.previous_image,a.write_capture,a.readback_capture)
-    if any(installed):
+    fresh=(a.probe_capture,a.boot_build,a.probe_build)
+    if a.known:
+        if not all(fresh) or any(installed) or a.stage_capture or a.stock_capture:
+            p.error('known-image review takes the probe capture and both builds, and no history, stock or stage capture')
+    elif any(fresh) or not a.stock_capture:
+        p.error('a review with a history takes the stock capture, and no probe capture or its builds')
+    elif any(installed):
         if not all(installed) or a.stage_capture:
             p.error('installed-candidate review requires all four history inputs and no stage capture')
     elif not a.stage_capture:
@@ -208,10 +312,27 @@ def main():
         inputs={k:writer.prepare(base,cpu,reader,transport,a.build,a.diskos,a.artifacts,k,metadata,a.staging_build)
                 for k in ('candidate','restore')}
         for value in inputs.values():value['readback_plan']=rp
-        bundle=assemble(base,cpu,reader,transport,layout,inputs,a.artifacts/inputs['restore']['image_name'],
-                        dict(boot=a.boot_capture,stock=a.stock_capture,stage=a.stage_capture),a.libusb,
-                        installed if all(installed) else None)
+        if a.known:
+            bp=boot_evidence.load_policy(base,reader)
+            bi=boot_evidence.prepare(base,cpu,reader,transport,bp,a.diskos,a.boot_build,metadata)
+            bi['completion']=ram.load_completion(base,transport)
+            pi=ram.prepare_inputs(base,cpu,reader,transport,a.probe_build,a.diskos,'rootfs-probe')
+            pi['completion']=ram.load_completion(base,transport)
+            plans=dict(boot=boot_evidence.make_plan(base,cpu,reader,transport,bp,bi),
+                       probe=collect_rootfs.make_plan(base,cpu,reader,transport,pi,metadata))
+            bundle=assemble_known(base,cpu,reader,transport,layout,inputs,dict(boot=a.boot_capture,probe=a.probe_capture),
+                                  plans,a.libusb,known_images.load(base['version']))
+        else:
+            bundle=assemble(base,cpu,reader,transport,layout,inputs,a.artifacts/inputs['restore']['image_name'],
+                            dict(boot=a.boot_capture,stock=a.stock_capture,stage=a.stage_capture),a.libusb,
+                            installed if all(installed) else None)
         a.output.mkdir(parents=True,exist_ok=False);ram.save_json(a.output/'installation-review.json',bundle)
+        if a.known:
+            # What the player holds and what this package may write, for the installer to say.
+            state=bundle['source_state']
+            ram.save_json(a.output/'decision.json',dict(status='known-image',found=state['found'],
+                first_blocks_sha256=state['first_blocks_sha256'],selected_rootfs=bundle['boot']['selected_rootfs'],
+                targets=sorted(bundle['images']),same_entry_required=True,physical_device_accessed=False))
         # These are review proposals, not a mutation of the tracked admission profile.
         proposed=dict(layout,physical_write_admitted=True,installation_review_sha256=fingerprint(bundle))
         ram.save_json(a.output/'proposed-installer-profile.json',proposed)
@@ -223,7 +344,8 @@ def main():
             ram.save_json(a.output/(target+'-exact-readback-plan.json'),dict(plan=plan,plan_sha256=fingerprint(plan)))
         ram.save_json(a.output/'postwrite-collection-plan.json',dict(plan=rp,plan_sha256=fingerprint(rp)))
         print(json.dumps(dict(status='offline-installation-package-prepared',bundle_sha256=fingerprint(bundle),
-                              output=str(a.output),physical_device_accessed=False,flash_ready=False),indent=2))
+                              source_state=bundle['source_state']['kind'],output=str(a.output),
+                              physical_device_accessed=False,flash_ready=False),indent=2))
     except (Exception,KeyboardInterrupt) as e:print(f'Installation review refused: {e}',file=sys.stderr);return 1
     return 0
 

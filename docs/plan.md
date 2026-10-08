@@ -1303,12 +1303,18 @@ layer and the emulator's checkout to build the image.
     2026-10-08): the probe session reconstructed the same way, its report
     giving the first blocks' digest; the records and calls the two audits
     rebuild shared in `usb_trace_audit.py`. `test_audit_usb_probe`.
-  - [ ] A review of its own (`source_state` `known-image`): in one entry the
-    metadata page (the entry's only SPL), the boot evidence with it, the
-    identity probe, then the review offline in seconds; the write plan bound
-    by its digests and an admission computed for the run, never written to
-    `firmware/installers`.
-  - [ ] The write refused unless it runs in the same entry (its SPL skipped).
+  - [x] A review of its own (`source_state` `known-image`,
+    `installation_review.py --known`, 2026-10-08): in one entry the metadata
+    page (the entry's only SPL), the boot evidence with it, the identity
+    probe, then the review offline in seconds: both sessions audited and
+    carrying out the plans computed from the reviewed builds, of one entry,
+    the first blocks recomputed from the probe's records and known, the way
+    back stock, the write's ABI the one the sixth write ran
+    (`firmware/images` `exercised`); an admission computed for the run in the
+    package, never written to `firmware/installers`
+    ([installation review](installation-review.md)). `test_known_review`.
+  - [ ] The write refused unless it runs in the same entry (its SPL skipped),
+    with the admission the package computed for the run.
   - [ ] The installer's user path (no `--history`), and `--restore` without
     a history.
   - [ ] On the owner's player after FiiO's Local upgrade back to stock (the

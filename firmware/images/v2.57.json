@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "version": "2.57",
-  "description": "The rootfs images a player may hold, known by their digests (plan, stage 6: the user's installation without a history). The identity probe reads the rootfs's first blocks (first_blocks_bytes, the collectors profile's probe_blocks) and compares their SHA-256 with first_blocks_sha256. Stock is the official rootfs padded to the writer's size; every boot release from 2.57.5 records its own image (releases/<v>.json, image), built reproducibly from FiiO's update and the release; the images before it are listed here. Digests only: no firmware is kept in this repository.",
+  "description": "The rootfs images a player may hold, known by their digests (plan, stage 6: the user's installation without a history). The identity probe reads the rootfs's first blocks (first_blocks_bytes, the collectors profile's probe_blocks) and compares their SHA-256 with first_blocks_sha256. Stock is the official rootfs padded to the writer's size; every boot release from 2.57.5 records its own image (releases/<v>.json, image), built reproducibly from FiiO's update and the release; the images before it are listed here. The write's ABI a player has run (exercised) stands in for a staging capture of the user's own player. Digests only: no firmware is kept in this repository.",
   "first_blocks_bytes": 262144,
   "stock": {
     "name": "stock-v257-restore-review-only.bin",
@@ -27,5 +27,58 @@
       "first_blocks_sha256": "837ed890b724bb04b21c143dfc92ae3f4a0cc5dd57515768e7e7992d2d3df49a",
       "note": "Boot release 2.57.3 as the fifth write put it on the owner's player (2026-10-07), built before the image was reproducible"
     }
-  ]
+  ],
+  "exercised": {
+    "note": "The write's ABI as the sixth write ran it on the owner's player (2026-10-08, boot release 2.57.4, session 83125c2d, in one USB Boot entry after the identity check): what an installation without a history uses unchanged, in place of a staging capture of its own player. Record it again after a developer's write has run a changed writer, SPL, payload, profile or RAM layout on a player.",
+    "writer_sha256": "4f23a3c99bdba4ac9e674efe73340d73014e4d99bcfd481082b06482b87c4442",
+    "spl_sha256": "907f4c924d5d5a733e532cd07efec58f24baa566f104ab058f59686808579fb9",
+    "metadata_payload_sha256": "086ceed72594fc2d21129808f2002b1e0dd8de959522e3470e334345732ea63e",
+    "staging_payload_sha256": "fa316d7f4b4a3de7341c9f8db041fb0fe0b2447674144057460afb51a5435cc3",
+    "firmware_profile_sha256": "9c24f384013ebd611f5527079196d8a8923453019efe354c137552774b847151",
+    "cpu_profile_sha256": "c36a6a5d4d479e879c9c6cb69dbd16cf9f767424fad314333e5ee5e6b2ab128f",
+    "reader_profile_sha256": "9772e4c738353b8c8a51b8ad10e803ab276cf692b4c40a6030ccde8c3cb51839",
+    "transport_profile_sha256": "9aac8148f9d03898e74a9dcd62e16e6ee6b6f1a8b3711602b2329abc1251eb58",
+    "page_policy_sha256": "f9342f7f8f685ef369c3e4f2cf1db344a6eb2bff9d62e7126335c066e08b9b6a",
+    "completion_profile_sha256": "93c4b93f4ed7255144d0714cd0c1091118cbd2b2d8460bd727cb539205e02500",
+    "image_bytes": 100663296,
+    "writer_entry": 2696937520,
+    "ram_regions": [
+      {
+        "name": "code",
+        "address": 2696937472,
+        "bytes": 32768
+      },
+      {
+        "name": "stack",
+        "address": 2696970240,
+        "bytes": 32768
+      },
+      {
+        "name": "request",
+        "address": 2694856704,
+        "bytes": 48
+      },
+      {
+        "name": "result",
+        "address": 2694848512,
+        "bytes": 4428
+      },
+      {
+        "name": "writer-stack",
+        "address": 2696904704,
+        "bytes": 32752
+      },
+      {
+        "name": "writer-debug",
+        "address": 2694840320,
+        "bytes": 1024
+      },
+      {
+        "name": "image",
+        "address": 2701131776,
+        "bytes": 100663296
+      }
+    ],
+    "installer_contract_sha256": "254adf51331ec062b0011e9a5b1d205e2c1c663dd50f33cbc5286d535ee4c5b9"
+  }
 }
