@@ -323,3 +323,27 @@ start: six quick restarts in search of the menu reached five and the player star
 the release of the recovery's Play, reported by stock's key driver when the key is let go
 (`0x10d`, `0xfa`), answered the new menu's default. A start with Play and three minutes of
 running brought the menu back. The fixes are on branch `next-image` (plan, stage 4c).
+
+## The sixth write (boot release 2.57.4, one entry)
+
+The owner wrote boot release 2.57.4 on 2026-10-08 (build `b41966605383`, image `615d16c7…`, the
+guest acceptance of PR #19): the first installation in one USB Boot entry. The run
+(`install-20261008-195751`) chose only the menu, 2.57.4; the card kept Disc Player 1.0.0, which
+the owner had installed through the manager that day.
+
+| Step (2026-10-08, UTC) | Observed |
+| --- | --- |
+| Identity check (`CHECK`) | `d081a4c0`, 15:01:01–15:01:09: 2 rootfs blocks, 3 batches (median 958 ms), the entry's SPL run once; the blocks are the history's image (`69d82c9d…`) |
+| Write, the same entry | `83125c2d`, 15:01:48–15:11:30 (9 min 43 s): the SPL not run again (the clean DDR diagnostic `d1a6c0de 9 0 0 0`), the image region's check 110.7 s, the sample's hash 4.21 s, the writer 245.7 s; 768 blocks, no retry |
+| The owner's look | "it is ok"; the start with Play installed the menu 2.57.4 (Play's timing still awkward, owner) |
+| The first start's check | the boot layer hashed `/dev/mtdblock_bbt_ro2`, 100,663,296 bytes, in 18.2 s: the written image; fetched over the USB console at 15:15:55, so no readback |
+| The player over the console | boot `b41966605383` started for the installation (`recovery`, Play read); disc-menu 2.57.4 confirmed in slot `b` (2.57.3 kept in `a`); disc-server 2.57.4 confirmed |
+
+About 15 minutes on the player from the check to the first start's proof, against 58 for the
+fifth write. Leaving USB Boot, the player restarts into the written system by itself (the menu
+shows); a start with Play is possible only after it, switched off and on again (the owner). The
+installer's last screen still showed the first boot's instructions (hold Play) after the first
+start had been checked; both are in its words now. The next review on the new history first failed
+in the write plan's binding, which knew only a readback as the previous write's proof; it takes
+the first start's check now (`test_installation_review`).
+

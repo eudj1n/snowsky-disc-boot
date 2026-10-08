@@ -1049,9 +1049,11 @@ a write with all of it. Each item with its host tests and the guest.
   readback about 25 minutes each, the write about 9. `test_collect_rootfs`,
   `test_boot_evidence`, `test_writer_transport` (fake ROMs that keep an
   abandoned request and break the next one), `test_usb_trace_audit`.
-- [ ] The next write confirms the asks on the player (its backup is the
+- [x] The next write confirms the asks on the player (its backup is the
   first session that runs them), the region's check and the sample's hash
-  with their times, and the writer's time, with the rest of the above.
+  with their times, and the writer's time, with the rest of the above. The
+  fifth write ran the asks (2026-10-07); the sixth ran them in one entry
+  (2026-10-08, below).
 - [ ] Which pins guard the write and which only add friction (owner,
   2026-10-07: "ой как сложно у нас всё"): after the write, a review of what
   each piece of evidence pins, keeping what proves the right image goes to
@@ -1126,7 +1128,8 @@ a write with all of it. Each item with its host tests and the guest.
     first start's check (above), fetched over the USB console, and a
     readback in a fresh entry only when it is missing or differs.
     With a history done (2026-10-08): `CHECK` then `WRITE` in one entry, then
-    the first start's check. Without one: stage 6.
+    the first start's check; on the owner's player the same day (the sixth
+    write, below). Without one: stage 6.
   - [ ] The review's two ways: with a history, the identity check against
     the history's image and, for the previous write, its readback or its
     first start's check (the expected image, a match, the primary root
@@ -1172,6 +1175,32 @@ a write with all of it. Each item with its host tests and the guest.
   - The write's progress stood still while a held ask waited (the region's
     check about 2 minutes) and counted the writer as 15 minutes: a held ask
     counts by its expected time (the measured 111 s, 4 s and 246 s).
+
+- [x] The sixth write (2026-10-08, run `install-20261008-195751`, image
+  `615d16c7…`, boot release 2.57.4), the first in one entry: the identity
+  check in 8.5 s (2 blocks, the history's image), the write in the same
+  entry in 9 min 43 s without a second SPL (the region's check 110.7 s, the
+  sample's hash 4.21 s, the writer 245.7 s; 768 blocks, no retry), the
+  owner's "it is ok", the first start's check over the USB console (the
+  written image on `/dev/mtdblock_bbt_ro2`, 18.2 s), no readback: about 15
+  minutes on the player against 58 (`first-write-observation.md`, "The
+  sixth write"). The menu 2.57.4 and the server 2.57.4 confirmed. The
+  installer pinned its review (`972ab515…`); `work/player-history.json`
+  now names this run.
+- [x] Found after it: the next review on the new history failed in the write
+  plan's binding (`validate_binding`), which took only a readback as the
+  previous write's proof; it takes the first start's check of the written
+  image now (`test_installation_review`), and the review passes offline on
+  the owner's new history.
+- [x] The installer's last screen says the installation is done and where its
+  report is, instead of the first boot's instructions (hold Play), once the
+  first start's check was fetched. Its words after the write follow how the
+  player leaves USB Boot (owner, 2026-10-08): disconnected, it restarts into
+  the written system by itself (the menu shows), so a start with Play comes
+  only after that start, switched off and on again (`test_installer`).
+- Play's timing at power-on stays as it is (owner, 2026-10-08: still awkward
+  to press together with the power key): the menu's installation (stage 7)
+  makes it unnecessary for packages.
 
 ## Stage 6 — the user's path (owner, 2026-10-06)
 
