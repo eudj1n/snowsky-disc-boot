@@ -1515,7 +1515,7 @@ the only installer. Play at power-on stays the recovery path only.
   taking updates (`service.json` read). snowsky-disc-server reads `controller.json`, else `service.json`,
   and its manager lists the services (its plan, stage 5); its package keeps
   API 1's service role until this boot layer is released.
-- [ ] disc-health and disc-network are built here, as the menu is (owner,
+- [x] disc-health and disc-network are built here, as the menu is (owner,
   2026-10-08): native code beside `device/menu`, the same toolchain, released
   with the boot layer's numbers (`disc-health-<v>.zip`,
   `disc-network-<v>.zip`) and named in the catalog, so the installer offers
@@ -1524,7 +1524,10 @@ the only installer. Play at power-on stays the recovery path only.
   own in the boot layer's status folder, which the server shows (as it
   shows `ui.json` and `menu.json`). The installer's defaults (owner,
   2026-10-08): disc-health ticked (it only reads), disc-network offered but
-  not ticked until it has run on the owner's player.
+  not ticked until it has run on the owner's player. Done 2026-10-09: both
+  in `device/`, in every release (`release.py installer` requires the
+  catalog to name them, disc-health ticked); the catalog's entries come with
+  the next release, as the menu's do.
 - [x] disc-health (owner, 2026-10-07): a read-only, offline journal of the
   battery, temperature, uptime, crashes, card errors and free space, shown
   by the server's diagnostics. Done 2026-10-09 ([disc-health](health.md)):
@@ -1544,7 +1547,7 @@ the only installer. Play at power-on stays the recovery path only.
   after the service's start: a reading without it is taken again once it is
   there. The thermal zones of the player are not known yet: its first
   reading says. snowsky-disc-server shows the report (its plan, stage 5).
-- [ ] disc-network (owner, 2026-10-08): the player keeps several Wi-Fi
+- [x] disc-network (owner, 2026-10-08): the player keeps several Wi-Fi
   networks (home, office) and joins whichever is in range without the
   password again. Why it does not today (static analysis of V2.57's
   `mq_player`, not yet observed on a player): the stock connection
@@ -1565,6 +1568,25 @@ the only installer. Play at power-on stays the recovery path only.
   notices the reset (the stock header alone and that folder gone). The
   emulator has no Wi-Fi: checked with a stand-in `wpa_cli` on the guest,
   then on the player.
+  Built 2026-10-09 ([disc-network](network.md)) with the owner's decisions of
+  that day: the store in its own folder (`$DISC_BOOT_DATA/networks.json`,
+  0600), forgotten when Wi-Fi comes on with a file holding no network (a
+  reset); stock's networks changed only through stock's wpa_supplicant (the
+  contract's one exception); every 5 s while Wi-Fi is on, acting only when
+  wpa_supplicant's networks are those the file saves and both stayed so for
+  two looks (never in the middle of stock's sequence); added back after
+  stock's own with `priority=-1`, and enabled again after stock's selection;
+  at most 8, the least recently used dropped; names only in its report;
+  forgetting one network with the menu's services screen. `test_network` 6
+  (macOS and Linux) against `wpa_cli_stand_in.sh`; on the guest
+  (`network_guest.py`, the MIPS build, the stand-in in `wpa_cli`'s place
+  after the emulator's own guard): Home kept, Office then Home added back
+  below it, the store 0600 and no key in the report, confirmed, and the next
+  start joining Home. snowsky-disc-server lists the networks (its plan,
+  stage 5).
+- [ ] disc-network on the owner's player: two networks joined in turn
+  through stock's screen, then the player joining either by itself; then
+  the installer ticks it.
 
 - [ ] Remove everything ours (owner, 2026-10-08: before the player is sold,
   and for a clean test): in the menu, the boot layer's packages and their

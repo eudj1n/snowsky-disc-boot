@@ -755,7 +755,9 @@ package keeps the environment stock's `fiio_init.sh` gives its UI, with these
 added and its `lib/` first in `LD_LIBRARY_PATH`.
 
 A package must not write MTD devices, change FiiO's files in `/usr/data`
-(`fiio/`, `sn.txt` and the rest), signal stock processes, take stock's ports
+(`fiio/`, `sn.txt` and the rest; disc-network changes stock's Wi-Fi networks
+through stock's own wpa_supplicant, never its file: the owner's decision of
+2026-10-09, [disc-network](network.md)), signal stock processes, take stock's ports
 or create a USB gadget while the console owns the controller. Boot cannot
 enforce this: packages run as root, at the installer's risk.
 

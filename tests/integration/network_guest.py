@@ -4,8 +4,9 @@
     python3 scripts/guest.py run -- python3 -B /boot/tests/integration/network_guest.py \\
         --package /boot/work/<run>/disc-network-<version>.zip --output /work/network-guest.json
 
-The emulator has no Wi-Fi: stock's wpa_cli is replaced in the guest's tree by the stand-in
-(tests/integration/wpa_cli_stand_in.sh, BusyBox's shell runs it) for the run and put back after. The
+The emulator has no Wi-Fi: at each power-on it puts a guard of its own in wpa_cli's place (the
+original kept in /emu/original-commands); after it, the run puts the stand-in there
+(tests/integration/wpa_cli_stand_in.sh, BusyBox's shell runs it), and the emulator's guard back at the end. The
 release's package is staged as the installer stages it and installed with Play; the MIPS build then
 runs the stand-in as it would run stock's wpa_cli: stock's connection to Home, then to Office (Home
 added back after it, below it), a new start with Office out of range joining Home, and its
@@ -24,6 +25,14 @@ import boot_guest as bg  # noqa: E402
 RUN = '/run/disc-boot/service/disc-network'
 CLI = bg.ROOTFS/'usr/sbin/wpa_cli'
 STAND_IN = Path(__file__).resolve().parent/'wpa_cli_stand_in.sh'
+
+
+def stand_in(guard):
+    """The stand-in in wpa_cli's place, after the emulator's guard (kept to be put back)."""
+    if not guard.exists():
+        shutil.copy2(CLI, guard)
+    shutil.copyfile(STAND_IN, CLI)
+    CLI.chmod(0o755)
 
 
 def status():
@@ -55,19 +64,17 @@ def saved():
     return blocks
 
 
-def run(archive, output, stock):
+def run(archive, output, guard):
     bg.evidence.clear()
     bg.evidence.update(profile=bg.PROFILE, steps=[])
     folder = bg.package.unpack(archive, Path(tempfile.mkdtemp())/'disc-network')
     manifest = bg.package.check(folder, 'service', bg.PROFILE)
     assert (manifest['bootApi'], manifest['memory']) == (2, 32), manifest
     bg.power('off')
-    shutil.copy2(CLI, stock)
-    shutil.copyfile(STAND_IN, CLI)
-    CLI.chmod(0o755)
     with bg.card() as root:
         staged = bg.package.stage(folder, root, profile=bg.PROFILE)
     bg.power('on', hold='play')
+    stand_in(guard)
     ready = bg.wait(status, lambda s: s['state'] in ('ready', 'confirmed'), 'disc-network ready', 300)
     off = report(lambda r: r['wifi'] == 'off', 'Wi-Fi off')
     bg.step('installed with play, Wi-Fi off', staged=staged, status=ready, report=off)
@@ -89,6 +96,7 @@ def run(archive, output, stock):
     # A new start: wpa_supplicant loads both from the file; Office out of range, Home in it.
     bg.power('off')
     bg.power('on')
+    stand_in(guard)
     wpa('_up')
     wpa('_scan', '1')
     joined = report(lambda r: r['connected'] == 'Home' and len(r['networks']) == 2, 'Home joined at the next start')
@@ -104,9 +112,9 @@ if __name__ == '__main__':
     parser.add_argument('--package', type=Path, required=True)
     parser.add_argument('--output', required=True)
     args = parser.parse_args()
-    stock = Path(tempfile.mkdtemp())/'wpa_cli'
+    guard = Path(tempfile.mkdtemp())/'wpa_cli'
     try:
-        run(args.package, args.output, stock)
+        run(args.package, args.output, guard)
     except BaseException as error:
         bg.evidence['status'] = f'failed: {error}'
         bg.evidence['network'] = status()
@@ -115,8 +123,8 @@ if __name__ == '__main__':
         Path(args.output).write_text(json.dumps(bg.evidence, indent=2, default=str) + '\n')
         raise
     finally:
-        # Stock's wpa_cli back in the guest's tree, with the guest off.
-        if stock.exists():
+        # The emulator's guard back in wpa_cli's place, with the guest off.
+        if guard.exists():
             if bg.machine().get('state') not in ('off', None):
                 bg.power('off')
-            shutil.copy2(stock, CLI)
+            shutil.copy2(guard, CLI)
