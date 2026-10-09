@@ -6,6 +6,14 @@ layer for FiiO's 2.57. Each published release is a `v<version>` tag with its
 files on the [releases page](https://github.com/eudj1n/snowsky-disc-boot/releases).
 Entries stay short; how and why it was done is in the [plan](docs/dev/plan.md).
 
+## [2.57.6] — unreleased
+
+- After writing the player, the installer restarts it into the new system
+  itself: the cable stays connected, and you only answer whether it started
+  normally.
+- The boot menu lists FiiO's own interface first, then the interfaces you
+  installed.
+
 ## [2.57.5] — 2026-10-09
 
 ### One archive to install from

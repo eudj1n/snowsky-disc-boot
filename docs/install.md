@@ -44,10 +44,12 @@ back](way-back.md) returns the player to stock.
    a player it does not know.
 5. Type `WRITE`. The new system is written in about 10 minutes; keep the
    cable connected.
-6. Disconnect the cable: the player leaves USB Boot and starts the new system
-   by itself. Answer whether it started normally, then connect the cable again
-   while it runs: the new system has checked itself (every byte written, by
-   its SHA-256), and the installer reads that.
+6. The installer restarts the player into the new system itself; keep the
+   cable connected. Answer whether it started normally: the new system has
+   checked itself (every byte written, by its SHA-256), and the installer
+   reads that over the cable. (Should the restart not come, the installer
+   asks you to disconnect the cable and connect it again while the new system
+   runs.)
 7. To install the packages from the card, switch the player off, then switch
    it on holding **Play** (let Play go once the logo shows). The menu shows
    the installation, then the player starts as usual.
