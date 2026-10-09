@@ -98,6 +98,14 @@ folder (`DISC_BOOT_FIXTURE_ROOT`, the kernel's ring as `fixture/kmsg`, `DISC_HEA
 checked by `tests/conformance/test_health.py`. A release builds its package
 (`disc-health-<version>.zip`, `release.py build`), which the catalog offers by default.
 
+## Several Wi-Fi networks
+
+`scripts/build.sh host` and `mips` build `disc-network` (a service of boot API 2;
+[disc-network](network.md)); the host build also makes `disc-network-fixture`, run by
+`tests/conformance/test_network.py` against a stand-in of stock's `wpa_cli`
+(`tests/integration/wpa_cli_stand_in.sh`). A release builds its package (`disc-network-<version>.zip`),
+which the catalog names unticked.
+
 ## The boot menu
 
 `scripts/build.sh host` and `mips` build `disc-menu` beside `disc-boot` (soft-float, no FPU

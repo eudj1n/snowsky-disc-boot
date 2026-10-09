@@ -17,8 +17,11 @@ MENU_HEADERS = menu/draw.h menu/font.h common/boot_util.h common/sha256.h vendor
 # The health journal (disc-health), a service of its own built beside the boot program.
 HEALTH_SOURCES = health/health.c common/boot_util.c common/sha256.c
 HEALTH_HEADERS = common/boot_util.h common/sha256.h vendor/jsmn/jsmn.h
+# Several Wi-Fi networks (disc-network), a service of its own built beside the boot program.
+NETWORK_SOURCES = network/network.c common/boot_util.c common/sha256.c
+NETWORK_HEADERS = common/boot_util.h common/sha256.h vendor/jsmn/jsmn.h
 .PHONY: all test
-all: $(OUT)/disc-usb-console $(OUT)/disc-boot $(OUT)/disc-menu $(OUT)/disc-health
+all: $(OUT)/disc-usb-console $(OUT)/disc-boot $(OUT)/disc-menu $(OUT)/disc-health $(OUT)/disc-network
 $(OUT):
 	mkdir -p $@
 $(OUT)/disc-usb-console: console/usb_console.c | $(OUT)
@@ -35,6 +38,10 @@ $(OUT)/disc-health: $(HEALTH_SOURCES) $(HEALTH_HEADERS) | $(OUT)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(HEALTH_SOURCES) $(LDFLAGS) -o $@
 $(OUT)/disc-health-fixture: $(HEALTH_SOURCES) $(HEALTH_HEADERS) | $(OUT)
 	$(CC) $(CPPFLAGS) -DDISC_HEALTH_FIXTURE $(CFLAGS) $(HEALTH_SOURCES) $(LDFLAGS) -o $@
+$(OUT)/disc-network: $(NETWORK_SOURCES) $(NETWORK_HEADERS) | $(OUT)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(NETWORK_SOURCES) $(LDFLAGS) -o $@
+$(OUT)/disc-network-fixture: $(NETWORK_SOURCES) $(NETWORK_HEADERS) | $(OUT)
+	$(CC) $(CPPFLAGS) -DDISC_NETWORK_FIXTURE $(CFLAGS) $(NETWORK_SOURCES) $(LDFLAGS) -o $@
 $(OUT)/sha256-test: tests/sha256_test.c common/sha256.c common/sha256.h | $(OUT)
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/sha256_test.c common/sha256.c $(LDFLAGS) -o $@
 $(OUT)/usb-console-fixture: console/usb_console.c | $(OUT)
@@ -45,7 +52,7 @@ $(OUT)/sfc-identity-test: tests/sfc_identity_test.c usbboot/sfc_x2000.c usbboot/
 	$(CC) $(CFLAGS) -Iusbboot -Icommon tests/sfc_identity_test.c usbboot/sfc_x2000.c usbboot/nand_reader.c usbboot/identity.c usbboot/batch.c usbboot/digest.c common/sha256.c $(LDFLAGS) -o $@
 $(OUT)/restart-test: tests/restart_test.c usbboot/restart.c usbboot/restart.h | $(OUT)
 	$(CC) $(CFLAGS) -Iusbboot tests/restart_test.c usbboot/restart.c $(LDFLAGS) -o $@
-test: $(OUT)/usb-console-fixture $(OUT)/disc-boot-fixture $(OUT)/disc-menu-fixture $(OUT)/disc-health-fixture $(OUT)/sha256-test $(OUT)/nand-reader-test $(OUT)/sfc-identity-test $(OUT)/restart-test
+test: $(OUT)/usb-console-fixture $(OUT)/disc-boot-fixture $(OUT)/disc-menu-fixture $(OUT)/disc-health-fixture $(OUT)/disc-network-fixture $(OUT)/sha256-test $(OUT)/nand-reader-test $(OUT)/sfc-identity-test $(OUT)/restart-test
 	$(OUT)/sha256-test
 	$(OUT)/nand-reader-test
 	$(OUT)/sfc-identity-test

@@ -31,6 +31,7 @@ and installing packages from the card._
 | **The boot menu** | With more than one interface installed, the player asks at power-on which one to start, FiiO's own among them. |
 | **[DISC server](https://github.com/eudj1n/snowsky-disc-server)** | Offered by default: the player serves [Disc Player](https://github.com/eudj1n/snowsky-disc-player) and other web apps over its Wi-Fi. |
 | **Health journal** | Offered by default: disc-health notes the battery, temperatures, free space, card errors and crashes every 10 minutes, offline, for the server's diagnostics. |
+| **Several Wi-Fi networks** | Offered, not ticked yet: disc-network keeps the networks the player joined and gives them back to it, so it joins whichever is in range without the password again. |
 | **Safe starts** | A package that fails at its start gives way to the previous one by itself; three failed starts in a row bring FiiO's interface back. |
 | **A way back, always** | FiiO's own update, or the installer through USB Boot, returns the player to stock. |
 

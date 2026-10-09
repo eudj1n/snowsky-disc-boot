@@ -18,6 +18,9 @@ Entries stay short; how and why it was done is in the [plan](docs/dev/plan.md).
   minutes it notes the battery, the temperatures, the free space, card errors
   and crashes, keeps a few days of them on the player and reports the latest
   for the server's diagnostics. It works offline and changes nothing.
+- disc-network, offered but not ticked: the player remembers up to 8 Wi-Fi
+  networks and joins whichever is in range without asking the password again.
+  The passwords stay on the player; a reset of the player clears them too.
 
 ## [2.57.6] — 2026-10-09
 

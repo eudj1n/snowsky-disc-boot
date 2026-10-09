@@ -6,7 +6,7 @@ mode="${1:-host}"
 # ("+changes" when those files differ): commits elsewhere (documentation, scripts, tests, the
 # toolchain's pinned recipe) leave their bytes as they were, so a release built later from the
 # same sources is the build the guest accepted.
-sources=(device/boot device/console device/common device/menu device/health device/vendor device/Makefile)
+sources=(device/boot device/console device/common device/menu device/health device/network device/vendor device/Makefile)
 build_id="$( (git log -1 --format=%H -- "${sources[@]}" 2>/dev/null || true) | cut -c1-12)"
 build_id="${build_id:-unknown}"
 git diff --quiet HEAD -- "${sources[@]}" 2>/dev/null || build_id="$build_id+changes"
@@ -19,7 +19,7 @@ case "$mode" in
     # refuse any toolchain whose executables are not soft-float.
     docker run --rm --platform linux/amd64 --network none -e DISC_BUILD="$build_id" \
       -v "$PWD:/src" -w /src/device "${DISC_TOOLCHAIN_IMAGE:-disc-native-toolchain}" \
-      sh -c 'make OUT=../build/mips CC="${CROSS}gcc" LDFLAGS=-static DISC_BUILD="$DISC_BUILD" all && for exe in disc-usb-console disc-boot disc-menu disc-health; do "${CROSS}readelf" -A ../build/mips/$exe | grep -q "FP ABI: Soft float" || { echo "$exe is not soft-float" >&2; exit 1; }; if "${CROSS}objdump" -d ../build/mips/$exe | grep -qE "\s(bc1[ft]|mtc1|mfc1|lwc1|swc1|ldc1|sdc1)\s"; then echo "$exe contains FPU instructions" >&2; exit 1; fi; done'
+      sh -c 'make OUT=../build/mips CC="${CROSS}gcc" LDFLAGS=-static DISC_BUILD="$DISC_BUILD" all && for exe in disc-usb-console disc-boot disc-menu disc-health disc-network; do "${CROSS}readelf" -A ../build/mips/$exe | grep -q "FP ABI: Soft float" || { echo "$exe is not soft-float" >&2; exit 1; }; if "${CROSS}objdump" -d ../build/mips/$exe | grep -qE "\s(bc1[ft]|mtc1|mfc1|lwc1|swc1|ldc1|sdc1)\s"; then echo "$exe contains FPU instructions" >&2; exit 1; fi; done'
     ;;
   reader)
     docker run --rm --platform linux/amd64 --network none \
