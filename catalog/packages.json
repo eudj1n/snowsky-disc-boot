@@ -24,7 +24,7 @@
                 "boot": "8eb15a9",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "menu_guest.py 7 of 7 (the three screens: services, packages, everything ours; kept while used beyond 60 s, a service installed over the running one started at once); boot_guest.py 16 of 16; release 2.57.7"
+                "acceptance": "menu_guest.py 7 of 7 (three screens, everything ours, kept while used beyond 60 s); boot_guest.py 16 of 16; release 2.57.7"
             }
         },
         {
