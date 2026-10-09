@@ -143,11 +143,13 @@ static void put_name(char *out, size_t cap, size_t *o, const unsigned char *s, s
     put(out, cap, o, "\"");
 }
 
-/* wpa_cli -i wlan0 <args>: its answer (at most cap - 1 bytes) within 5 s; 0 when it ran and exited 0. */
+/* wpa_cli -i wlan0 -- <args>: its answer (at most cap - 1 bytes) within 5 s; 0 when it ran and exited 0.
+   The "--" ends wpa_cli's options: glibc's getopt takes any later argument that begins with "-" for one
+   (the owner's player, 2026-10-09: "set_network 1 priority -1" answered "invalid option -- '1'"). */
 static int wpa(char *out, size_t cap, ...) {
     char cli[PATH_MAX];
-    const char *argv[12] = {"wpa_cli", "-i", "wlan0"};
-    int argc = 3;
+    const char *argv[12] = {"wpa_cli", "-i", "wlan0", "--"};
+    int argc = 4;
     va_list ap;
     va_start(ap, cap);
     for (const char *a; argc < 11 && (a = va_arg(ap, const char *)); ) argv[argc++] = a;

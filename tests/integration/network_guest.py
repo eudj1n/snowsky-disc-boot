@@ -45,7 +45,7 @@ def report(predicate, label, timeout=120):
 
 def wpa(*args):
     quoted = ' '.join("'" + a.replace("'", "'\\''") + "'" for a in args)
-    return bg.guest(f'/usr/sbin/wpa_cli -i wlan0 {quoted}')
+    return bg.guest(f'/usr/sbin/wpa_cli -i wlan0 -- {quoted}')
 
 
 def saved():

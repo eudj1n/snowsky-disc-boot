@@ -48,7 +48,8 @@ bash scripts/build.sh reader   # the NAND reader's MIPS tests and freestanding c
 pins the Debian base by digest and the musl.cc compiler by SHA-256, and `disc-boot` carries
 as its build id the last commit that changed its sources (`device/boot`, `device/console`,
 `device/common`, `device/menu`, `device/vendor`, `device/Makefile`), so the same sources give the same bytes in any later
-commit and on GitHub's runners.
+commit and on GitHub's runners. The services (`device/health`, `device/network`) are packages known by
+their digests and carry no build id: a change of theirs leaves the image as it was.
 
 The host build also makes `disc-boot-fixture` (`-DDISC_BOOT_FIXTURE`): it
 reads `DISC_BOOT_FIXTURE_ROOT` (every absolute path is taken under it, the

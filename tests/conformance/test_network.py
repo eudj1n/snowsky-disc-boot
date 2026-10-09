@@ -35,8 +35,18 @@ class NetworkTests(unittest.TestCase):
         self.addCleanup(self.stop)
 
     def wpa(self, *args):
-        return subprocess.run([str(self.root/'usr/sbin/wpa_cli'), '-i', 'wlan0', *args], capture_output=True, text=True,
+        return subprocess.run([str(self.root/'usr/sbin/wpa_cli'), '-i', 'wlan0', '--', *args], capture_output=True, text=True,
                               timeout=10).stdout
+
+    def test_the_stand_in_takes_options_as_stocks_wpa_cli_does(self):
+        """glibc's getopt in stock's wpa_cli takes an argument beginning with "-" for an option unless "--"
+        ends them (the owner's player, 2026-10-09): the stand-in answers so, and the service passes "--"."""
+        cli = [str(self.root/'usr/sbin/wpa_cli'), '-i', 'wlan0']
+        self.wpa('_up')
+        self.wpa('add_network')
+        refused = subprocess.run([*cli, 'set_network', '0', 'priority', '-1'], capture_output=True, text=True, timeout=10)
+        self.assertIn("invalid option -- '1'", refused.stdout)
+        self.assertEqual(self.wpa('set_network', '0', 'priority', '-1').strip(), 'OK')
 
     def start(self):
         self.proc = subprocess.Popen([str(NETWORK)], env=self.env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

@@ -15,6 +15,12 @@ S="$base/run/wpa-stand-in"
 conf="$base/usr/data/wpa_supplicant.conf"
 mkdir -p "$S/net"
 [ "${1:-}" = -i ] && shift 2
+# As glibc's getopt in stock's wpa_cli: without "--", an argument beginning with "-" anywhere is an option.
+if [ "${1:-}" = -- ]; then shift; else
+    for a in "$@"; do
+        case $a in -?*) echo "wpa_cli: invalid option -- '${a#-}'"; echo "wpa_cli [-p<path to ctrl sockets>] [-i<ifname>] [-hvB] ..."; exit 255;; esac
+    done
+fi
 cmd=${1:-}
 [ $# -gt 0 ] && shift
 echo "$cmd $*" >> "$S/log"

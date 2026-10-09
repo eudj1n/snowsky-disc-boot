@@ -2,11 +2,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mode="${1:-host}"
-# The boot status reports the last commit that changed what the binaries are built from
+# The boot status reports the last commit that changed what the image's programs are built from
 # ("+changes" when those files differ): commits elsewhere (documentation, scripts, tests, the
-# toolchain's pinned recipe) leave their bytes as they were, so a release built later from the
-# same sources is the build the guest accepted.
-sources=(device/boot device/console device/common device/menu device/health device/network device/vendor device/Makefile)
+# toolchain's pinned recipe, the services, which are packages known by their digests) leave the
+# image's bytes as they were, so a release built later from the same sources is the build the guest
+# accepted, and a service's fix needs no new image.
+sources=(device/boot device/console device/common device/menu device/vendor device/Makefile)
 build_id="$( (git log -1 --format=%H -- "${sources[@]}" 2>/dev/null || true) | cut -c1-12)"
 build_id="${build_id:-unknown}"
 git diff --quiet HEAD -- "${sources[@]}" 2>/dev/null || build_id="$build_id+changes"
