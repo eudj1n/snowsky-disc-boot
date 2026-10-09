@@ -12,6 +12,14 @@
   },
   "earlier": [
     {
+      "release": "2.57.7",
+      "name": "disc-boot-v257-review-only.bin",
+      "bytes": 100663296,
+      "sha256": "6d1a6780e733a92369c7bbb9fca0b07c38ac1ceb127d9b6b5246a69da19371a3",
+      "first_blocks_sha256": "eff13569a38be1c2d4ef5fe71e2b8c15ac2edd8c510ea305f3122efef4e941ae",
+      "note": "The first build of release 2.57.7 (d1ad405880ec) as the owner's player holds it since the tenth write (2026-10-09); the release itself carries build 8eb15a998d85 (the menu kept while used, a package installed over the running one started at once)"
+    },
+    {
       "release": "2.57.4",
       "name": "disc-boot-v257-review-only.bin",
       "bytes": 100663296,
