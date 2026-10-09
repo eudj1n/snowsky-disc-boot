@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -575,8 +576,11 @@ static int decide_ui(int consume_next) {
 /* What the menu offers: stock's UI first, with the firmware profile's version (owner, 2026-10-09:
    FiiO's own interface leads, the packages are additions to it), then every installed ui package
    (its title, or its name), with this boot's default. */
+/* What the menu offers besides the UIs (defined with the card's staged packages, below). */
+static size_t menu_offer(char *buf, size_t cap, size_t o);
+
 static void write_choices(const ui_choice *c) {
-    char p[PATH_MAX], buf[SMALL_FILE], version[80], title[48];
+    char p[PATH_MAX], buf[STATUS_BYTES], version[80], title[48];
     ui_entry list[MAX_UIS];
     int count = list_uis(list, MAX_UIS);
     size_t o = (size_t)snprintf(buf, sizeof(buf), "{\"schema\":1,\"default\":\"%s\",\"entries\":[{\"ui\":\"stock\",\"version\":\"%s\"}",
@@ -587,7 +591,9 @@ static void write_choices(const ui_choice *c) {
         o += (size_t)snprintf(buf + o, sizeof(buf) - o, ",{\"ui\":\"%s\",\"title\":%s,\"version\":%s,\"confirmed\":%s}",
                               list[k].name, title, version, list[k].confirmed ? "true" : "false");
     }
-    if (o < sizeof(buf)) o += (size_t)snprintf(buf + o, sizeof(buf) - o, "]}\n");
+    if (o < sizeof(buf)) o += (size_t)snprintf(buf + o, sizeof(buf) - o, "]");
+    if (o < sizeof(buf)) o = menu_offer(buf, sizeof(buf), o);
+    if (o < sizeof(buf)) o += (size_t)snprintf(buf + o, sizeof(buf) - o, "}\n");
     if (o >= sizeof(buf)) return;
     bpath(p, RUN_DIR "/ui/choices.json");
     write_atomic(p, buf, o, 0644);
@@ -1247,24 +1253,14 @@ static int staged_names(const char *root, const char *group, char names[][33], i
     return n;
 }
 
-/* Play held at power-on: the packages staged on the card (contract, "Recovery from the card"):
-   install/controller/, install/menu/, one folder per service, install/service/<name>/, and one per
-   ui package, install/ui/<name>/. install/service/ holding a package.json itself is the controller
-   as the installers up to 2.57.6 staged it. It runs before the pair (the launchers wait for it,
-   the menu shows its progress), from the card where stock mounted it or from a mount of the boot
-   layer's own, and every step reaches the boot log. */
-static void recovery(void) {
-    install_progress("waiting", 0, 0, NULL);
-    char root[PATH_MAX], result[SMALL_FILE], dir[PATH_MAX], note[260];
-    int own = 0;
-    if (card_for_install(root, sizeof(root), &own)) {
-        plog("recovery: the card is not mounted");
-        install_progress("done", 0, 0, NULL);
-        return;
-    }
-    staged_pkg list[4 + MAX_SERVICES + MAX_UIS];
-    char names[MAX_UIS > MAX_SERVICES ? MAX_UIS : MAX_SERVICES][33], folder[48], domain[DOMAIN];
-    int n = 0, legacy = 0, loose = 0, count, total = 0, done = 0;
+#define MAX_STAGED (4 + MAX_SERVICES + MAX_UIS)
+
+/* The folders staged on the card, in the order they install (contract, "Recovery from the card"):
+   install/controller/ (or install/service/ holding a package.json itself, the controller as the
+   installers up to 2.57.6 staged it), install/menu/, install/service/<name>/, install/ui/<name>/. */
+static int staged_packages(const char *root, staged_pkg *list) {
+    char names[MAX_UIS > MAX_SERVICES ? MAX_UIS : MAX_SERVICES][33], folder[48], domain[DOMAIN], dir[PATH_MAX];
+    int n = 0, legacy = 0, loose = 0, count;
     bpath(dir, "%s/.disc/boot/install/controller", root);
     int controller = is_dir(dir);
     if (controller) n = add_staged(list, n, "", "controller", "controller", "controller", NULL);
@@ -1285,6 +1281,26 @@ static void recovery(void) {
         ui_domain(domain, names[k]);
         n = add_staged(list, n, "ui", names[k], folder, domain, NULL);
     }
+    return n;
+}
+
+/* Play held at power-on: the packages staged on the card (contract, "Recovery from the card"):
+   install/controller/, install/menu/, one folder per service, install/service/<name>/, and one per
+   ui package, install/ui/<name>/. install/service/ holding a package.json itself is the controller
+   as the installers up to 2.57.6 staged it. It runs before the pair (the launchers wait for it,
+   the menu shows its progress), from the card where stock mounted it or from a mount of the boot
+   layer's own, and every step reaches the boot log. */
+static void recovery(void) {
+    install_progress("waiting", 0, 0, NULL);
+    char root[PATH_MAX], result[SMALL_FILE], dir[PATH_MAX], note[260];
+    int own = 0;
+    if (card_for_install(root, sizeof(root), &own)) {
+        plog("recovery: the card is not mounted");
+        install_progress("done", 0, 0, NULL);
+        return;
+    }
+    staged_pkg list[MAX_STAGED];
+    int n = staged_packages(root, list), total = 0, done = 0;
     for (int k = 0; k < n; k++) total += list[k].domain[0] != 0;
     plog("recovery: %d staged on the card", total);
     size_t o = (size_t)snprintf(result, sizeof(result), "{\"schema\":1,\"roles\":{");
@@ -1350,6 +1366,305 @@ static void recovery(void) {
     plog("recovery: done, %d of %d", done, total);
 }
 
+static int read_boot(void);
+
+/* A look at the card for the menu: where stock mounted it, else a read-only mount of the boot
+   layer's own for as long as the look takes (stock mounts the card only once its player runs, which
+   waits for the menu's answer; one superblock, so stock's own mount later is unaffected). */
+static int card_look(char *root, size_t cap, int *own) {
+    *own = 0;
+    if (card_mounted()) { snprintf(root, cap, "%s", card); return 0; }
+#if defined(__linux__) && !defined(DISC_BOOT_FIXTURE)
+    char dir[PATH_MAX];
+    bpath(dir, RUN_DIR "/card");
+    mkdirs(dir, 0755);
+    /* Read-only first; the recovery's flags when the device is mounted already with others (a second
+       mount shares the superblock and must take its flags: the guest's card, 2026-10-09). It only reads. */
+    static const char *const types[] = {"vfat", "exfat"};
+    static const unsigned long flags[] = {MS_RDONLY | MS_NOSUID | MS_NODEV | MS_NOEXEC, MS_NOSUID | MS_NODEV | MS_NOEXEC};
+    for (size_t f = 0; f < sizeof(flags) / sizeof(*flags); f++)
+        for (size_t k = 0; k < sizeof(types) / sizeof(*types); k++)
+            if (!mount(card_source, dir, types[k], flags[f], "iocharset=utf8")) {
+                *own = 1;
+                snprintf(root, cap, "%s", RUN_DIR "/card");
+                return 0;
+            }
+    plog("menu: the card cannot be looked at: %s", strerror(errno));
+#elif defined(DISC_BOOT_FIXTURE)
+    if (getenv("DISC_BOOT_FIXTURE_MOUNTABLE")) { *own = 1; snprintf(root, cap, "%s", card); return 0; }
+#endif
+    return -1;
+}
+
+static void card_release(int own) {
+#if defined(__linux__) && !defined(DISC_BOOT_FIXTURE)
+    char dir[PATH_MAX];
+    bpath(dir, RUN_DIR "/card");
+    if (own && umount(dir)) plog("the card's own mount stays: %s", strerror(errno));
+#else
+    (void)own;
+#endif
+}
+
+/* What boot said of a staged folder at its last installation (.disc/boot/result.json): its note when
+   it was refused, else "". */
+static void staged_refusal(const char *root, const staged_pkg *e, char *out, size_t cap) {
+    char p[PATH_MAX], buf[SMALL_FILE];
+    size_t len;
+    bjson j;
+    out[0] = 0;
+    bpath(p, "%s/.disc/boot/result.json", root);
+    if (read_small(p, buf, sizeof(buf), &len) || bjson_parse(&j, buf, len, 256)) return;
+    int at = bjson_find(&j, 0, "roles");
+    if (at >= 0 && e->group[0]) at = bjson_find(&j, at, e->group);
+    if (at >= 0) at = bjson_find(&j, at, e->key);
+    int installed = 1;
+    if (at >= 0 && !bjson_bool(&j, bjson_find(&j, at, "installed"), &installed) && !installed
+        && bjson_string(&j, bjson_find(&j, at, "note"), out, cap)) snprintf(out, cap, "refused");
+    bjson_free(&j);
+}
+
+static size_t put_offer(char *buf, size_t cap, size_t o, const char *fmt, ...) __attribute__((format(printf, 4, 5)));
+static size_t put_offer(char *buf, size_t cap, size_t o, const char *fmt, ...) {
+    if (o >= cap) return cap;
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf + o, cap - o, fmt, ap);
+    va_end(ap);
+    return n < 0 ? cap : o + (size_t)n;
+}
+
+/* The menu's screens besides the UIs (contract, "The menu's screens"): the services with their
+   autostart, the ui and service packages it may remove (removing: a removal it asked for, applied
+   at the launcher's next start for a ui package and at the next start for a service), and the
+   packages staged on the card (refused: what boot said at its last installation of that folder). */
+static size_t menu_offer(char *buf, size_t cap, size_t o) {
+    char names[MAX_SERVICES][33], dir[PATH_MAX], err[160], q1[80], q2[80], q3[80], q4[300], root[PATH_MAX];
+    manifest *m = malloc(sizeof(*m));
+    if (!m) return cap;
+    int count = list_services(names, MAX_SERVICES), first = 1;
+    o = put_offer(buf, cap, o, ",\"services\":[");
+    for (int k = 0; k < count; k++) {
+        char domain[DOMAIN];
+        role_state rs;
+        service_domain(domain, names[k]);
+        if (rstate_read(domain, &rs) || !rs.current) continue;
+        bpath(dir, DATA_DIR "/%s/%c", domain, rs.current);
+        if (manifest_load(dir, m, err, sizeof(err))) continue;
+        bpath(dir, DATA_DIR "/%s/remove", domain);
+        json_str(q1, sizeof(q1), m->title[0] ? m->title : m->name);
+        json_str(q2, sizeof(q2), m->version);
+        o = put_offer(buf, cap, o, "%s{\"name\":\"%s\",\"title\":%s,\"version\":%s,\"autostart\":%s,\"removing\":%s}", first ? "" : ",",
+                      names[k], q1, q2, rs.autostart ? "true" : "false", exists(dir) ? "true" : "false");
+        first = 0;
+    }
+    o = put_offer(buf, cap, o, "],\"packages\":[");
+    ui_entry uis[MAX_UIS];
+    int nuis = list_uis(uis, MAX_UIS);
+    first = 1;
+    for (int k = 0; k < nuis; k++) {
+        bpath(dir, DATA_DIR "/ui/%s/remove", uis[k].name);
+        json_str(q1, sizeof(q1), uis[k].title[0] ? uis[k].title : uis[k].name);
+        json_str(q2, sizeof(q2), uis[k].version);
+        o = put_offer(buf, cap, o, "%s{\"role\":\"ui\",\"name\":\"%s\",\"title\":%s,\"version\":%s,\"removing\":%s}", first ? "" : ",",
+                      uis[k].name, q1, q2, exists(dir) ? "true" : "false");
+        first = 0;
+    }
+    for (int k = 0; k < count; k++) {
+        char domain[DOMAIN];
+        role_state rs;
+        service_domain(domain, names[k]);
+        if (rstate_read(domain, &rs) || !rs.current) continue;
+        bpath(dir, DATA_DIR "/%s/%c", domain, rs.current);
+        if (manifest_load(dir, m, err, sizeof(err))) continue;
+        bpath(dir, DATA_DIR "/%s/remove", domain);
+        json_str(q1, sizeof(q1), m->title[0] ? m->title : m->name);
+        json_str(q2, sizeof(q2), m->version);
+        o = put_offer(buf, cap, o, "%s{\"role\":\"service\",\"name\":\"%s\",\"title\":%s,\"version\":%s,\"removing\":%s}", first ? "" : ",",
+                      names[k], q1, q2, exists(dir) ? "true" : "false");
+        first = 0;
+    }
+    o = put_offer(buf, cap, o, "],\"staged\":[");
+    int own = 0;
+    if (!card_look(root, sizeof(root), &own)) {
+        staged_pkg list[MAX_STAGED];
+        int n = staged_packages(root, list);
+        first = 1;
+        for (int k = 0; k < n; k++) {
+            staged_pkg *e = &list[k];
+            if (e->refusal) continue;
+            bpath(dir, "%s/.disc/boot/install/%s", root, e->folder);
+            if (manifest_load(dir, m, err, sizeof(err))) continue;
+            staged_refusal(root, e, err, sizeof(err));
+            json_str(q1, sizeof(q1), m->title[0] ? m->title : m->name);
+            json_str(q2, sizeof(q2), m->version);
+            json_str(q3, sizeof(q3), m->name);
+            if (err[0]) json_str(q4, sizeof(q4), err); else snprintf(q4, sizeof(q4), "null");
+            o = put_offer(buf, cap, o, "%s{\"folder\":\"%s\",\"role\":\"%s\",\"name\":%s,\"title\":%s,\"version\":%s,\"refused\":%s}",
+                          first ? "" : ",", e->folder, manifest_role(m), q3, q1, q2, q4);
+            first = 0;
+        }
+        card_release(own);
+    }
+    free(m);
+    return put_offer(buf, cap, o, "]");
+}
+
+/* The menu's own commands (contract, "The menu's screens"): it runs them as $DISC_BOOT_PROGRAM, and
+   each answers in JSON. What they change, boot reads where it always does; the menu's file of
+   choices is written again, so a menu reads its new state there. */
+static int answer_json(int ok, const char *note) {
+    char quoted[300];
+    json_str(quoted, sizeof(quoted), note ? note : "");
+    printf("{\"ok\":%s,\"note\":%s}\n", ok ? "true" : "false", quoted);
+    return ok ? 0 : 1;
+}
+
+static void choices_again(void) {
+    ui_choice c;
+    if (!read_choice(&c)) write_choices(&c);
+}
+
+/* A service's autostart: from the next start on (boot reads it when it starts the services). */
+static int cmd_autostart(const char *name, const char *value) {
+    char domain[DOMAIN];
+    role_state rs;
+    if (!package_name_ok(name) || (strcmp(value, "on") && strcmp(value, "off"))) return answer_json(0, "usage: autostart <service> on|off");
+    read_boot();
+    service_domain(domain, name);
+    int lock = state_lock(), ok = !rstate_read(domain, &rs) && rs.current;
+    if (ok) { rs.autostart = !strcmp(value, "on"); ok = !rstate_write(domain, &rs); }
+    state_unlock(lock);
+    if (!ok) return answer_json(0, "no such service");
+    plog("%s autostart %s (the menu)", domain, value);
+    choices_again();
+    return answer_json(1, value);
+}
+
+/* A ui or service package goes with its data: a ui package at the launcher's next start (the menu's
+   hand-over), a service at the next start, before the services run. */
+static int cmd_remove(const char *role, const char *name) {
+    char domain[DOMAIN], p[PATH_MAX];
+    role_state rs;
+    int ui = !strcmp(role, "ui");
+    if (!package_name_ok(name) || (!ui && strcmp(role, "service"))) return answer_json(0, "usage: remove ui|service <name>");
+    read_boot();
+    if (ui) ui_domain(domain, name); else service_domain(domain, name);
+    int lock = state_lock(), ok = !rstate_read(domain, &rs) && rs.current;
+    if (ok) { bpath(p, DATA_DIR "/%s/remove", domain); ok = !write_atomic(p, "{\"purge\":true}\n", 15, 0644); }
+    state_unlock(lock);
+    if (!ok) return answer_json(0, "not installed");
+    plog("%s: removal asked by the menu, with its data", domain);
+    choices_again();
+    return answer_json(1, ui ? "removed at the hand-over" : "removed at the next start");
+}
+
+/* One staged package installed from the card, as the recovery installs each (its progress in
+   install.json, its outcome in the card's result.json). */
+static int cmd_install(const char *folder) {
+    char root[PATH_MAX], staged[PATH_MAX], note[260], result[600], q[300];
+    int own = 0;
+    if (read_boot()) return answer_json(0, "no boot decision");
+    staged_pkg list[MAX_STAGED];
+    install_progress("waiting", 0, 1, NULL);
+    if (card_for_install(root, sizeof(root), &own)) { install_progress("done", 0, 0, NULL); return answer_json(0, "the card is not there"); }
+    int n = staged_packages(root, list), at = -1;
+    for (int k = 0; k < n; k++) if (!strcmp(list[k].folder, folder) && list[k].domain[0]) at = k;
+    if (at < 0) { card_release(own); install_progress("done", 0, 0, NULL); return answer_json(0, "not staged on the card"); }
+    staged_pkg *e = &list[at];
+    bpath(staged, "%s/.disc/boot/install/%s", root, e->folder);
+    install_progress("installing", 0, 1, e->key);
+    int ok = install(e->domain, staged, note, sizeof(note)) == 0;
+    json_str(q, sizeof(q), note);
+    int k = e->group[0]
+        ? snprintf(result, sizeof(result), "{\"schema\":1,\"roles\":{\"%s\":{\"%s\":{\"installed\":%s,\"note\":%s}}}}\n", e->group, e->key, ok ? "true" : "false", q)
+        : snprintf(result, sizeof(result), "{\"schema\":1,\"roles\":{\"%s\":{\"installed\":%s,\"note\":%s}}}\n", e->key, ok ? "true" : "false", q);
+    char p[PATH_MAX];
+    bpath(p, "%s/.disc/boot/result.json", root);
+    if (k > 0 && k < (int)sizeof(result)) write_atomic(p, result, (size_t)k, 0644);
+    if (ok && ui_name(e->domain)) {
+        int lock = state_lock();
+        global_state g;
+        if (!gstate_read(&g) && !g.ui[0]) { snprintf(g.ui, sizeof(g.ui), "%s", e->key); gstate_write(&g); }
+        state_unlock(lock);
+    }
+    plog("the menu's installation %s: %s", e->folder, note);
+#if defined(__linux__) && !defined(DISC_BOOT_FIXTURE)
+    if (own) sync();
+#endif
+    card_release(own);
+    choices_again();
+    install_progress("done", ok, 1, NULL);
+    return answer_json(ok, note);
+}
+
+/* Everything of the boot layer's goes at the next start (plan, stage 7: before the player is sold):
+   a mark the early start acts on before anything of ours runs. */
+static int cmd_remove_everything(void) {
+    char p[PATH_MAX];
+    bpath(p, DATA_DIR "/remove-everything");
+    if (write_atomic(p, "\n", 1, 0644)) return answer_json(0, "cannot mark the removal");
+    plog("removal of everything ours asked by the menu: at the next start");
+    return answer_json(1, "everything ours goes at the next start");
+}
+
+/* The early start acts on the menu's marks first: everything of the boot layer's in /usr/data and
+   the card's .disc folder (music and Apps stay), then each service asked to go, with its data. */
+static void removals(void) {
+    char p[PATH_MAX], dir[PATH_MAX];
+    bpath(p, DATA_DIR "/remove-everything");
+    if (exists(p)) {
+        bpath(dir, DATA_DIR);
+        DIR *d = opendir(dir);
+        struct dirent *e;
+        while (d && (e = readdir(d))) {
+            if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+            bpath(p, DATA_DIR "/%s", e->d_name);
+            remove_tree(p);
+        }
+        if (d) closedir(d);
+        char root[PATH_MAX];
+        int own = 0, cleared = 0;
+        if (!card_mounted()) {
+#if defined(__linux__) && !defined(DISC_BOOT_FIXTURE)
+            bpath(dir, RUN_DIR "/card");
+            mkdirs(dir, 0755);
+            static const char *const types[] = {"vfat", "exfat"};
+            for (size_t k = 0; k < sizeof(types) / sizeof(*types) && !own; k++)
+                own = !mount(card_source, dir, types[k], MS_NOSUID | MS_NODEV | MS_NOEXEC, "iocharset=utf8");
+            snprintf(root, sizeof(root), "%s", RUN_DIR "/card");
+#elif defined(DISC_BOOT_FIXTURE)
+            own = getenv("DISC_BOOT_FIXTURE_MOUNTABLE") != NULL;
+            snprintf(root, sizeof(root), "%s", card);
+#endif
+        } else { snprintf(root, sizeof(root), "%s", card); own = -1; }
+        if (own) {
+            bpath(p, "%s/.disc", root);
+            cleared = !remove_tree(p);
+#if defined(__linux__) && !defined(DISC_BOOT_FIXTURE)
+            sync();
+            if (own > 0 && umount(dir)) blog("the card's own mount stays: %s", strerror(errno));
+#endif
+        }
+        plog("removed everything of the boot layer's in /usr/data%s", cleared ? " and the card's .disc" : "; the card's .disc stays (no card)");
+    }
+    bpath(dir, DATA_DIR "/service");
+    DIR *d = opendir(dir);
+    struct dirent *e;
+    while (d && (e = readdir(d))) {
+        char buf[64];
+        if (!package_name_ok(e->d_name)) continue;
+        bpath(p, DATA_DIR "/service/%s/remove", e->d_name);
+        if (read_small(p, buf, sizeof(buf), NULL)) continue;
+        int purge = strstr(buf, "true") != NULL;
+        bpath(p, DATA_DIR "/service/%s", e->d_name);
+        remove_tree(p);
+        if (purge) { bpath(p, DATA_DIR "/data/%s", e->d_name); remove_tree(p); }
+        plog("service/%s removed%s (the menu)", e->d_name, purge ? " with its data" : "");
+    }
+    if (d) closedir(d);
+}
+
 static int read_boot(void) {
     char p[PATH_MAX], buf[SMALL_FILE], cardv[PATH_MAX], source[128];
     size_t len;
@@ -1385,6 +1700,7 @@ static void move_controller(void) {
 }
 
 static int cmd_early(void) {
+    removals();
     move_controller();
     global_state g;
     int readable = gstate_read(&g) == 0;
@@ -2077,12 +2393,17 @@ int main(int argc, char **argv) {
     if (!strcmp(base, "mq_ui")) return launcher(argc, argv);
     if (!strcmp(base, "mq_player")) return player_launcher(argc, argv);
     fixture_init(argv[0]);
-    if (argc < 2) { fprintf(stderr, "usage: disc-boot early|start|stop|status|verify ROLE DIR [options]\n"); return 2; }
+    if (argc < 2) { fprintf(stderr, "usage: disc-boot early|start|stop|status|verify ROLE DIR [options]|autostart|remove|install|remove-everything\n"); return 2; }
     if (!strcmp(argv[1], "early")) { options(argc, argv, 2); return cmd_early(); }
     if (!strcmp(argv[1], "start")) return cmd_start();
     if (!strcmp(argv[1], "stop")) return cmd_stop();
     if (!strcmp(argv[1], "status")) return cmd_status();
     if (!strcmp(argv[1], "verify") && argc >= 4) { options(argc, argv, 4); return cmd_verify(argv[2], argv[3]); }
+    /* The menu's commands (contract, "The menu's screens"). */
+    if (!strcmp(argv[1], "autostart") && argc == 4) return cmd_autostart(argv[2], argv[3]);
+    if (!strcmp(argv[1], "remove") && argc == 4) return cmd_remove(argv[2], argv[3]);
+    if (!strcmp(argv[1], "install") && argc == 3) return cmd_install(argv[2]);
+    if (!strcmp(argv[1], "remove-everything") && argc == 2) return cmd_remove_everything();
     fprintf(stderr, "disc-boot: unknown command\n");
     return 2;
 }

@@ -22,7 +22,7 @@ SOURCE = 'https://github.com/google/fonts/raw/main/ofl/inter/Inter%5Bopsz,wght%5
 # The faces the menu's screen uses (owner's choice of the list layout, 2026-10-03).
 FACES = [('label', 'SemiBold', 13), ('title', 'Regular', 20), ('title_bold', 'SemiBold', 20),
          ('small', 'Regular', 12), ('note', 'Regular', 13)]
-SIGNS = [0x00B1, 0x00B7, 0x2026, 0x25B6]          # ± · … ▶
+SIGNS = [0x00B1, 0x00B7, 0x2026, 0x2039, 0x203A, 0x25B6]   # ± · … ‹ › ▶
 CODES = list(range(0x20, 0x7F)) + SIGNS
 
 

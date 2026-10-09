@@ -127,6 +127,13 @@ scripts/menu_screens.py` after `scripts/build.sh host` writes them into `docs/as
 | --- | --- | --- | --- | --- |
 | ![](../assets/menu/choose.png) | ![](../assets/menu/reading-the-card.png) | ![](../assets/menu/installing.png) | ![](../assets/menu/starting.png) | ![](../assets/menu/switching-off.png) |
 
+Its other screens ([contract](contract.md#the-menus-screens)): a package waiting on the card, the
+services, the packages, a removal's question, and everything of ours going:
+
+| Waiting | Services | Packages | Remove | Everything |
+| --- | --- | --- | --- | --- |
+| ![](../assets/menu/waiting.png) | ![](../assets/menu/services.png) | ![](../assets/menu/packages.png) | ![](../assets/menu/remove.png) | ![](../assets/menu/everything-goes.png) |
+
 The font header is generated, not edited: `python3 scripts/menu_font.py --font
 <Inter[opsz,wght].ttf> --output device/menu/font.h` (Pillow with FreeType; the source font's
 SHA-256 and the versions used are written into the header, docs/dev/provenance.md).

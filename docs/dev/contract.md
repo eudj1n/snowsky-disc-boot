@@ -636,6 +636,44 @@ menu's `stock` entry is stock's UI with the controller and the services running.
   also take the requests about the choice (`ui-*`) that any package left,
   before anything of a package starts.
 
+### The menu's screens
+
+The owner's decisions of 2026-10-09 (plan, stage 7). The menu has three
+screens; the second and the third are rows at the end of the first list
+("Services ›", "Packages ›"), and each of them begins with "‹ Back":
+
+- **Start with**: the UIs, as above. While a package waits on the card
+  (staged, and not refused at its last installation), the countdown stands
+  and a row "N on the card" opens Packages.
+- **Services**: each installed service with its autostart, which Play turns
+  on or off, from the next start on (boot reads it when it starts the
+  services).
+- **Packages**: the packages staged on the card, each installed by Play as the
+  recovery installs it (its progress in `install.json`, on the menu's ring);
+  then the `ui` and `service` packages: Play asks and a second Play within
+  5 s removes one with its data, a `ui` package at the launcher's next start
+  (the menu's hand-over), a service at the next start before the services
+  run; last "Everything ours", with two questions: at the next start, before
+  anything of ours runs, boot removes everything in `/usr/data/disc-boot` and
+  the card's `.disc` folder (music and `Apps` stay). The networks disc-network
+  gave to stock stay in stock's configuration until stock's next connection
+  removes them. The controller and the menu are removed only with everything
+  ours or by the installer.
+- Play at power-on stays the recovery: it installs everything staged without
+  asking.
+
+`ui/choices.json` (at most 8 KiB), written by the launcher before the menu's
+turn and again after each command, adds what these screens show:
+`services` (`[{name, title, version, autostart, removing}]`), `packages`
+(`[{role, name, title, version, removing}]`) and `staged` (`[{folder, role,
+name, title, version, refused}]`; the card read where stock mounted it, or
+through a read-only mount of the boot layer's own for the look). The menu
+changes things through the boot program (`$DISC_BOOT_PROGRAM`), whose
+commands answer `{"ok", "note"}` and write `ui/choices.json` again:
+`autostart <service> on|off`, `remove ui|service <name>`, `install <folder>`
+(a folder `staged` names, such as `service/disc-network`) and
+`remove-everything`.
+
 ### Failures and the boot-loop guard
 
 - Confirmation, rollback and fallback stay per package, as in "The `ui`

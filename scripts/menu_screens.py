@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MENU = ROOT/'build/host/disc-menu-fixture'
 PANEL = 360
 POWER_HOLD = 0x108
+VOLUME_DOWN, PLAY = 0xfc, 0xfa
 
 
 def png(path, rgba):
@@ -45,7 +46,7 @@ def frame(fb):
     return bytes(out)
 
 
-def scene(name, output, choices, install=None, keys=(), wait=0.6, countdown=60000):
+def scene(name, output, choices, install=None, keys=(), wait=0.6, countdown=60000, offer=None):
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
         (root/'status/ui').mkdir(parents=True)
@@ -56,11 +57,16 @@ def scene(name, output, choices, install=None, keys=(), wait=0.6, countdown=6000
         # As boot offers them (write_choices): FiiO's own first, then the installed UIs.
         entries = [dict(ui='stock', version='2.57')]
         entries += [dict(ui=ui, title=title, version=version, confirmed=True) for ui, title, version in choices[1]]
-        (root/'status/ui/choices.json').write_text(json.dumps(dict(schema=1, default=choices[0], entries=entries)))
+        (root/'status/ui/choices.json').write_text(json.dumps(dict(schema=1, default=choices[0], entries=entries, **(offer or {}))))
+        # The boot program's commands, answered as boot answers them (the menu's screens).
+        program = root/'disc-boot'
+        program.write_text('#!/bin/sh\necho \'{"ok":true,"note":"done"}\'\n')
+        program.chmod(0o755)
         if install:
             (root/'status/install.json').write_text(json.dumps(dict(schema=1, **install)))
         env = dict(DISC_BOOT_STATUS=str(root/'status'), DISC_BOOT_RUN=str(root/'run'), DISC_MENU_FB=str(root/'fb0'),
-                   DISC_MENU_KEYS=str(root/'keys'), DISC_MENU_TOUCH=str(root/'touch'), DISC_MENU_COUNTDOWN_MS=str(countdown))
+                   DISC_MENU_KEYS=str(root/'keys'), DISC_MENU_TOUCH=str(root/'touch'), DISC_MENU_COUNTDOWN_MS=str(countdown),
+                   DISC_BOOT_PROGRAM=str(program))
         menu = subprocess.Popen([str(MENU)], env=env, stderr=subprocess.DEVNULL)
         try:
             time.sleep(wait)
@@ -87,6 +93,21 @@ def main():
     scene('installing', args.output, installed, install=dict(state='installing', done=1, total=3, current='disc-menu'))
     scene('starting', args.output, installed, keys=(0xfa,))
     scene('switching-off', args.output, installed, keys=(POWER_HOLD,))
+    # The menu's other screens (plan, stage 7): the services, the packages, a removal's question.
+    offer = dict(services=[dict(name='disc-health', title='disc-health', version='2.57.7', autostart=True, removing=False),
+                           dict(name='disc-network', title='disc-network', version='2.57.7', autostart=False, removing=False)],
+                 packages=[dict(role='ui', name='diskos', title='diskOS', version='1.2.0', removing=False),
+                           dict(role='service', name='disc-health', title='disc-health', version='2.57.7', removing=False),
+                           dict(role='service', name='disc-network', title='disc-network', version='2.57.7', removing=False)],
+                 staged=[])
+    waiting = dict(offer, staged=[dict(folder='ui/diskos-disco', role='ui', name='diskos-disco', title='diskOS Disco!',
+                                       version='0.3.0', refused=None)])
+    scene('waiting', args.output, installed, offer=waiting, wait=1.0, countdown=5000)
+    scene('services', args.output, installed, offer=offer, keys=(VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN))
+    scene('packages', args.output, installed, offer=waiting, keys=(VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN))
+    scene('remove', args.output, installed, offer=offer, keys=(VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN, PLAY))
+    scene('everything-goes', args.output, installed, offer=offer,
+          keys=(VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY) + (VOLUME_DOWN,) * 4 + (PLAY, PLAY, PLAY))
     print(json.dumps(sorted(p.name for p in args.output.glob('*.png'))))
 
 
