@@ -1486,9 +1486,10 @@ the only installer. Play at power-on stays the recovery path only.
   `test_boot` 65 (macOS and Linux); on the guest `menu_guest.py`: the first
   three steps with the new list, then autostart off, a ui package removed
   at the hand-over, a package waiting on the card holding the countdown and
-  installed from the menu, everything of ours gone at the next start. The
-  guest found that the card, mounted already for reading and writing, takes
-  no second read-only mount: the look uses the recovery's flags then.
+  installed from the menu, everything of ours gone at the next start (6 of
+  6), and `boot_guest.py` 16 of 16, on the image of `d1ad405`. The guest
+  found that the card, mounted already for reading and writing, takes no
+  second read-only mount: the look uses the recovery's flags then.
 - [x] The roles, laid out before other players run the boot layer (owner,
   2026-10-08): `controller`, at most one, the server (it owns the player's
   protocol, listens on the network and updates itself through its
