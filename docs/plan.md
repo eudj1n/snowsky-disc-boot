@@ -1416,12 +1416,17 @@ layer and the emulator's checkout to build the image.
   test checks the bound itself), and the hand-over test's own waits are 30 s
   bounds for the events. 16 at once: none failed; `test_boot` takes as long
   as before.
-- [ ] The whole path from a clean clone, in CI where it can run (no player)
+- [x] The whole path from a clean clone, in CI where it can run (no player)
   and on a clean computer. In CI since 2026-10-09: the installer's archive
   built from the checkout, unpacked and run without the repository, offline
   (`test_installer`); the image and the guest need FiiO's update, which CI
-  has not. The clean computer: the release's acceptance, the archive on a
-  user account without the repository or its tools.
+  has not. The clean computer: the release's acceptance (2026-10-09,
+  release 2.57.5): the guest from the archive unpacked outside the
+  repository with an empty home; then the owner's player from another
+  computer with the archive only (Python 3.14, libusb found, no Docker): the
+  player's image known by its first blocks (2.57.4's `4f8d68b6`), written in
+  the same entry, the first start's check matched, no history
+  ([record](first-write-observation.md#the-eighth-write-release-2575-from-a-clean-computer)).
 
 ## Stage 7 — the menu's three screens and services beside the server (owner, 2026-10-07/08)
 
