@@ -336,10 +336,13 @@ static void proven_ready(void) {
     state_unlock(lock);
 }
 
-static void confirm(const char *domain) {
+/* The slot that ran its time, only while it is still the current one: a version installed over a
+   running one is not confirmed by the run of the one before (the owner's player, 2026-10-09: the
+   menu's installation of two services, confirmed 150 s later without having run). */
+static void confirm(const char *domain, char slot) {
     int lock = state_lock();
     role_state rs;
-    if (!rstate_read(domain, &rs) && rs.current && !rs.confirmed) { rs.confirmed = 1; rstate_write(domain, &rs); }
+    if (!rstate_read(domain, &rs) && rs.current == slot && !rs.confirmed) { rs.confirmed = 1; rstate_write(domain, &rs); }
     maybe_clear_loop();
     state_unlock(lock);
 }
@@ -946,8 +949,9 @@ static void supervise(const char *domain) {
         pid_t child = spawn_package(domain, m, rs.current);
         if (child < 0) { role_status(domain, "failed", m, &rs, failures, "fork failed"); break; }
         role_status(domain, "starting", m, &rs, failures, NULL);
-        double started = mono(), ready_at = 0;
-        int is_ready = 0, confirmed_now = 0, exited = 0, timed_out = 0;
+        char running = rs.current;
+        double started = mono(), ready_at = 0, looked = mono();
+        int is_ready = 0, confirmed_now = 0, exited = 0, timed_out = 0, replaced = 0;
         while (!exited) {
             if (stopping) { stop_child(child); role_status(domain, "stopped", m, &rs, failures, NULL); free(m); return; }
             if (waitpid(child, NULL, WNOHANG) == child) { exited = 1; break; }
@@ -957,13 +961,21 @@ static void supervise(const char *domain) {
                 if (!service) proven_ready();
             }
             if (!is_ready && mono() - started > m->ready) { stop_child(child); exited = timed_out = 1; break; }
+            /* A version installed over the running one (the menu's installation) starts at once, as the
+               recovery's would have, and runs its own time before its confirmation. */
+            if (mono() - looked >= 1) {
+                role_state now;
+                looked = mono();
+                if (!rstate_read(domain, &now) && now.current && now.current != running) { stop_child(child); exited = replaced = 1; break; }
+            }
             if (is_ready && !confirmed_now && mono() - ready_at >= t_confirm) {
-                confirm(domain); confirmed_now = 1; rs.confirmed = 1;
+                confirm(domain, running); confirmed_now = 1; rs.confirmed = 1;
                 role_status(domain, "confirmed", m, &rs, failures, NULL);
             }
             cap_log(domain);
             pause_s(0.1);
         }
+        if (replaced) { blog("%s slot %c installed over slot %c: started", domain, other(running), running); failures = 0; nrestarts = 0; continue; }
         if (handle_request(domain, m->name)) { failures = 0; nrestarts = 0; continue; }
         failures++;
         const char *why = timed_out ? "not ready in time" : "exited";
@@ -1987,7 +1999,7 @@ static void ui_watch(pid_t ui, const char *domain, const manifest *m, role_state
     proven_ready();
     until = mono() + t_confirm;
     while (mono() < until) { if (!ui_alive(ui)) return; pause_s(0.1); }
-    confirm(domain);
+    confirm(domain, rs.current);
     rs.confirmed = 1;
     char p[PATH_MAX];
     bpath(p, RUN_DIR "/ui/starts");
@@ -2046,9 +2058,21 @@ static int menu_failures(int add) {
     return n;
 }
 
-/* The menu's time is bounded: unanswered after t_menu seconds, it is stopped and the default runs. */
+/* Whether the owner used the menu since seen: the menu counts each key, each touch and each second of
+   its own installation in menu/active (owner, 2026-10-09: the menu was stopped while its screens were
+   being read). */
+static int menu_used(char seen[32]) {
+    char p[PATH_MAX], buf[32];
+    bpath(p, RUN_DIR "/menu/active");
+    if (read_small(p, buf, sizeof(buf), NULL) || !strcmp(buf, seen)) return 0;
+    snprintf(seen, 32, "%s", buf);
+    return 1;
+}
+
+/* The menu's time is bounded: unanswered t_menu seconds after its start or the owner's last use, it
+   is stopped and the default runs. */
 static void menu_watch(pid_t menu) {
-    char answer[PATH_MAX], started[PATH_MAX];
+    char answer[PATH_MAX], started[PATH_MAX], seen[32] = "";
     bpath(answer, RUN_DIR "/menu/choice");
     bpath(started, RUN_DIR "/menu/started");
     double until = mono() + t_menu;
@@ -2056,7 +2080,7 @@ static void menu_watch(pid_t menu) {
     while (mono() < until) {
         if (!ui_alive(menu) || exists(answer) || read_choice(&c) || !c.menu) return;
         /* While an installation from the card runs, the menu shows it and asks nothing yet. */
-        if (install_pending()) until = mono() + t_menu;
+        if (install_pending() || menu_used(seen)) until = mono() + t_menu;
         pause_s(0.1);
     }
     if (exists(answer) || read_choice(&c) || !c.menu) return;
@@ -2096,11 +2120,13 @@ static int menu_turn(ui_choice *c, manifest *m, char **argv) {
     bpath(started, RUN_DIR "/menu/started");
     int failures = menu_failures(0);
     if (exists(answer)) {
-        char buf[SMALL_FILE], wanted[33] = "";
+        char buf[SMALL_FILE], wanted[33] = "", ran[8] = "";
         size_t len;
         bjson j;
         int readable = !read_small(answer, buf, sizeof(buf), &len) && !bjson_parse(&j, buf, len, 16);
         if (readable) { readable = !bjson_string(&j, bjson_find(&j, 0, "ui"), wanted, sizeof(wanted)); bjson_free(&j); }
+        /* The slot that answered (menu/started names it): a menu installed over it is not confirmed by it. */
+        if (read_small(started, ran, sizeof(ran), NULL)) ran[0] = 0;
         unlink(answer);
         unlink(started);
         if (readable && !strcmp(wanted, "poweroff")) {
@@ -2117,7 +2143,7 @@ static int menu_turn(ui_choice *c, manifest *m, char **argv) {
             c->menu = 0;
             write_choice(c);
             /* A valid answer confirms a tentative menu, and may be all this boot runs of ours. */
-            confirm("menu");
+            confirm("menu", ran[0]);
             /* The last answer becomes the default: the menu starts on it next time and its countdown
                takes it (owner, 2026-10-07; no setting of its own). */
             int lock = state_lock();
@@ -2167,7 +2193,8 @@ static int menu_turn(ui_choice *c, manifest *m, char **argv) {
         }
     }
     write_choices(c);
-    write_atomic(started, "\n", 1, 0644);
+    char slot[3] = {rs.current, '\n', 0};
+    write_atomic(started, slot, 2, 0644);
     role_status("menu", "asking", m, &rs, failures, NULL);
     pid_t self = getpid(), first = fork();
     if (first == 0) {
@@ -2348,8 +2375,12 @@ static int player_launcher(int argc, char **argv) {
            waits for the menu's choice and starts as the chosen UI needs it, without a restart. Its
            process already carries the name stock's watch loop looks for. */
         player_status("waiting", NULL, "the menu is choosing");
+        char seen[32] = "";
         double until = mono() + t_menu + 10;
-        while (mono() < until && !read_choice(&c) && c.menu) pause_s(0.2);
+        while (mono() < until && !read_choice(&c) && c.menu) {
+            if (menu_used(seen)) until = mono() + t_menu + 10;
+            pause_s(0.2);
+        }
         if (read_choice(&c)) { player_status("stock", NULL, "no choice of UI for this boot"); exec_stock_player(argv); }
         /* fiio_init.sh starts stock's player 2 s after its UI, and the two then share a flock of
            /usr/data/fiio/process_lock.txt and their queues. After the menu's choice the UI starts at

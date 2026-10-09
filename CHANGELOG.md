@@ -25,6 +25,11 @@ Entries stay short; how and why it was done is in the [plan](docs/dev/plan.md).
   before the player changes hands. While a package waits on the card, the
   menu waits for you instead of counting down.
 - The installer's report says whether the player restarted after the write.
+- The boot menu waits while you use it: a minute after your last key, not
+  after it appeared.
+- A service or the server installed from the menu starts at once, in its
+  new version, and is kept only once that version has run for three
+  minutes.
 
 ## [2.57.6] — 2026-10-09
 
