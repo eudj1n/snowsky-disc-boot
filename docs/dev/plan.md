@@ -1688,6 +1688,19 @@ the only installer. Play at power-on stays the recovery path only.
   it changes the archive. Done for 2.57.7: `restart` in the player's step
   (`outcome`: player-restarted, restart-not-observed, restart-uncertain,
   failed or not available, and its run folder); `test_usbboot`.
+- [ ] Release 2.57.7 (2026-10-09): services beside the server (boot API 2),
+  disc-health, disc-network (named, not ticked), the menu's three screens,
+  the restart's outcome in the report. On the guest, with these binaries
+  (build `d1ad405880ec`; the menu, disc-health and disc-network byte for byte
+  the ones accepted; the USB payloads 2.57.6's): `boot_guest.py` 16 of 16,
+  `menu_guest.py` 6 of 6, `roles_guest.py` 5 of 5, `health_guest.py` 3 of 3,
+  `network_guest.py` 4 of 4, and `install.py --guest` from the unpacked
+  archive with an empty home: the image built on the computer from the
+  release file (`6d1a6780…`, the tested one), the menu, disc-server 2.57.5
+  (the controller), disc-health and disc-network installed by Play and
+  confirmed. Next: the owner's player with the archive, with disc-network
+  ticked (two networks joined in turn, then joined by itself); then the
+  record, the merge and the tag.
 
 ## Later
 
