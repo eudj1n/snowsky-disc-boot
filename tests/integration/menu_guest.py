@@ -9,7 +9,9 @@ installs them with the menu; the menu's screen is read from the framebuffer (the
 to); the emulator's buttons and touch panel choose; the countdown starts the default. Then its
 other screens (plan, stage 7) with the boot program's commands: a service's autostart off, a ui
 package removed at the hand-over, a package waiting on the card holding the countdown and
-installed from the menu, and everything of ours gone at the next start. Frames are kept as raw
+installed from the menu, the menu used beyond its 60 s kept and a new version of the running service
+installed from it started at once and confirmed by its own run, and everything of ours gone at the
+next start. Frames are kept as raw
 pages in /work (menu-<name>.raw, the panel's view turned 180 degrees back).
 """
 import argparse
@@ -249,6 +251,44 @@ def screens(buttons, work):
     booted()
     ui = bg.ui_runs(THREE)
     bg.step('a package on the card holds the countdown and installs from the menu', service=disabled, choices=installed, ui=ui)
+    # 5b. The menu used beyond its 60 s stays (its time runs from the last key), and a new version of the
+    #     running service installed from the menu starts at once and confirms itself (the owner's player,
+    #     2026-10-09: the menu was stopped while being read; the version before ran on and confirmed the new).
+    bg.guest(f'/opt/disc-boot/disc-boot autostart {SERVICE} on')
+    bg.power('off')
+    with bg.card() as root:
+        bg.package.stage(bg.probe(work/'service-2', '2', role='service', name=SERVICE), root, profile=bg.PROFILE)
+    booted = power_on()
+    asked = asking()
+    running = soon(lambda: run_json(f'service/{SERVICE}.json'), lambda s: s['state'] in ('ready', 'confirmed') and s['version'] == '1',
+                   'the service runs its first version', 120)
+    used_from = time.monotonic()
+    while time.monotonic() - used_from < 80:
+        press(buttons, VOLUME_DOWN, VOLUME_UP, pause=0.5)                   # FiiO, Three (selected), Two, "1 on the card", ...
+        time.sleep(9)
+    kept = menu_status()
+    assert kept['state'] == 'asking', f'the menu in use beyond its 60 s: {kept}'
+    press(buttons, VOLUME_DOWN, VOLUME_DOWN, PLAY)                          # "1 on the card": Packages
+    press(buttons, VOLUME_DOWN, PLAY, pause=1.0)                            # the service's version 2: installed by boot
+    soon(lambda: run_json('install.json'), lambda i: i['state'] == 'done', 'the installation done', 120)
+    over = soon(lambda: run_json(f'service/{SERVICE}.json'), lambda s: s['slot'] == 'b' and s['version'] == '2' and s['state'] == 'ready',
+                'the new version started at once', 60)
+    tentative = bg.guest_json(f'/usr/data/disc-boot/service/{SERVICE}/state.json')
+    assert tentative['current'] == 'b' and not tentative['confirmed'], tentative
+    time.sleep(3.0)
+    press(buttons, VOLUME_UP, PLAY)                                         # Back: FiiO, Three, Two, Services, Packages
+    press(buttons, VOLUME_DOWN, PLAY, pause=0.2)                            # Three
+    keys_taken()
+    booted()
+    ui = bg.ui_runs(THREE)
+    confirmed = soon(lambda: run_json(f'service/{SERVICE}.json'), lambda s: s['state'] == 'confirmed' and s['slot'] == 'b',
+                     'the new version confirmed after its own run', 300)
+    assert bg.guest_json(f'/usr/data/disc-boot/service/{SERVICE}/state.json')['confirmed'] is True
+    # Three confirmed too: the starts of 4 to 5b were short, and the boot-loop guard would take the next one.
+    bg.wait(lambda: bg.guest_json('/run/disc-boot/ui.json'), lambda u: u['state'] == 'confirmed', f'{THREE} confirmed', 420)
+    assert bg.guest_json('/usr/data/disc-boot/state.json')['unconfirmed'] == 0
+    bg.step('the menu in use keeps its time; a version installed over the running service starts at once',
+            menu=asked, kept=kept, running=running, over=over, tentative=tentative, confirmed=confirmed, ui=ui)
     # 6. Everything of ours: the third Play asks boot; FiiO's interface runs; at the next start nothing
     #    of ours is left, the card's .disc folder neither.
     bg.power('off')
