@@ -240,7 +240,9 @@ def screens(buttons, work):
     press(buttons, VOLUME_DOWN, PLAY, pause=1.0)                            # Three: installed by boot
     installed = soon(lambda: run_json('ui/choices.json'), lambda c: not c['staged'] and THREE in [e['ui'] for e in c['entries']],
                      'installed from the menu', 300)
-    time.sleep(1.0)
+    # The menu takes keys again once boot's installation has ended (its program exited after "done").
+    soon(lambda: run_json('install.json'), lambda i: i['state'] == 'done', 'the installation done', 60)
+    time.sleep(3.0)
     press(buttons, VOLUME_UP, PLAY)                                         # Back: FiiO, Two, Three, Services, Packages
     press(buttons, VOLUME_DOWN, VOLUME_DOWN, PLAY, pause=0.2)               # Three
     keys_taken()
