@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 import zipfile
@@ -134,6 +135,85 @@ class InstallerTests(unittest.TestCase):
             installer.places = [self.local]
             self.assertEqual(installer.run(), 1)
         self.assertIn('disc-menu 9: no local file with sha256', installer.report['status'])
+
+    def test_the_installers_archive_runs_without_the_repository(self):
+        """Plan, stage 6: the installer for users is one archive (release.py installer): install.py with what
+        it reads, this release's files and the default server and apps; run from where it was unpacked, its
+        own packages come first (offline here) and the run is kept in the user's folder, not in the archive."""
+        import release
+        mips = self.root/'mips'
+        mips.mkdir()
+        for name in ('disc-boot', 'disc-usb-console', 'disc-menu'):
+            (mips/name).write_bytes(b'\x7fELF' + name.encode() * 100)
+        (mips/'build-id').write_text('b43034ba1e27\n')
+
+        def payloads(firmware, diskos, output):
+            for name, source in release.payload_members(output):
+                source.parent.mkdir(parents=True, exist_ok=True)
+                source.write_bytes(f'{firmware} {name}'.encode())
+        dist = self.root/'dist'
+        release.build('2.57.9', dist, mips, diskos=self.root/'diskos', payloads=payloads)
+        menu = dist/'disc-menu-2.57.9.zip'
+        catalog = json.loads(self.catalog.read_text())
+        for entry in catalog['entries']:
+            if entry['name'] == 'disc-menu':
+                entry.update(version='2.57.9', source=dict(url=release.url('2.57.9', menu.name), sha256=digest(menu),
+                                                           size=menu.stat().st_size))
+        offered = self.root/'release-catalog.json'
+        offered.write_text(json.dumps(catalog))
+        built = release.installer('2.57.9', dist, [self.local], False, catalog_path=offered, committed=False)
+        self.assertEqual(sorted(built['packages']), ['Disc Player-p1.zip', 'disc-boot-2.57.9-mips.tar.gz', 'disc-menu-2.57.9.zip',
+                                                     'disc-server-9.zip', 'disc-usb-payloads-2.57.9.tar.gz'])
+        unpacked = self.root/'unpacked'
+        with tarfile.open(dist/'disc-installer-2.57.9.tar.gz') as tar:
+            names = tar.getnames()
+            tar.extractall(unpacked, filter='data')
+        top = unpacked/'disc-installer-2.57.9'
+        self.assertEqual(json.loads((top/'catalog/packages.json').read_text()), catalog)
+        self.assertFalse([n for n in names if '/tests/' in n or '/docs/' in n or n.endswith(('/AGENTS.md', '/scripts/test.sh'))])
+        self.assertIn('disc-installer-2.57.9/device/acquisition/staging.c', names, 'the payloads are checked by their sources')
+        # Its own release is installer.json: the boot programs the image takes are this release's.
+        found = subprocess.run([sys.executable, '-c', 'import sys; sys.path.insert(0, "scripts"); import release; '
+                                'print(release.boot_release("2.57")["version"])'], cwd=top, capture_output=True, text=True)
+        self.assertEqual(found.stdout.strip(), '2.57.9', found.stderr)
+        home = self.root/'home'
+        env = {k: v for k, v in os.environ.items() if k not in ('XDG_DATA_HOME', 'DISC_EMULATOR')}
+        env['HOME'] = str(home)
+        result = subprocess.run([sys.executable, 'install.py', '--dry-run', '--yes', '--plain', '--offline', '--image', str(self.image)],
+                                cwd=top, env=env, capture_output=True, text=True, timeout=120)
+        self.assertEqual(result.returncode, 0, result.stdout[-3000:] + result.stderr)
+        data = home/'Library/Application Support/SNOWSKY DISC' if sys.platform == 'darwin' else home/'.local/share/snowsky-disc'
+        report = next((data/'runs').glob('install-*/report.json'))
+        self.assertEqual(json.loads(report.read_text())['status'], 'prepared')
+        card = report.parent/'card'
+        self.assertEqual(json.loads((card/'.disc/boot/install/menu/package.json').read_text())['version'], '2.57.9')
+        self.assertTrue((card/'.disc/boot/install/service/package.json').is_file() and (card/'Apps/Disc Player/app.json').is_file())
+        self.assertFalse((top/'work').exists(), 'nothing of the run in the archive')
+
+    def test_the_image_is_built_here_without_docker(self):
+        """Plan, stage 6: the guest and the player ran the image built on the computer (2026-10-08), so the
+        build in the emulator's Docker image went: without squashfs-tools and openssl the check says what to
+        install, and Docker is asked about only for the guest."""
+        import argparse
+        import io
+        from unittest import mock
+        from installer import flow, tui
+        args = argparse.Namespace(dry_run=True, yes=True, plain=True, ota=None, image=None, emulator=None, card=None,
+                                  package=None, app=None, packages_from=[], download=False, work=str(self.root/'run'),
+                                  catalog=str(self.catalog), simulate=None, simulate_small=False, fault=None, restore=False,
+                                  guest=False, history=None, diskos=None, libusb=None, boot_build=False)
+        calls = []
+        installer = flow.Installer(args, tui.Screen(look='plain', stream=io.StringIO()),
+                                   runner=lambda command, **kw: calls.append(command))
+        with mock.patch.object(flow.Installer, 'host_builder', return_value=None):
+            with self.assertRaises(flow.Stop) as stopped:
+                installer.check()
+        self.assertIn('squashfs-tools 4.6 or later and openssl', str(stopped.exception))
+        self.assertNotIn('Docker', str(stopped.exception))
+        with mock.patch.object(flow.Installer, 'host_builder', return_value='4.7.5'):
+            installer.check()
+        self.assertEqual(calls, [], 'no Docker asked about without a guest')
+        self.assertEqual(installer.report['steps'][-1]['squashfs'], '4.7.5')
 
     def test_libusb_is_found_where_its_packages_put_it_or_named(self):
         """Plan, stage 6: no --libusb to give; a missing libusb is said with the command that installs it."""

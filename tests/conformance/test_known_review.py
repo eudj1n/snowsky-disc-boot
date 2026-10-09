@@ -75,11 +75,11 @@ class KnownReviewTests(unittest.TestCase):
         bootloader.start()
         self.addCleanup(bootloader.stop)
 
-    def assemble(self, captures=None, plans=None, known=None):
+    def assemble(self, captures=None, plans=None, known=None, allow_unknown=False):
         w = self.w
         return install.assemble_known(w.base, w.cpu, w.reader, w.transport, w.layout, self.inputs,
                                       captures or self.captures, plans or self.plans, self.boot.library,
-                                      known or self.known)
+                                      known or self.known, allow_unknown)
 
     def test_a_known_image_in_one_entry_makes_a_bundle_the_write_takes(self):
         bundle = self.assemble()
@@ -116,6 +116,25 @@ class KnownReviewTests(unittest.TestCase):
         known['stock']['first_blocks_sha256'] = 'e'*64
         with self.assertRaisesRegex(ram.probe.ProbeError, 'does not know'):
             self.assemble(known=known)
+
+    def test_the_way_back_to_stock_is_admitted_from_any_state(self):
+        """Owner, 2026-10-05/09: back to stock from any state. With allow_unknown an image the installer does
+        not know is named so, and the bundle admits the restore only, never the candidate."""
+        known = copy.deepcopy(self.known)
+        known['stock']['first_blocks_sha256'] = 'e'*64
+        bundle = self.assemble(known=known, allow_unknown=True)
+        state = bundle['source_state']
+        self.assertEqual((state['found']['kind'], state['targets']), ('unknown', ['restore']))
+        self.assertNotIn('sha256', state['found'])
+        w = self.w
+        layout = dict(w.layout, physical_write_admitted=True, installation_review_sha256=writer.fingerprint(bundle))
+        restore = dict(self.inputs['restore'], installation_review=bundle)
+        self.assertEqual(install.validate_binding(bundle, w.base, w.cpu, w.reader, w.transport, layout, restore),
+                         writer.fingerprint(bundle))
+        with self.assertRaisesRegex(ram.probe.ProbeError, 'Invalid known-image source state'):
+            install.validate_binding(bundle, w.base, w.cpu, w.reader, w.transport, layout,
+                                     dict(self.inputs['candidate'], installation_review=bundle))
+        self.assertEqual(self.assemble()['source_state']['targets'], ['candidate', 'restore'], 'a known image admits both')
 
     def test_the_write_abi_must_be_one_a_player_ran(self):
         for key in ('writer_sha256', 'staging_payload_sha256', 'installer_contract_sha256', 'writer_entry'):
@@ -168,7 +187,8 @@ class KnownReviewTests(unittest.TestCase):
         fresh = ['--known', '--probe-capture', 'p', '--boot-build', 'bb', '--probe-build', 'pb']
         history = ['--previous-review', 'x', '--previous-image', 'x', '--write-capture', 'x', '--readback-capture', 'x']
         for args in (fresh[:3], fresh+['--stock-capture', 's'], fresh+['--stage-capture', 's'], fresh+history,
-                     ['--stock-capture', 's', '--stage-capture', 's', '--probe-capture', 'p'], ['--stage-capture', 's']):
+                     ['--stock-capture', 's', '--stage-capture', 's', '--probe-capture', 'p'], ['--stage-capture', 's'],
+                     ['--stock-capture', 's', '--stage-capture', 's', '--allow-unknown']):
             with self.subTest(args=args), patch.object(sys, 'argv', ['installation_review.py', *base, *args]), \
                     patch('sys.stderr'), self.assertRaises(SystemExit) as stop:
                 install.main()

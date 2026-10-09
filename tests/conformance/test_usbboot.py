@@ -35,13 +35,21 @@ class Tools:
         out, stdout = Path(self.value(command, '--output')) if '--output' in command else None, ''
         if tool == 'build_identity.py':
             out.mkdir(parents=True)
+        elif tool == 'installation_review.py' and '--allow-unknown' in command and 'unknown-image' in self.faults:
+            out.mkdir(parents=True)
+            for name in ('installation-review.json', 'proposed-installer-profile.json', 'postwrite-collection-plan.json'):
+                (out/name).write_text('{}')
+            (out/'restore-write-plan.json').write_text(json.dumps(dict(plan=dict(image_name=self.test.stock.name,
+                                                                                  protocol_call_limit=100), plan_sha256='restore-plan')))
+            (out/'decision.json').write_text(json.dumps(dict(status='known-image', found=dict(kind='unknown'), targets=['restore'])))
         elif tool == 'installation_review.py' and '--known' in command and 'unknown-image' in self.faults:
             return subprocess.CompletedProcess(command, 1, '', 'Installation review refused: The player holds a rootfs this '
                                                'installer does not know (another FiiO version or a changed image)\n')
         elif tool == 'installation_review.py':
             out.mkdir(parents=True)
             if '--known' in command:
-                (out/'decision.json').write_text(json.dumps(dict(status='known-image', found=dict(kind='stock', sha256='s'))))
+                (out/'decision.json').write_text(json.dumps(dict(status='known-image', found=dict(kind='stock', sha256='s'),
+                                                                 targets=['candidate', 'restore'])))
             proposed = dict(json.loads(self.test.profile.read_text()), physical_write_admitted=True, installation_review_sha256='new-pin')
             if 'profile-changes' in self.faults:
                 proposed['writer'] = 'another'
@@ -536,7 +544,7 @@ class KnownPathTests(ReviewedTests):
         self.assertEqual(audit[audit.index('--plan') + 1], str(self.root/'usb/identity-plan.json'))
         self.assertTrue((self.root/'usb/identity-plan.json').is_file())
 
-    def install_known(self, words, restore=False, faults=()):
+    def install_known(self, words, restore=False, faults=(), work='run'):
         """install.py without a history: the card given (not a dry run), what the owner types in order."""
         from unittest import mock
         import builtins
@@ -545,7 +553,7 @@ class KnownPathTests(ReviewedTests):
         card = self.root/'card'
         card.mkdir(exist_ok=True)
         args = argparse.Namespace(dry_run=False, yes=False, plain=True, ota=None, image=str(self.image), emulator=None, card=str(card),
-                                  package=None, app=None, packages_from=[], download=False, work=str(self.root/'run'),
+                                  package=None, app=None, packages_from=[], download=False, work=str(self.root/work),
                                   catalog=str(catalog), simulate=None, simulate_small=False, fault=None, restore=restore, guest=False,
                                   history=None, diskos='/diskos', libusb='/libusb.dylib', run=None, resume=None)
         tools = Tools(self, faults)
@@ -570,7 +578,7 @@ class KnownPathTests(ReviewedTests):
 
     def test_a_user_installs_in_one_entry_and_the_first_start_proves_it(self):
         self.fetch = self.check_matches
-        code, installer, tools = self.install_known(['', 'CARD', 'CHECK', 'WRITE', 'yes', 'the menu came up'])
+        code, installer, tools = self.install_known(['', 'CARD', 'CHECK', 'WRITE', 'yes'])
         self.assertEqual((code, installer.report['status']), (0, 'prepared'))
         player = next(s for s in installer.report['steps'] if s['step'] == 'player')
         self.assertEqual((player['written'], player['target'], player['history']), (True, 'candidate', None))
@@ -578,6 +586,8 @@ class KnownPathTests(ReviewedTests):
         usb = self.root/'run/usb'
         self.assertFalse((usb/'history.json').exists(), 'a user keeps no history')
         self.assertTrue((usb/'first-start/rootfs-check.json').is_file())
+        record = json.loads((usb/'first-start/owner-boot-confirmation.json').read_text())
+        self.assertEqual(record['owner_answer'], 'yes', 'a user answers yes or no only')
         acquired = [c for c in tools.calls if c.endswith('acquire')]
         self.assertEqual(acquired, ['ram_transport.py acquire', 'boot_evidence.py acquire', 'collect_rootfs.py acquire',
                                     'writer_transport.py acquire'], 'one entry: three reads and the write; no readback')
@@ -590,7 +600,7 @@ class KnownPathTests(ReviewedTests):
         self.assertNotIn('writer_transport.py acquire', tools.calls)
 
     def test_restore_takes_a_known_player_back_to_stock_in_one_entry(self):
-        code, installer, tools = self.install_known(['CHECK', 'RESTORE', 'yes', 'stock is back'], restore=True)
+        code, installer, tools = self.install_known(['CHECK', 'RESTORE', 'yes'], restore=True)
         self.assertEqual((code, installer.report['status']), (0, 'restored'))
         write = next(c for c in tools.commands if Path(c[2]).name == 'writer_transport.py' and c[3] == 'acquire')
         self.assertEqual(write[write.index('--target') + 1], 'restore')
@@ -599,15 +609,26 @@ class KnownPathTests(ReviewedTests):
                           'writer_transport.py acquire'], 'the reads and stock, in one entry; no readback')
         self.assertFalse((self.root/'run/usb/history.json').exists())
 
+    def test_restore_from_any_state_asks_once_more(self):
+        """Owner, 2026-10-05/09: back to stock from any state. An image the review does not know admits the
+        restore only, after the word STOCK that names the kernel's risk; a candidate is never written over it."""
+        code, installer, tools = self.install_known(['CHECK', 'STOCK', 'RESTORE', 'yes'], restore=True, faults=('unknown-image',))
+        self.assertEqual((code, installer.report['status']), (0, 'restored'))
+        review = next(c for c in tools.commands if Path(c[2]).name == 'installation_review.py')
+        self.assertIn('--allow-unknown', review)
+        self.assertEqual(installer.report['steps'][-1]['restore']['found'], dict(kind='unknown'))
+        code, installer, tools = self.install_known(['CHECK', 'other'], restore=True, faults=('unknown-image',), work='again')
+        self.assertEqual(code, 1)
+        self.assertNotIn('writer_transport.py acquire', tools.calls, 'no word, no write')
+
     def test_a_no_goes_back_to_stock_with_the_evidence_of_a_new_entry(self):
-        code, installer, tools = self.install_known(['', 'CARD', 'CHECK', 'WRITE', 'no', 'it restarts without end',
-                                                     'CHECK', 'RESTORE', 'yes', 'stock is back'])
+        code, installer, tools = self.install_known(['', 'CARD', 'CHECK', 'WRITE', 'no', 'CHECK', 'RESTORE', 'yes'])
         self.assertEqual((code, installer.report['status']), (0, 'restored'))
         self.assertEqual([c for c in tools.calls if c.endswith('acquire')],
                          ['ram_transport.py acquire', 'boot_evidence.py acquire', 'collect_rootfs.py acquire', 'writer_transport.py acquire']*2)
         back = self.root/'run/usb-back'
         self.assertTrue((back/'package/decision.json').is_file() and (back/'restore-write').is_dir())
-        self.assertEqual(installer.report['wayBack']['candidateAnswer'], 'it restarts without end')
+        self.assertEqual(installer.report['wayBack']['candidateAnswer'], 'no', 'yes or no only, no words')
 
     def test_without_a_terminal_the_player_is_not_written(self):
         from unittest import mock

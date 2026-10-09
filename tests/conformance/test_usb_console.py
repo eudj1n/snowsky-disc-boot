@@ -141,6 +141,11 @@ class UsbConsoleTests(unittest.TestCase):
         (self.root/'proc/mounts').write_text('/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
         (self.root/'sys/class/udc/controller/state').write_text('configured\n')
         proc = self.start(); self.running(proc)
+        # The session, not only the gadget: the start checks the marker on a mounted card after the gadget
+        # is bound, so an unmount before the shell runs is a start refused (under the suite's load, 2026-10-08).
+        live = self.root/'live'
+        os.write(self.master, f"printf live > '{live}'\n".encode())
+        self.wait(lambda: live.exists())
         (self.root/'proc/mounts').write_text('')
         time.sleep(1.5)
         self.assertIsNone(proc.poll(), 'the session ended while the card was only unmounted')

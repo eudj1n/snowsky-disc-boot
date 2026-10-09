@@ -1264,16 +1264,20 @@ layer and the emulator's checkout to build the image.
   path's test. The player (2026-10-08, the seventh write,
   [record](first-write-observation.md#the-seventh-write-the-users-path-without-a-history)):
   written, and its first start found `4f8d68b6…` on its root device.
-- [ ] The installer's Docker build of the image goes (the condition above is
+- [x] The installer's Docker build of the image goes (the condition above is
   met): squashfs-tools 4.6 or later and openssl only; the emulator stays for
   the guest. The USB payloads still need the toolchain image until a boot
-  release carries them (2.57.5).
-- [ ] The user answers only yes or no at the first start (owner, 2026-10-08):
+  release carries them (2.57.5). Done 2026-10-09: the check names
+  squashfs-tools and openssl with their install commands and asks about
+  Docker only for `--guest` (`test_installer`).
+- [x] The user answers only yes or no at the first start (owner, 2026-10-08):
   the words are the developers' evidence (`owner-boot-confirmation.json`,
-  read by the next review with a history), never needed without one. To
-  weigh: no question at all when the first start's check comes back (the
-  system started and holds the written image), the question only when it
-  does not (then it decides the way back to stock).
+  read by the next review with a history), never needed without one. Done
+  2026-10-09: without a history, and on the way back to stock, the
+  installer asks yes or no only (`test_usbboot`). To weigh still: no
+  question at all when the first start's check comes back (the system
+  started and holds the written image), the question only when it does not
+  (then it decides the way back to stock).
 - [x] diskOS's writer and SPL fetched at their pinned revision, as the diskOS
   package already is (`catalog.py fetch --name diskos --download`, checked
   from a clean clone on 2026-10-06). Done 2026-10-08: the six files the
@@ -1363,7 +1367,15 @@ layer and the emulator's checkout to build the image.
     `/usr/data/disc-boot` stayed through the Local upgrade, so the first
     installation of a new user's packages is tested in stage 7, after a
     removal of everything ours.
-- [ ] The installer for users as one archive in the boot release
+- [x] Back to stock from any state without a history (owner, 2026-10-09,
+  after the seventh write: a write cut short leaves first blocks the review
+  does not know, and FiiO's Local upgrade needs a system that starts):
+  `installation_review.py --known --allow-unknown` names such an image
+  `unknown` and admits the restore only; `install.py --restore` asks for
+  `STOCK` first, naming the kernel's risk (not read). A candidate is never
+  written over an image the review does not know. `test_known_review`,
+  `test_usbboot`.
+- [x] The installer for users as one archive in the boot release
   (`disc-installer-<v>.tar.gz`, owner, 2026-10-08): `install.py` with the
   scripts, profiles, catalogs and source pins it needs, this release's files
   (the boot programs, the USB payloads, the menu) and the default server and
@@ -1373,18 +1385,48 @@ layer and the emulator's checkout to build the image.
   The user's runs kept outside it (`~/Library/Application Support/SNOWSKY
   DISC`, `~/.local/share/snowsky-disc`). macOS and Linux first; Windows
   later (WinUSB, with the ready-to-run installers under "Later").
+  Done 2026-10-09 (`release.py installer`, [development](development.md#releases)):
+  the archive holds `install.py`, `console.py`, the scripts, profiles,
+  catalogs, earlier records, the payloads' sources and the image's files at
+  the release's commit, this release's files and the catalog's default
+  server and apps (`packages/`), and `installer.json` (this release, whose
+  record names the archive's digest, so it is never inside); the same bytes
+  on every build, rebuilt and checked by the release workflow. From the
+  unpacked archive the installer takes its own packages first and keeps the
+  runs in the user's folder. `test_release`, `test_installer` (the archive
+  unpacked and run without the repository, offline).
 - [x] The computer's check explains libusb and Docker where they are missing
   (2026-10-08): libusb is found where Homebrew or the system's packages put
   it (`--libusb` only to name another), and a missing one is said with the
   command that installs it; the image needs squashfs-tools and openssl,
   said the same way, and Docker only for the guest (`test_installer`).
-- [ ] The README's guide: what is installed, the risk, the way back, the
-  packages.
-- [ ] Two timing tests fail now and then under the full suite's load and pass
+- [x] The README's guide: what is installed, the risk, the way back, the
+  packages. Done 2026-10-09: what you get, what you need (with the install
+  commands), the steps with the typed words, the risk, both ways back (FiiO's
+  Local upgrade as checked on the player, `install.py --restore`), the keys
+  at power-on; the menu's own pictures. It is the archive's user guide.
+- [x] Two timing tests fail now and then under the full suite's load and pass
   alone (`test_usb_console`'s unmounted card, `test_boot`'s menu hand-over
-  order, 2026-10-08): wait for the event, not for a time.
-- [ ] The whole path from a clean clone, in CI where it can run (no player)
-  and on a clean computer.
+  order, 2026-10-08): wait for the event, not for a time. Done 2026-10-09,
+  reproduced with the tests run 16 at once (15 of 16 failed): the console
+  test unmounted the card once the gadget was bound, before the start's
+  marker check (now it waits for the shell's answer); the boot fixture gave
+  the menu 2 s and a package 5 s to be ready, real bounds of the boot program
+  that a busy computer missed (now 20 s and 30 s, the short ones only where a
+  test checks the bound itself), and the hand-over test's own waits are 30 s
+  bounds for the events. 16 at once: none failed; `test_boot` takes as long
+  as before.
+- [x] The whole path from a clean clone, in CI where it can run (no player)
+  and on a clean computer. In CI since 2026-10-09: the installer's archive
+  built from the checkout, unpacked and run without the repository, offline
+  (`test_installer`); the image and the guest need FiiO's update, which CI
+  has not. The clean computer: the release's acceptance (2026-10-09,
+  release 2.57.5): the guest from the archive unpacked outside the
+  repository with an empty home; then the owner's player from another
+  computer with the archive only (Python 3.14, libusb found, no Docker): the
+  player's image known by its first blocks (2.57.4's `4f8d68b6`), written in
+  the same entry, the first start's check matched, no history
+  ([record](first-write-observation.md#the-eighth-write-release-2575-from-a-clean-computer)).
 
 ## Stage 7 — the menu's three screens and services beside the server (owner, 2026-10-07/08)
 
@@ -1405,6 +1447,11 @@ the only installer. Play at power-on stays the recovery path only.
   A move alone first, in its own PR: the same programs, only the paths in
   the build, CI, `release.py` and the documents change (the build id
   changes with them).
+- [ ] The documentation split, after the layout's move (owner, 2026-10-09):
+  for users (the README, the installation guide, what is installed and its
+  risks, the way back to stock, the CHANGELOG) and for developers
+  (development, architecture, contract, reviews, observations, this plan),
+  each in its own place, with the links between them kept.
 - [ ] The menu's three screens: the interface (today's), the services'
   autostart, installing and removing (the card's staged packages shown
   there; never automatic). A specimen page and numbered decisions first;
@@ -1470,6 +1517,20 @@ the only installer. Play at power-on stays the recovery path only.
   "Reset all" removes `/usr/data/disc-boot`. After it, the user path's test
   on the owner's player from a really new state: the first installation of
   the packages, a card without `.disc`.
+
+- [ ] The player restarted from USB Boot by the installer (owner, 2026-10-09:
+  FiiO's update restarts the player itself): after the writer's completion,
+  in the same entry, a small RAM payload starts the watchdog as the pinned
+  SPL source's `_machine_restart` does (TCU `TSCR`, `WDT` `TCNT`, `TDR`,
+  `TCSR`, `TCER`), the ROM restarts the chip and, Volume Down no longer
+  held, it starts the new system from NAND with the cable still connected;
+  the installer then waits for its USB console and reads the first start's
+  check, so the user neither unplugs nor plugs the cable, only answers.
+  Its own plan, payload and journal audit as the others. On the player
+  first, without a write (a session that only restarts): that the ROM
+  boots NAND after the watchdog, and that stock starts normally and leaves
+  the port to the USB console with the cable connected at power-on. After
+  2.57.5, in its own release.
 
 ## Later
 

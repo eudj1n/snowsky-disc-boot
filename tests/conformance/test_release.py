@@ -91,6 +91,42 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(release.ReleaseError, 'a release holds'):
             release.check('2.57.1', self.root/'dist', self.releases, self.catalog(menu['sha256'], menu['bytes']))
 
+    def test_the_installers_archive_is_the_same_on_every_build_and_recorded(self):
+        """The archive (plan, stage 6) from the same commit and files is the same bytes, so the release workflow's
+        rebuild is checked against the record like the other files; its own record is never in it."""
+        for folder in ('a', 'b'):
+            self.build(folder, version='2.57.9')
+        menu = self.root/'a/disc-menu-2.57.9.zip'
+        path = self.root/'packages.json'
+        path.write_text(json.dumps(dict(schema=1, kind='packages', entries=[dict(
+            name='disc-menu', role='menu', version='2.57.9', profiles=['2.57'], bootApi=1, license='MIT', default=False,
+            source=dict(url=release.url('2.57.9', menu.name), sha256=release.digest(menu), size=menu.stat().st_size),
+            verified=dict(date='2026-10-09', acceptance='test'))])))
+        with self.assertRaisesRegex(release.ReleaseError, 'does not offer disc-menu-2.57.9.zip by default'):
+            release.installer('2.57.9', self.root/'a', allow_download=False, catalog_path=path, committed=False)
+        data = json.loads(path.read_text())
+        data['entries'][0]['default'] = True
+        path.write_text(json.dumps(data))
+        own = release.RELEASES/'2.57.4.json'
+        for folder in ('a', 'b'):
+            release.installer('2.57.9', self.root/folder, allow_download=False, catalog_path=path, committed=False)
+        name = 'disc-installer-2.57.9.tar.gz'
+        self.assertEqual((self.root/'a'/name).read_bytes(), (self.root/'b'/name).read_bytes())
+        with tarfile.open(self.root/'a'/name) as tar:
+            names = tar.getnames()
+            manifest = json.loads(tar.extractfile('disc-installer-2.57.9/installer.json').read())
+        self.assertIn(f'disc-installer-2.57.9/releases/{own.name}', names, 'earlier records: their images are known')
+        self.assertEqual(sorted(manifest['files']), sorted(release.names('2.57.9')))
+        self.assertEqual((manifest['version'], manifest['buildId']), ('2.57.9', 'b43034ba1e27'))
+        self.assertIn(name, (self.root/'a/SHA256SUMS').read_text())
+        data = release.record('2.57.9', self.root/'a', 'the archive on the guest', self.releases)
+        self.assertIn(name, data['files'])
+        self.assertEqual(release.check('2.57.9', self.root/'b', self.releases, path)['files'], data['files'])
+        (self.root/'b'/name).unlink()
+        (self.root/'b/SHA256SUMS').write_text(''.join(f'{f["sha256"]}  {n}\n' for n, f in sorted(data['files'].items()) if n != name))
+        with self.assertRaisesRegex(release.ReleaseError, 'not the accepted one'):
+            release.check('2.57.9', self.root/'b', self.releases, path)
+
     def test_the_installer_takes_the_newest_boot_release_and_only_its_programs(self):
         """Plan, stage 6: the image is built from the release file, by its record's digest."""
         for version in ('2.57.1', '2.57.2'):

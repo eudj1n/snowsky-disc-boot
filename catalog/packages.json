@@ -6,11 +6,11 @@
         {
             "name": "disc-menu",
             "role": "menu",
-            "version": "2.57.4",
+            "version": "2.57.5",
             "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.4/disc-menu-2.57.4.zip",
-                "sha256": "c7cf36961c29c6a1d1361f3770c9384711ac27b67c1161c790e2d4815149da4b",
+                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.5/disc-menu-2.57.5.zip",
+                "sha256": "b5ec12ef930a16acdea36878fdd27b08e5c66aa1608af04264b8f80de6408471",
                 "size": 158909
             },
             "profiles": [
@@ -20,11 +20,11 @@
             "license": "MIT; Inter (SIL OFL 1.1) as rasterised masks",
             "default": true,
             "verified": {
-                "date": "2026-10-08",
+                "date": "2026-10-09",
                 "boot": "b419666",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "menu_guest.py 3 of 3; install.py --guest (installed by Play, the menu answered); release 2.57.4"
+                "acceptance": "menu_guest.py 3 of 3; release 2.57.5 (the menu of build b41966605383, as 2.57.4)"
             }
         },
         {

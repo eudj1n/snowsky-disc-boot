@@ -67,6 +67,16 @@ def load(version, images=IMAGES, releases=RELEASES):
             raise KnownImagesError(f'{record.name}: its image counts other first blocks')
         known.append(dict(release=release['version'], name=image['name'], bytes=image['bytes'], sha256=image['sha256'],
                           first_blocks_sha256=image['first_blocks_sha256']))
+    # One image recorded twice (a release whose programs did not change builds the same bytes) is one image;
+    # two different images with the same first blocks could not be told apart by the probe.
+    unique, seen = [], {}
+    for entry in known:
+        same = seen.get(entry['first_blocks_sha256'])
+        if same is not None and same['sha256'] == entry['sha256'] and same['bytes'] == entry['bytes']:
+            continue
+        seen.setdefault(entry['first_blocks_sha256'], entry)
+        unique.append(entry)
+    known = unique
     digests = [data['stock']['first_blocks_sha256'], *(k['first_blocks_sha256'] for k in known)]
     if len(set(digests)) != len(digests):
         raise KnownImagesError('two known images share their first blocks: the probe could not tell them apart')

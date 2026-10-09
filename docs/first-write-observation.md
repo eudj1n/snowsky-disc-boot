@@ -380,3 +380,17 @@ test waits for a removal of everything ours (stage 7). The owner's observations:
 describe the first start in words (yes or no is enough, if anything); and FiiO's update from the
 card takes about 2 minutes, which an update by the running system from the card could approach.
 
+## The eighth write (release 2.57.5, from a clean computer)
+
+On 2026-10-09 the owner installed release 2.57.5 from its archive alone
+(`disc-installer-2.57.5.tar.gz`, `f8654a1b…`) on another computer: no repository, no Docker,
+Python 3.14, libusb found where Homebrew put it. The run (`install-20261009-084658` in the user's
+`~/Library/Application Support/SNOWSKY DISC/runs`) took the boot layer's programs from the
+archive's own release (build `b41966605383`), the menu 2.57.5, the server 2.57.5 and Disc Player
+1.0.0 from its packages, built the image on that computer (`4f8d68b6…`) and staged the card
+(`/Volumes/MUSIC`). In one USB Boot entry the review found release 2.57.4's image by its first
+blocks (`700dd48b…`, the image the seventh write left), the write followed (session `bf3b1f89`,
+its journal audited), and the new system's first start found `4f8d68b6…` on its root device; the
+owner answered yes, and no history was written. The image is the same bytes as before (2.57.5's
+programs are 2.57.4's), so this run proves the archive's path, not a change on the player.
+

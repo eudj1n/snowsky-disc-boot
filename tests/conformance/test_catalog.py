@@ -71,7 +71,14 @@ class CatalogTests(unittest.TestCase):
                     continue
                 self.assertEqual(entry['source']['url'], release.url(entry['version'], name))
                 record = ROOT/'releases'/f'{entry["version"]}.json'
-                self.assertTrue(record.is_file(), 'a release is recorded before the catalog names it')
+                if not record.is_file():
+                    # The release in preparation (plan, stage 6): the installer's archive carries the catalog, so
+                    # the catalog offers this release's menu before its record; release.py check, on the tag,
+                    # compares that digest with the recorded file. Only a release newer than every record.
+                    number = lambda v: tuple(int(p) for p in v.split('.'))  # noqa: E731
+                    recorded = [number(p.stem) for p in (ROOT/'releases').glob('*.json')]
+                    self.assertGreater(number(entry['version']), max(recorded), 'a release is recorded before the catalog names it')
+                    continue
                 files = json.loads(record.read_text())['files']
                 self.assertEqual((entry['source']['sha256'], entry['source']['size']), (files[name]['sha256'], files[name]['bytes']))
 

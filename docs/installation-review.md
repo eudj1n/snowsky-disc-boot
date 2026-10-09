@@ -213,6 +213,15 @@ python3 scripts/deployment/installation_review.py --known \
   entry), in place of a staging capture of the user's own player; every write
   still runs the full staging checks before the writer.
 
+The way back to stock from any state (owner, 2026-10-05/09): with
+`--allow-unknown` an image the review does not know is named so (`found`
+`unknown`, no image digest) instead of refusing, and the bundle admits the
+restore only (`source_state.targets`; `validate_binding` refuses a candidate
+over it, and the package holds no candidate write plan). The installer passes
+it for `--restore` and asks for the word `STOCK` first, naming the risk: the
+kernel is not read, and a player of another FiiO version would not start
+2.57's system with it.
+
 The bundle's `source_state` is `known-image` with what the player holds
 (`found`), its first blocks, and `same_entry_required`; `validate_binding`
 accepts it only with those. The package keeps the proposed admission
