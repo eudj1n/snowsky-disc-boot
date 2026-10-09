@@ -14,6 +14,7 @@ import tempfile
 import time
 
 import catalog
+import package
 import release
 import sources
 from firmware_profile import load_profile, load_usb_profile
@@ -378,11 +379,13 @@ class Installer:
         unknown = wanted - {e['name'] for e in entries}
         if unknown:
             raise Stop(f'not in the catalog: {", ".join(sorted(unknown))}')
-        # By role, as the boot layer takes them, in the order the player meets them: the menu, the
-        # UIs it offers, the service behind them; one menu and one service at most, any number of UIs.
+        # By the role the boot layer takes them in (package.taken: the server of boot API 1 is the
+        # controller), in the order the player meets them: the menu, the UIs it offers, the server
+        # behind them and the services beside it; one menu and one server at most.
         groups = []
-        for role, label, single in (('menu', 'Boot menu', True), ('ui', 'UIs', False), ('service', 'Service', True)):
-            members = [e for e in entries if e['role'] == role]
+        for role, label, single in (('menu', 'Boot menu', True), ('ui', 'UIs', False), ('controller', 'Server', True),
+                                    ('service', 'Services', False)):
+            members = [e for e in entries if package.taken(e) == role]
             if not members:
                 continue
             marks = [e['name'] in wanted if wanted else e['default'] for e in members]
@@ -427,9 +430,10 @@ class Installer:
             self.confirm('The card', [f'On {target}: {len(folders)} package(s) for the recovery with Play, {len(apps)} app(s) in Apps/, '
                                       'and the USB console\'s marker.'], 'CARD')
         profile = load_profile()['version']
+        cleared = cards.clear_unchosen(target, cards.places(folders))
         staged = cards.stage_packages(folders, target, profile)
-        cleared = cards.clear_unchosen(target, staged)
         self.roles = {s['role'] for s in staged}
+        self.services = [s['name'] for s in staged if s['role'] == 'service']
         with tempfile.TemporaryDirectory() as temp:
             placed = cards.stage_apps(apps, target, self.places, self.args.download, temp)
         marker = cards.write_marker(target)
@@ -915,30 +919,35 @@ class Installer:
         title = 'First boot'
         roles = self.roles
         self.say(title, ['The guest starts with Play held: the boot layer installs the packages from the card. '
-                         'Then it is followed until the menu answers and the service is confirmed (its 180 s).'])
+                         'Then it is followed until the menu answers and the server and the services are confirmed (180 s).'])
+        services = getattr(self, 'services', [])
 
         def show(status):
-            lines = [f'{name}: {(status.get(name) or {}).get("state", "-")}' for name in ('service', 'menu', 'ui')]
+            lines = [f'{name}: {(status.get(name) or {}).get("state", "-")}' for name in ('controller', 'menu', 'ui')]
+            lines += [f'{name}: {((status.get("services") or {}).get(name) or {}).get("state", "-")}' for name in services]
             choice = status.get('choice') or {}
             if choice:
                 lines.append(f'chosen UI: {choice.get("ui")} (by {choice.get("by")})')
             self.say(title, lines)
         try:
             self.guest.start()
-            status, done = self.guest.follow(roles, show=show)
+            status, done = self.guest.follow(roles, services, show=show)
             result = self.guest.result()
         except guests.GuestError as error:
             raise Stop(f'{error}. The guest\'s log is {self.guest.log}.')
         roles_result = result.get('roles', {})
-        installed = [k for k, v in roles_result.items() if k != 'ui' and v.get('installed')] + \
-                    [f'ui/{k}' for k, v in roles_result.get('ui', {}).items() if v.get('installed')]
-        refused = [f'{k}: {v.get("note")}' for k, v in roles_result.items() if k != 'ui' and not v.get('installed')] + \
-                  [f'ui/{k}: {v.get("note")}' for k, v in roles_result.get('ui', {}).items() if not v.get('installed')]
+        named = ('ui', 'service')
+        installed = [k for k, v in roles_result.items() if k not in named and v.get('installed')] + \
+                    [f'{g}/{k}' for g in named for k, v in roles_result.get(g, {}).items() if v.get('installed')]
+        refused = [f'{k}: {v.get("note")}' for k, v in roles_result.items() if k not in named and not v.get('installed')] + \
+                  [f'{g}/{k}: {v.get("note")}' for g in named for k, v in roles_result.get(g, {}).items() if not v.get('installed')]
         self.done('first boot', guest=True, status=status, result=result)
         if refused or not done:
             raise Stop('the first boot on the guest did not finish: ' + '; '.join(refused or [
-                f'{name} {(status.get(name) or {}).get("state")}' for name in ('service', 'menu') if name in roles]))
-        reached = [what for role, what in (('menu', 'the menu answered'), ('service', 'the service was confirmed')) if role in roles]
+                f'{name} {(status.get(name) or {}).get("state")}' for name in ('controller', 'menu') if name in roles] + [
+                f'{name} {((status.get("services") or {}).get(name) or {}).get("state")}' for name in services]))
+        reached = [what for role, what in (('menu', 'the menu answered'), ('controller', 'the server was confirmed'),
+                                           ('service', 'the services were confirmed')) if role in roles]
         self.say(title, [f'Installed by Play: {", ".join(installed) or "nothing"}.'] +
                  ([f'On the guest {" and ".join(reached)}.'] if reached else []))
 

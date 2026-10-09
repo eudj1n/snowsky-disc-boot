@@ -77,9 +77,13 @@ int manifest_load(const char *dir, manifest *m, char *err, size_t cap) {
     if ((v = bjson_find(&j, 0, "schema")) < 0 || bjson_int(&j, v, &n) || n != 1) { fail(err, cap, "schema must be 1"); goto done; }
     if (string_at(&j, "name", m->name, sizeof(m->name), 1) || !package_name_ok(m->name)) { fail(err, cap, "name must match [a-z0-9-]{1,32}"); goto done; }
     if (string_at(&j, "version", m->version, sizeof(m->version), 1) || !m->version[0]) { fail(err, cap, "version must be 1-64 printable ASCII"); goto done; }
-    if (string_at(&j, "role", m->role, sizeof(m->role), 1) || (strcmp(m->role, "service") && strcmp(m->role, "ui") && strcmp(m->role, "menu"))) { fail(err, cap, "role must be service, ui or menu"); goto done; }
+    if (string_at(&j, "role", m->role, sizeof(m->role), 1)
+        || (strcmp(m->role, "controller") && strcmp(m->role, "service") && strcmp(m->role, "ui") && strcmp(m->role, "menu"))) {
+        fail(err, cap, "role must be controller, service, ui or menu"); goto done;
+    }
     if ((v = bjson_find(&j, 0, "bootApi")) < 0 || bjson_int(&j, v, &n) || n < 1 || n > 1000) { fail(err, cap, "bootApi must be a positive integer"); goto done; }
     m->boot_api = (int)n;
+    if (!strcmp(m->role, "controller") && m->boot_api < 2) { fail(err, cap, "the controller role needs bootApi 2"); goto done; }
     if (string_at(&j, "arch", m->arch, sizeof(m->arch), 1) || !m->arch[0]) { fail(err, cap, "arch is required"); goto done; }
     if (string_at(&j, "entry", m->entry, sizeof(m->entry), 1) || !path_ok(m->entry)) { fail(err, cap, "entry must be a listed relative path"); goto done; }
     if ((v = string_at(&j, "player", m->player, sizeof(m->player), 0)) < 0 || (v == 0 && !path_ok(m->player))) { fail(err, cap, "player must be a listed relative path"); goto done; }
@@ -90,6 +94,11 @@ int manifest_load(const char *dir, manifest *m, char *err, size_t cap) {
     if ((v = bjson_find(&j, 0, "ready")) != -1) {
         if (v < 0 || bjson_int(&j, v, &n) || n < 1 || n > MAX_READY) { fail(err, cap, "ready must be 1-120 seconds"); goto done; }
         m->ready = (int)n;
+    }
+    m->memory = MEMORY_DEFAULT;
+    if ((v = bjson_find(&j, 0, "memory")) != -1) {
+        if (v < 0 || bjson_int(&j, v, &n) || n < 1 || n > MEMORY_MAX) { fail(err, cap, "memory must be 1-64 MiB"); goto done; }
+        m->memory = (int)n;
     }
     if ((v = bjson_find(&j, 0, "profiles")) < 0 || bjson_type(&j, v) != 'a' || bjson_size(&j, v) < 1 || bjson_size(&j, v) > MAX_PROFILES) { fail(err, cap, "profiles must list 1-8 firmware profiles"); goto done; }
     m->nprofiles = bjson_size(&j, v);
@@ -126,7 +135,7 @@ int manifest_load(const char *dir, manifest *m, char *err, size_t cap) {
     for (int f = 0; f < m->nfiles; f++) if (!strcmp(m->files[f].path, m->entry)) entry = f;
     if (entry < 0 || m->files[entry].mode != 0755) { fail(err, cap, "entry must be a listed file with mode 0755"); goto done; }
     /* Stock's watch loop finds the UI by its process name, and the menu runs in its place. */
-    if (strcmp(m->role, "service")) {
+    if (!strcmp(m->role, "ui") || !strcmp(m->role, "menu")) {
         const char *base = strrchr(m->entry, '/');
         if (strcmp(base ? base + 1 : m->entry, "mq_ui")) { fail(err, cap, "a %s package's entry must be named mq_ui", m->role); goto done; }
     }
@@ -143,8 +152,15 @@ done:
     return r;
 }
 
+const char *manifest_role(const manifest *m) {
+    return !strcmp(m->role, "service") && m->boot_api < 2 ? "controller" : m->role;
+}
+
 int manifest_fits(const manifest *m, const char *role, const char *profile, char *err, size_t cap) {
-    if (strcmp(m->role, role)) return fail(err, cap, "the package's role is %s, not %s", m->role, role);
+    if (strcmp(manifest_role(m), role)) {
+        if (strcmp(manifest_role(m), m->role)) return fail(err, cap, "a service package of boot API 1 is the controller, not %s", role);
+        return fail(err, cap, "the package's role is %s, not %s", m->role, role);
+    }
     if (m->boot_api > BOOT_API) return fail(err, cap, "the package needs boot API %d (this boot layer has %d)", m->boot_api, BOOT_API);
     if (strcmp(m->arch, BOOT_ARCH)) return fail(err, cap, "the package is built for %s, not %s", m->arch, BOOT_ARCH);
     for (int k = 0; k < m->nprofiles; k++) if (!strcmp(m->profiles[k], profile)) return 0;

@@ -69,7 +69,7 @@ check, as boot ignores it):
 ```sh
 # package.json for a folder: every file with its size, SHA-256 and mode (0755 when executable)
 python3 scripts/package.py describe --source build/pkg --name disc-server --version 2026.10.02 \
-  --role service --entry bin/disc-server --arg --listen --arg 0.0.0.0 \
+  --role controller --entry bin/disc-server --arg --listen --arg 0.0.0.0 \
   --homepage https://github.com/eudj1n/snowsky-disc-server
 python3 scripts/package.py check --source build/pkg          # or a zip; --role, --profile, --arch
 python3 scripts/package.py zip --source build/pkg --output work/disc-server.zip
@@ -78,13 +78,17 @@ python3 scripts/package.py stage --package work/disc-server.zip --card /Volumes/
 python3 scripts/package.py result --card /Volumes/PLAY        # the last recovery's result.json
 ```
 
-A zip holds `package.json` and the files at its root with their modes, in a
-fixed order with fixed times. `stage` checks the package for the player
+`describe` gives the controller and a service `bootApi` 2 and the other roles
+1, the lowest each needs; a service may name its `memory` (`--memory`, 1-64
+MiB). A zip holds `package.json` and the files at its root with their modes,
+in a fixed order with fixed times. `stage` checks the package for the player
 (`mips32el-linux-static`, the active firmware profile), writes it beside its
-place (`.disc/boot/install/service/`, `.disc/boot/install/menu/`, or
-`.disc/boot/install/ui/<name>/` for each ui package), checks the copy (sizes
-and digests; a card keeps no modes), then swaps it in; a refused package
-stages nothing and leaves what was staged.
+place (`.disc/boot/install/controller/`, `.disc/boot/install/menu/`, or
+`.disc/boot/install/service/<name>/` and `.disc/boot/install/ui/<name>/` for
+each service and ui package; the server of boot API 1, role `service` with
+`bootApi` 1, is the controller), checks the copy (sizes and digests; a card
+keeps no modes), then swaps it in; a refused package stages nothing and
+leaves what was staged.
 
 ## The boot menu
 
@@ -309,6 +313,16 @@ name and cannot show a program started by its path (contract, "Process
 names"). The server repository
 drives the same wrapper with a record of its own (`--state`).
 
+`roles_guest.py` (about 20 minutes) accepts the roles of boot API 2 on a fresh
+guest: the move of API 1's `service/` to `controller/`, the old server's
+update to a controller, two services installed with Play (one failing),
+autostart off and stock mode. qemu-user ignores a guest's `RLIMIT_AS`, so a
+service's memory bound is recorded there and takes effect on the player:
+
+```sh
+python3 scripts/guest.py run -- python3 -B /boot/tests/integration/roles_guest.py --output /work/roles-guest.json
+```
+
 The two-package acceptance (plan, stage 3) runs our server beside diskOS's
 UI. diskOS is built locally from a checkout with its own toolchain image
 (`ui/Dockerfile` at the same revision; built natively, `--platform
@@ -385,7 +399,7 @@ use no secrets; their actions are pinned by commit.
 
 ## Related repositories
 
-- snowsky-disc-server: the gateway (the `service` package), its catalogs
+- snowsky-disc-server: the gateway (the `controller` package), its catalogs
   and the emulator wrapper (`scripts/emulator.py`) used for guest acceptance
   today.
 - snowsky-disc-web: the frozen history of the gateway and the combined

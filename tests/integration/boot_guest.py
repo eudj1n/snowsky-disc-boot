@@ -12,7 +12,7 @@ ready); a job left on the card makes the running probe stage the next version
 into its inactive slot and ask boot to activate it, or ask for a rollback.
 Real timings: a version is confirmed after 180 s of running.
 
-Each boot that ends in stock's UI or a running service is watched for 45 s: the same UI and
+Each boot that ends in stock's UI or a running controller is watched for 45 s: the same UI and
 player all along and no restart in stock's log. One boot runs without the boot program at all
 (it cannot be executed), as on the owner's player on 2026-10-05: stock must run all the same.
 
@@ -51,8 +51,8 @@ CARD = Path('/mnt/boot-guest-card')
 NAME, UI_NAME, TWO, MENU_NAME = 'disc-probe', 'disc-probe-ui', 'disc-probe-two', 'disc-probe-menu'
 DATA = f'/usr/data/disc-boot/data/{NAME}'
 SERVICE = r'''#!/bin/sh
-# A probe service for the boot layer's guest acceptance: it behaves as its package says.
-data="$DISC_BOOT_DATA"; card="$DISC_BOOT_CARD"; slot="$DISC_BOOT_SLOT"
+# A probe controller or service for the boot layer's guest acceptance: it behaves as its package says.
+data="$DISC_BOOT_DATA"; card="$DISC_BOOT_CARD"; slot="$DISC_BOOT_SLOT"; me=${data##*/}
 read version < "$slot/version"; read behavior < "$slot/behavior"
 log() { echo "$(date +%s) $version $*" >> "$data/probe.log"; }
 log "start $behavior"
@@ -67,8 +67,10 @@ while :; do
     [ -f "$job" ] || continue
     id=${job##*/}; id=${id%.job}
     grep -qx "$id" "$data/done" 2>/dev/null && continue
+    # A job names the package it is for (its second line).
+    { read action; read target; } < "$job"
+    [ "$target" = "$me" ] || continue
     echo "$id" >> "$data/done"; sync
-    read action < "$job"
     if [ "$action" = activate ]; then
       inactive="${DISC_BOOT_INACTIVE:?}"
       rm -rf "${inactive:?}"/*
@@ -77,7 +79,8 @@ while :; do
       while read path mode; do chmod "$mode" "$inactive/$path"; done < "$inactive/modes"
       # On the disk before the request, as a package's update does: a power cut keeps the slot whole.
       sync
-      "$DISC_BOOT_PROGRAM" verify service "$inactive" > "$data/verify-$id.json"
+      # As the server does: by the role it was told (a controller of boot API 1 is told "service").
+      "$DISC_BOOT_PROGRAM" verify "$DISC_BOOT_ROLE" "$inactive" > "$data/verify-$id.json"
     fi
     case "$action" in
       ui-*) set -- $action; printf '{"action":"%s","ui":"%s"}' "$1" "$2" > "$DISC_BOOT_REQUEST.new" ;;
@@ -158,16 +161,16 @@ def boot_status():
     return wait(lambda: guest_json('/run/disc-boot/boot.json'), lambda b: True, 'boot.json', 120)
 
 
-def service(predicate, label, timeout=300):
-    return wait(lambda: guest_json('/run/disc-boot/service.json'), predicate, label, timeout)
+def controller(predicate, label, timeout=300):
+    return wait(lambda: guest_json('/run/disc-boot/controller.json'), predicate, label, timeout)
 
 
 def confirmed(version, timeout=300):
-    return service(lambda s: s['state'] == 'confirmed' and s['version'] == version, f'version {version} confirmed', timeout)
+    return controller(lambda s: s['state'] == 'confirmed' and s['version'] == version, f'version {version} confirmed', timeout)
 
 
 def back_to(version, request, label):
-    return service(lambda s: s['version'] == version and s['lastRequest'] == request and s['state'] in ('ready', 'confirmed'),
+    return controller(lambda s: s['version'] == version and s['lastRequest'] == request and s['state'] in ('ready', 'confirmed'),
                    label, 420)
 
 
@@ -187,10 +190,11 @@ def card():
         subprocess.run(['umount', str(CARD)], check=True)
 
 
-def probe(folder, version, behavior='healthy', role='service', name=None):
-    entry = 'bin/run' if role == 'service' else 'bin/mq_ui'
+def probe(folder, version, behavior='healthy', role='controller', name=None, boot_api=None, memory=None):
+    """A probe package; boot_api 1 with the role service is the server as boot API 1 knew it."""
+    entry = 'bin/run' if role in ('controller', 'service') else 'bin/mq_ui'
     (folder/'bin').mkdir(parents=True)
-    files = {entry: ({'service': SERVICE, 'ui': UI, 'menu': MENU}[role], 0o755), 'version': (version + '\n', 0o644),
+    files = {entry: ({'controller': SERVICE, 'service': SERVICE, 'ui': UI, 'menu': MENU}[role], 0o755), 'version': (version + '\n', 0o644),
              'behavior': (behavior + '\n', 0o644)}
     if role == 'ui':
         files['bin/player'] = (PLAYER, 0o755)
@@ -198,21 +202,22 @@ def probe(folder, version, behavior='healthy', role='service', name=None):
     for path, (text, mode) in files.items():
         (folder/path).write_text(text)
         (folder/path).chmod(mode)
-    name = name or {'service': NAME, 'ui': UI_NAME, 'menu': MENU_NAME}[role]
-    package.describe(folder, name, version, role, entry, ready=30, profiles=[PROFILE],
-                     player='bin/player' if role == 'ui' else None)
+    name = name or {'controller': NAME, 'ui': UI_NAME, 'menu': MENU_NAME}[role]
+    package.describe(folder, name, version, role, entry, ready=30, profiles=[PROFILE], boot_api=boot_api,
+                     player='bin/player' if role == 'ui' else None, memory=memory)
     return folder
 
 
-def job(work, action, version=None, behavior='healthy'):
-    """A job for the running probe, left on the card with the guest off."""
+def job(work, action, version=None, behavior='healthy', target=NAME, **kind):
+    """A job for the running probe named target, left on the card with the guest off; an update
+    is a probe of kind (probe's role, boot_api)."""
     ident = f'job-{time.time_ns()}'
     with card() as root:
         jobs = root/'.disc/probe'
         jobs.mkdir(parents=True, exist_ok=True)
         if action == 'activate':
-            shutil.copytree(probe(work/ident, version, behavior), jobs/ident)
-        (jobs/f'{ident}.job').write_text(action + '\n')
+            shutil.copytree(probe(work/ident, version, behavior, name=target, **kind), jobs/ident)
+        (jobs/f'{ident}.job').write_text(f'{action}\n{target}\n')
     return ident
 
 
@@ -360,7 +365,7 @@ def run(output):
     assert (boot['mode'], boot['reason'], boot['keys']['read']) == ('platform', 'default', True), boot
     assert wait(lambda: stock_ui_runs() or None, bool, 'stock UI', 120)
     assert not guest('ls /run/disc-boot/ui-launch 2>/dev/null').strip()
-    step('nothing installed', boot=boot, service=guest_json('/run/disc-boot/service.json'), steady=steady(), bootLog=boot_log())
+    step('nothing installed', boot=boot, controller=guest_json('/run/disc-boot/controller.json'), steady=steady(), bootLog=boot_log())
     # Stock's player, started by stock's PATH lookup, has the card guard first: a busy card stays whole.
     path = guarded_player()
     step('busy card kept', path=path, **busy_card_event(boot['card']))
@@ -386,7 +391,7 @@ def run(output):
     # 3. A damaged staged package and Play: refused, nothing installed, the package stays on the card.
     with card() as root:
         package.stage(probe(work/'v1', '1'), root, profile=PROFILE)
-        run_file = root/'.disc/boot/install/service/bin/run'
+        run_file = root/'.disc/boot/install/controller/bin/run'
         run_file.write_text(run_file.read_text().replace('A probe', 'X probe', 1))  # same size, another hash
     power('on', hold='play')
     boot = boot_status()
@@ -394,39 +399,39 @@ def run(output):
     power('off')
     with card() as root:
         result = json.loads((root/'.disc/boot/result.json').read_text())
-        assert result['roles']['service']['installed'] is False and 'sha256' in result['roles']['service']['note'], result
-        assert (root/'.disc/boot/install/service').is_dir()
+        assert result['roles']['controller']['installed'] is False and 'sha256' in result['roles']['controller']['note'], result
+        assert (root/'.disc/boot/install/controller').is_dir()
         # 4. The good package and Play: installed, ready, confirmed after 180 s.
         package.stage(work/'v1', root, profile=PROFILE)
     step('damaged package refused', boot=boot, result=result)
     power('on', hold='play')
-    service(lambda s: s['state'] in ('ready', 'confirmed') and s['version'] == '1', 'version 1 ready')
+    controller(lambda s: s['state'] in ('ready', 'confirmed') and s['version'] == '1', 'version 1 ready')
     started = time.monotonic()
     status = confirmed('1')
     boot = guest_json('/run/disc-boot/boot.json')
     assert (boot['reason'], status['slot'], status['previous']) == ('recovery', 'a', None), (boot, status)
-    step('installed with play', boot=boot, service=status, confirmedAfter=round(time.monotonic() - started), steady=steady())
+    step('installed with play', boot=boot, controller=status, confirmedAfter=round(time.monotonic() - started), steady=steady())
     power('off')
     with card() as root:
-        assert json.loads((root/'.disc/boot/result.json').read_text())['roles']['service']['installed'] is True
+        assert json.loads((root/'.disc/boot/result.json').read_text())['roles']['controller']['installed'] is True
     # 5. An update staged by the running version and activated: version 2, confirmed; 1 kept for a rollback.
     job(work, 'activate', '2')
     power('on')
     status = confirmed('2', 420)
     assert (status['slot'], status['lastRequest'], status['previous']['version']) == ('b', f'activated {NAME} 2', '1'), status
-    step('activated', service=status)
+    step('activated', controller=status)
     # 6. A version that exits before ready: back to version 2.
     power('off')
     job(work, 'activate', '3', 'exit-before-ready')
     power('on')
     status = back_to('2', f'activated {NAME} 3', 'version 3 gave way to 2')
-    step('exit before ready rolled back', service=status, log=guest(f'tail -n 8 {DATA}/probe.log'))
+    step('exit before ready rolled back', controller=status, log=guest(f'tail -n 8 {DATA}/probe.log'))
     # 7. A version that exits after ready, before its confirmation: back to version 2.
     power('off')
     job(work, 'activate', '4', 'exit-after-ready')
     power('on')
     status = back_to('2', f'activated {NAME} 4', 'version 4 gave way to 2')
-    step('exit after ready rolled back', service=status, log=guest(f'tail -n 8 {DATA}/probe.log'))
+    step('exit after ready rolled back', controller=status, log=guest(f'tail -n 8 {DATA}/probe.log'))
     # 8. A healthy version 5, confirmed, then a rollback asked for: version 2 again.
     power('off')
     job(work, 'activate', '5')
@@ -437,7 +442,7 @@ def run(output):
     job(work, 'rollback')
     power('on')
     status = back_to('2', f'rolled back to {NAME} 2', 'rolled back to 2')
-    step('rollback asked for', service=status)
+    step('rollback asked for', controller=status)
     # The boot-loop count clears only once the restored version has run its 180 s again.
     confirmed('2')
     # 9. Power lost while a new version is tentative, three times: the fourth boot is stock (boot-loop);
@@ -447,7 +452,7 @@ def run(output):
     power('off')
     job(work, 'activate', '6')
     power('on')
-    service(lambda s: s['version'] == '6' and s['state'] == 'ready', 'version 6 tentative', 420)
+    controller(lambda s: s['version'] == '6' and s['state'] == 'ready', 'version 6 tentative', 420)
     time.sleep(5)
     power('cut', unsynced=True)
     counts = []
@@ -456,7 +461,7 @@ def run(output):
     for _ in range(3):
         power('on')
         counts.append(boot_status().get('unconfirmedBoots'))
-        service(lambda s: s['version'] == '6' and s['state'] == 'ready', 'version 6 tentative again', 300)
+        controller(lambda s: s['version'] == '6' and s['state'] == 'ready', 'version 6 tentative again', 300)
         power('cut', unsynced=True)
     power('on')
     loop = boot_status()
@@ -465,7 +470,7 @@ def run(output):
     power('off')
     power('on', hold='play')
     status = confirmed('6', 420)
-    step('power loss and the boot-loop guard', counts=counts, loop=loop, after=guest_json('/run/disc-boot/boot.json'), service=status)
+    step('power loss and the boot-loop guard', counts=counts, loop=loop, after=guest_json('/run/disc-boot/boot.json'), controller=status)
     # 10. A ui package with Play: stock's watch loop starts it through the launcher; confirmed;
     #     killed, it comes back with the player as stock's loop restarts both.
     power('off')
@@ -521,12 +526,12 @@ def run(output):
     assert stock_ui_runs()
     step('the menu hands over without a restart', choice=choice, player=player, ui=ui, pairRestarts=pair_restarts() - restarts,
          path=guarded_player(), watched=found_by_watch_loop())
-    # 13. A choice for the next boot only, asked by the service: that boot runs it without the menu.
+    # 13. A choice for the next boot only, asked by the controller: that boot runs it without the menu.
     menus = count(f'/usr/data/disc-boot/data/{MENU_NAME}/probe.log', 'menu')
     power('off')
     job(work, f'ui-next {UI_NAME}')
     power('on')
-    service(lambda s: s['lastRequest'] == f"next boot's ui {UI_NAME}", 'the next boot\'s ui asked for', 300)
+    controller(lambda s: s['lastRequest'] == f"next boot's ui {UI_NAME}", 'the next boot\'s ui asked for', 300)
     power('off')
     power('on')
     ui = ui_runs(UI_NAME)
@@ -557,7 +562,7 @@ if __name__ == '__main__':
         run(args.output)
     except BaseException as error:
         evidence['status'] = f'failed: {error}'
-        evidence['service'] = guest_json('/run/disc-boot/service.json')
+        evidence['controller'] = guest_json('/run/disc-boot/controller.json')
         evidence['boot'] = guest_json('/run/disc-boot/boot.json')
         Path(args.output).write_text(json.dumps(evidence, indent=2, default=str) + '\n')
         raise

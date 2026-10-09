@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <sys/types.h>
 
-#define BOOT_API 1
+#define BOOT_API 2
 #define DATA_DIR "/usr/data/disc-boot"
 #define RUN_DIR "/run/disc-boot"
 #define SMALL_FILE 4096
@@ -32,6 +32,8 @@ int mkdirs(const char *abs, mode_t mode);
 /* Removes a tree without following links; refuses depth beyond 16. */
 int remove_tree(const char *abs);
 int copy_file(const char *src, const char *dst, mode_t mode);
+/* rename(2), then the folder synced. */
+int rename_synced(const char *from, const char *to);
 int file_sha256(const char *abs, char hex[65], long long *size);
 /* A JSON string literal (quotes included) of printable ASCII. */
 void json_str(char *out, size_t cap, const char *s);
@@ -60,11 +62,14 @@ typedef struct { char mode[9]; int unconfirmed; char ui[33], next[33]; } global_
 /* A package's name: [a-z0-9-]{1,32}. */
 int package_name_ok(const char *s);
 /* previous_manifest: the SHA-256 of the previous slot's package.json when it became the
-   rollback target; a slot rewritten since (an update staged there) is no rollback target. */
-typedef struct { char current, previous; int confirmed; char previous_manifest[65]; } role_state;
+   rollback target; a slot rewritten since (an update staged there) is no rollback target.
+   autostart: a service starts at a platform boot (1 unless its state says false; kept for
+   service domains only). */
+typedef struct { char current, previous; int confirmed, autostart; char previous_manifest[65]; } role_state;
 int gstate_read(global_state *g);
 int gstate_write(const global_state *g);
-/* A domain is where a package lives under DATA_DIR: "service", "menu" or "ui/<name>".
+/* A domain is where a package lives under DATA_DIR: "controller", "menu", "ui/<name>" or
+   "service/<name>".
    0 with current 0 when nothing is installed there; -1 when its state is unreadable. */
 int rstate_read(const char *domain, role_state *r);
 int rstate_write(const char *domain, const role_state *r);

@@ -74,8 +74,12 @@ def guest_file(state, path):
 def status(state):
     machine = inside(state, 'bash', '/repo/emulator/scripts/25_power.sh', 'status', capture=True, check=False).stdout
     out = {'machine': json.loads(machine) if machine.strip().startswith('{') else machine.strip()}
-    for name in ('boot', 'service', 'menu', 'ui'):
+    for name in ('boot', 'controller', 'menu', 'ui'):
         out[name] = guest_file(state, f'/run/disc-boot/{name}.json')
+    # Each service's status (boot API 2), by name.
+    files = inside(state, 'sh', '-c', f'ls {GUEST}/run/disc-boot/service 2>/dev/null || true', capture=True).stdout.split()
+    out['services'] = {f[:-5]: guest_file(state, f'/run/disc-boot/service/{f}') for f in sorted(files)
+                       if re.fullmatch(r'[a-z0-9-]{1,32}\.json', f)}
     out['choice'] = guest_file(state, '/run/disc-boot/ui/choice.json')
     return out
 

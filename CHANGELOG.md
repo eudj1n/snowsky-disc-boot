@@ -6,6 +6,15 @@ layer for FiiO's 2.57. Each published release is a `v<version>` tag with its
 files on the [releases page](https://github.com/eudj1n/snowsky-disc-boot/releases).
 Entries stay short; how and why it was done is in the [plan](docs/dev/plan.md).
 
+## [Unreleased]
+
+- Besides the server, the player can run services: small background programs
+  such as a health journal, each started and watched on its own. A service
+  that fails stops alone and never sends the player back to FiiO's
+  interface.
+- The server you installed moves to its new place at the first start by
+  itself: nothing to reinstall.
+
 ## [2.57.6] — 2026-10-09
 
 - After writing the player, the installer restarts it into the new system

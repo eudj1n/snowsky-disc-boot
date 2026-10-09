@@ -111,7 +111,7 @@ def entry_ok(entry, kind):
         archive_ok(source, where)
     if kind == 'packages':
         if entry.get('role') not in package.ROLES:
-            fail(f'{where}: role must be service, ui or menu')
+            fail(f'{where}: role must be controller, service, ui or menu')
         profiles = entry.get('profiles')
         if not isinstance(profiles, list) or not profiles or not all(package.printable(p, 16) for p in profiles):
             fail(f'{where}: profiles must list firmware profiles')
@@ -253,7 +253,9 @@ def fetch(entry, output, places=(), allow_download=False, progress=None, downloa
         else:
             path = obtain(source, places, temp, allow_download, progress)
             folder = package.unpack(path, Path(output))
-    m = package.check(folder, entry.get('role'))
+    m = package.check(folder, package.taken(entry))
+    if package.taken(m) != package.taken(entry):
+        fail(f'the package takes the role {package.taken(m)}, the catalog names {package.taken(entry)}')
     if (m['name'], m['version']) != (entry['name'], entry['version']):
         fail(f'the package is {m["name"]} {m["version"]}, the catalog names {entry["name"]} {entry["version"]}')
     return folder

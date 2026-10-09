@@ -55,9 +55,9 @@ class BootTests(unittest.TestCase):
     def boot(self, *args, check=False):
         return subprocess.run([str(BINARY), *args], env=self.env, capture_output=True, text=True, timeout=30, check=check)
 
-    def package(self, directory, script, name='disc-server', version='1', role='service', entry=None, edit=None, extra=None):
+    def package(self, directory, script, name='disc-server', version='1', role='controller', entry=None, edit=None, extra=None, boot_api=2):
         directory.mkdir(parents=True, exist_ok=True)
-        entry = entry or ('bin/run' if role == 'service' else 'bin/mq_ui')
+        entry = entry or ('bin/run' if role in ('controller', 'service') else 'bin/mq_ui')
         files = {entry: ('#!/bin/sh\n' + script, 0o755), **(extra or {})}
         listed = {}
         for path, (text, mode) in files.items():
@@ -67,7 +67,7 @@ class BootTests(unittest.TestCase):
             target.write_bytes(data)
             target.chmod(mode)
             listed[path] = dict(size=len(data), sha256=hashlib.sha256(data).hexdigest(), mode=f'{mode:04o}')
-        manifest = dict(schema=1, name=name, version=version, role=role, bootApi=1, arch='fixture',
+        manifest = dict(schema=1, name=name, version=version, role=role, bootApi=boot_api, arch='fixture',
                         profiles=[PROFILE], entry=entry, args=[], ready=30, files=listed)
         if edit:
             edit(manifest)
@@ -76,8 +76,9 @@ class BootTests(unittest.TestCase):
 
     @staticmethod
     def domain(role, name):
-        """Where boot keeps a package: service and menu by role, each ui package under its name."""
-        return f'ui/{name}' if role == 'ui' else role
+        """Where boot keeps a package: the controller and the menu by role, each ui and service
+        package under its name."""
+        return f'{role}/{name}' if role in ('ui', 'service') else role
 
     def install(self, role, slot, script, confirmed=False, previous=None, **kwargs):
         domain = self.domain(role, kwargs.get('name', 'disc-server'))
@@ -99,6 +100,7 @@ class BootTests(unittest.TestCase):
         return json.loads((self.data/domain/'state.json').read_text())
 
     def status(self, role):
+        """A role's status, or a service's ('service/<name>')."""
         try:
             return json.loads((self.run_dir/f'{role}.json').read_text())
         except (FileNotFoundError, json.JSONDecodeError):
@@ -113,7 +115,7 @@ class BootTests(unittest.TestCase):
             time.sleep(0.05)
         self.fail(f'{role} never reached {state}: {self.status(role)}; log: {self.log()}')
 
-    def wait_for(self, condition, role='service', timeout=15):
+    def wait_for(self, condition, role='controller', timeout=15):
         until = time.monotonic() + timeout
         while time.monotonic() < until:
             current = self.status(role)
@@ -150,7 +152,7 @@ class BootTests(unittest.TestCase):
     def test_unconfirmed_platform_boots_fall_back_to_stock(self):
         self.early()
         self.assertFalse((self.data/'state.json').exists(), 'nothing installed, nothing counted')
-        self.install('service', 'a', GOOD)
+        self.install('controller', 'a', GOOD)
         for count in (1, 2, 3):
             self.assertEqual(self.early()['mode'], 'platform')
             self.assertEqual(self.global_state()['unconfirmed'], count)
@@ -165,26 +167,26 @@ class BootTests(unittest.TestCase):
         once, not after their confirmation time (2026-10-07: quick restarts of a player whose
         packages were all confirmed reached the guard). A package not yet confirmed keeps it."""
         self.env['DISC_BOOT_FIXTURE_TIMING'] = self.env['DISC_BOOT_FIXTURE_TIMING'].replace('confirm=1,', 'confirm=60,')
-        self.install('service', 'a', GOOD, confirmed=True)
+        self.install('controller', 'a', GOOD, confirmed=True)
         self.early(); self.early()
         self.assertEqual(self.global_state()['unconfirmed'], 2)
         self.boot('start', check=True)
-        self.wait_status('service', 'ready')
+        self.wait_status('controller', 'ready')
         deadline = time.monotonic() + 5
         while self.global_state()['unconfirmed'] and time.monotonic() < deadline:
             time.sleep(0.1)
         self.assertEqual(self.global_state()['unconfirmed'], 0, 'cleared at ready, long before 60 s')
         self.boot('stop', check=True)
-        self.install('service', 'b', GOOD, confirmed=False, previous='a')
+        self.install('controller', 'b', GOOD, confirmed=False, previous='a')
         self.early()
         self.boot('start', check=True)
-        self.wait_status('service', 'ready')
+        self.wait_status('controller', 'ready')
         time.sleep(1)
-        self.assertEqual(self.global_state()['unconfirmed'], 1, 'a tentative service keeps the count until its confirmation')
+        self.assertEqual(self.global_state()['unconfirmed'], 1, 'a tentative controller keeps the count until its confirmation')
 
     # Manifests
 
-    def verify(self, directory, role='service'):
+    def verify(self, directory, role='controller'):
         result = self.boot('verify', role, str(directory), '--profile', PROFILE)
         return result.returncode, json.loads(result.stdout)
 
@@ -216,7 +218,9 @@ class BootTests(unittest.TestCase):
             'name must match': lambda m: m.update(name='Disc Server'),
             'role must be': lambda m: m.update(role='daemon'),
             'bootApi must be': lambda m: m.update(bootApi=0),
-            'needs boot API 2': lambda m: m.update(bootApi=2),
+            'needs boot API 3': lambda m: m.update(bootApi=3),
+            'the controller role needs bootApi 2': lambda m: m.update(bootApi=1),
+            'memory must be 1-64 MiB': lambda m: m.update(memory=65),
             'built for mips32el': lambda m: m.update(arch='mips32el-linux-static'),
             'does not support firmware profile 2.57': lambda m: m.update(profiles=['2.58']),
             'ready must be': lambda m: m.update(ready=121),
@@ -228,14 +232,14 @@ class BootTests(unittest.TestCase):
             'only a ui package brings a player launcher': lambda m: m.update(player='bin/run'),
             'player must be a listed relative path': lambda m: m.update(player='/bin/run'),
             'title must be 1-32 printable ASCII': lambda m: m.update(title='x' * 33),
-            "role is service, not ui": None,
+            "role is controller, not ui": None,
         }
         for message, edit in cases.items():
             with self.subTest(message):
                 directory = self.root/'case'
                 subprocess.run(['rm', '-rf', str(directory)])
                 self.package(directory, GOOD, edit=edit)
-                code, result = self.verify(directory, 'ui' if edit is None else 'service')
+                code, result = self.verify(directory, 'ui' if edit is None else 'controller')
                 self.assertEqual(code, 1, result)
                 self.assertIn(message, result['error'])
         directory = self.root/'ui'
@@ -248,29 +252,30 @@ class BootTests(unittest.TestCase):
         (directory/'package.json').write_text(text[:-1] + ',"name":"other"}')
         self.assertIn('name must match', self.verify(directory, 'ui')[1]['error'])
 
-    # The service's lifecycle
+    # The controller's lifecycle
 
-    def test_a_service_is_confirmed_with_its_environment(self):
+    def test_the_controller_is_confirmed_with_its_environment(self):
         # Which descriptors above 2 are open: a duplicate of one succeeds only when it is.
         script = ('env > "$DISC_BOOT_DATA/env.txt"\nps -o nice= -p $$ > "$DISC_BOOT_DATA/nice.txt"\n'
                   'for fd in 3 4 5 6 7 8 9; do { true >&$fd; } 2>/dev/null && echo $fd; done > "$DISC_BOOT_DATA/fds.txt"\n' + GOOD)
-        self.install('service', 'a', script)
+        self.install('controller', 'a', script)
         self.early()
         self.assertEqual(self.global_state()['unconfirmed'], 1)
         self.boot('start', check=True)
-        status = self.wait_status('service', 'confirmed')
+        status = self.wait_status('controller', 'confirmed')
         self.assertEqual((status['name'], status['version'], status['slot'], status['confirmed']), ('disc-server', '1', 'a', True))
-        self.assertEqual(self.role_state('service'), dict(schema=1, current='a', confirmed=True, previous=None, previousManifest=None))
+        self.assertEqual(self.role_state('controller'), dict(schema=1, current='a', confirmed=True, previous=None, previousManifest=None))
         self.assertEqual(self.global_state()['unconfirmed'], 0)
         env = dict(line.split('=', 1) for line in (self.data/'data/disc-server/env.txt').read_text().splitlines() if '=' in line)
-        slot = str(self.data/'service/a')
-        self.assertEqual(env['DISC_BOOT_ROLE'], 'service')
+        slot = str(self.data/'controller/a')
+        self.assertEqual(env['DISC_BOOT_ROLE'], 'controller')
+        self.assertEqual(env['DISC_BOOT_API'], '2')
         self.assertEqual(env['DISC_BOOT_PROFILE'], PROFILE)
         self.assertEqual(env['DISC_BOOT_SLOT'], slot)
-        self.assertEqual(env['DISC_BOOT_INACTIVE'], str(self.data/'service/b'))
-        self.assertEqual(env['DISC_BOOT_REQUEST'], str(self.data/'service/request'))
+        self.assertEqual(env['DISC_BOOT_INACTIVE'], str(self.data/'controller/b'))
+        self.assertEqual(env['DISC_BOOT_REQUEST'], str(self.data/'controller/request'))
         self.assertEqual(env['DISC_BOOT_DATA'], str(self.data/'data/disc-server'))
-        self.assertEqual(env['DISC_BOOT_RUN'], str(self.run_dir/'service'))
+        self.assertEqual(env['DISC_BOOT_RUN'], str(self.run_dir/'controller'))
         self.assertEqual(env['DISC_BOOT_CARD'], str(self.root/'tmp/sdcard'))
         self.assertEqual(env['DISC_BOOT_PROGRAM'], str(BINARY.resolve()))
         self.assertTrue(env['LD_LIBRARY_PATH'].startswith(slot + '/lib:/usr/lib:'))
@@ -280,33 +285,33 @@ class BootTests(unittest.TestCase):
         self.assertEqual(int((self.data/'data/disc-server/nice.txt').read_text()), 5)
         self.assertEqual((self.data/'data/disc-server/fds.txt').read_text(), '', 'only stdin, stdout and stderr are open')
         self.boot('stop')
-        self.wait_status('service', 'stopped')
+        self.wait_status('controller', 'stopped')
         self.assertFalse((self.run_dir/'supervisor.pid').exists())
 
     def test_a_failing_new_version_gives_way_to_the_previous_one(self):
-        self.package(self.data/'service/a', GOOD, version='1')
-        self.install('service', 'b', 'exit 3\n', version='2', previous='a')
+        self.package(self.data/'controller/a', GOOD, version='1')
+        self.install('controller', 'b', 'exit 3\n', version='2', previous='a')
         self.early()
         self.boot('start', check=True)
-        status = self.wait_status('service', 'confirmed')
+        status = self.wait_status('controller', 'confirmed')
         self.assertEqual((status['version'], status['slot']), ('1', 'a'))
-        self.assertEqual(self.role_state('service'), dict(schema=1, current='a', confirmed=True, previous=None, previousManifest=None))
+        self.assertEqual(self.role_state('controller'), dict(schema=1, current='a', confirmed=True, previous=None, previousManifest=None))
 
     def test_a_failing_first_version_stops_and_says_why(self):
-        self.install('service', 'a', 'exit 3\n')
+        self.install('controller', 'a', 'exit 3\n')
         self.early()
         self.boot('start', check=True)
-        self.assertIn('exited before its confirmation', self.wait_status('service', 'failed')['note'])
-        self.install('service', 'a', 'trap "exit 0" TERM\nwhile :; do sleep 0.1; done\n', edit=lambda m: m.update(ready=1))
-        (self.run_dir/'service.json').unlink()
+        self.assertIn('exited before its confirmation', self.wait_status('controller', 'failed')['note'])
+        self.install('controller', 'a', 'trap "exit 0" TERM\nwhile :; do sleep 0.1; done\n', edit=lambda m: m.update(ready=1))
+        (self.run_dir/'controller.json').unlink()
         self.boot('start', check=True)
-        self.assertIn('not ready in time', self.wait_status('service', 'failed')['note'])
+        self.assertIn('not ready in time', self.wait_status('controller', 'failed')['note'])
 
-    def test_a_confirmed_service_restarts_within_bounds(self):
-        self.install('service', 'a', 'echo run >> "$DISC_BOOT_DATA/runs"\n: > "$DISC_BOOT_RUN/ready"\nsleep 0.3\nexit 1\n', confirmed=True)
+    def test_a_confirmed_controller_restarts_within_bounds(self):
+        self.install('controller', 'a', 'echo run >> "$DISC_BOOT_DATA/runs"\n: > "$DISC_BOOT_RUN/ready"\nsleep 0.3\nexit 1\n', confirmed=True)
         self.early()
         self.boot('start', check=True)
-        self.assertIn('restarted too often', self.wait_status('service', 'failed')['note'])
+        self.assertIn('restarted too often', self.wait_status('controller', 'failed')['note'])
         self.assertEqual(len((self.data/'data/disc-server/runs').read_text().split()), 4)
 
     def test_an_update_is_staged_activated_and_confirmed(self):
@@ -320,20 +325,20 @@ class BootTests(unittest.TestCase):
   exit 0
 fi
 ''' + GOOD
-        self.install('service', 'a', update, version='1', confirmed=True)
+        self.install('controller', 'a', update, version='1', confirmed=True)
         self.early()
         self.boot('start', check=True)
-        status = self.wait_status('service', 'confirmed')
+        status = self.wait_status('controller', 'confirmed')
         self.assertEqual((status['version'], status['slot'], status['lastRequest']), ('2', 'b', 'activated disc-server 2'))
-        self.assertEqual(self.role_state('service'), dict(schema=1, current='b', confirmed=True, previous='a',
-                                                          previousManifest=self.fingerprint('service', 'a')))
-        self.assertEqual(status['previous'], dict(slot='a', name='disc-server', version='1', manifest=self.fingerprint('service', 'a')))
+        self.assertEqual(self.role_state('controller'), dict(schema=1, current='b', confirmed=True, previous='a',
+                                                          previousManifest=self.fingerprint('controller', 'a')))
+        self.assertEqual(status['previous'], dict(slot='a', name='disc-server', version='1', manifest=self.fingerprint('controller', 'a')))
         # Asked to go back, it returns to the confirmed previous version.
-        (self.data/'service/request').write_text('{"action":"rollback"}')
-        subprocess.run(['pkill', '-f', str(self.data/'service/b')])
+        (self.data/'controller/request').write_text('{"action":"rollback"}')
+        subprocess.run(['pkill', '-f', str(self.data/'controller/b')])
         status = self.wait_for(lambda s: s['slot'] == 'a' and s['state'] == 'confirmed')
         self.assertEqual((status['version'], status['lastRequest']), ('1', 'rolled back to disc-server 1'))
-        self.assertEqual(self.role_state('service'), dict(schema=1, current='a', confirmed=True, previous=None, previousManifest=None))
+        self.assertEqual(self.role_state('controller'), dict(schema=1, current='a', confirmed=True, previous=None, previousManifest=None))
 
     def test_a_rollback_returns_only_to_the_version_confirmed_there(self):
         # An update staged into the inactive slot replaces the previous version: no rollback to it,
@@ -348,32 +353,32 @@ while :; do
   sleep 0.1
 done
 '''
-        self.package(self.data/'service/a', GOOD, version='1')
-        self.install('service', 'b', on_demand, version='2', confirmed=True, previous='a')
+        self.package(self.data/'controller/a', GOOD, version='1')
+        self.install('controller', 'b', on_demand, version='2', confirmed=True, previous='a')
         self.early()
         self.boot('start', check=True)
-        status = self.wait_status('service', 'confirmed')
+        status = self.wait_status('controller', 'confirmed')
         self.assertEqual(status['previous']['version'], '1')
         (self.data/'data/disc-server').mkdir(parents=True, exist_ok=True)
         (self.data/'data/disc-server/stage').touch()
         until = time.monotonic() + 10
-        while json.loads((self.data/'service/a/package.json').read_text())['version'] != '3' and time.monotonic() < until:
+        while json.loads((self.data/'controller/a/package.json').read_text())['version'] != '3' and time.monotonic() < until:
             time.sleep(0.05)
-        (self.data/'service/request').write_text('{"action":"rollback"}')
-        subprocess.run(['pkill', '-f', str(self.data/'service/b')])
+        (self.data/'controller/request').write_text('{"action":"rollback"}')
+        subprocess.run(['pkill', '-f', str(self.data/'controller/b')])
         status = self.wait_for(lambda s: s['lastRequest'] is not None and s['state'] == 'confirmed')
         self.assertEqual((status['slot'], status['version'], status['lastRequest'], status['previous']),
                          ('b', '2', 'rollback refused: the previous version was replaced', None))
         self.boot('stop', check=True)
         # A tentative version whose fallback was replaced stops and says why, rather than run the stage.
-        self.install('service', 'b', stage + 'exit 3\n', version='2', previous='a')
-        self.package(self.data/'service/a', GOOD, version='1')
-        self.state('service', 'b', previous='a')
-        (self.run_dir/'service.json').unlink()
+        self.install('controller', 'b', stage + 'exit 3\n', version='2', previous='a')
+        self.package(self.data/'controller/a', GOOD, version='1')
+        self.state('controller', 'b', previous='a')
+        (self.run_dir/'controller.json').unlink()
         self.boot('start', check=True)
-        status = self.wait_status('service', 'failed')
+        status = self.wait_status('controller', 'failed')
         self.assertEqual((status['slot'], status['note']), ('b', 'exited before its confirmation'))
-        self.assertEqual(json.loads((self.data/'service/a/package.json').read_text())['version'], '3')
+        self.assertEqual(json.loads((self.data/'controller/a/package.json').read_text())['version'], '3')
 
     def test_a_broken_update_is_refused_and_the_current_version_runs_on(self):
         update = '''if [ ! -e "$DISC_BOOT_DATA/updated" ]; then
@@ -383,10 +388,10 @@ done
   exit 0
 fi
 ''' + GOOD
-        self.install('service', 'a', update, confirmed=True)
+        self.install('controller', 'a', update, confirmed=True)
         self.early()
         self.boot('start', check=True)
-        status = self.wait_status('service', 'confirmed')
+        status = self.wait_status('controller', 'confirmed')
         self.assertEqual(status['slot'], 'a')
         self.assertTrue(status['lastRequest'].startswith('activate refused: name must match'), status)
         self.assertEqual(status['failures'], 0)
@@ -400,38 +405,209 @@ fi
 printf '{"action":"remove","purge":true}' > "$DISC_BOOT_REQUEST"
 exit 0
 '''
-        self.install('service', 'a', script, confirmed=True)
+        self.install('controller', 'a', script, confirmed=True)
         self.early()
         self.boot('start', check=True)
-        status = self.wait_status('service', 'absent')
+        status = self.wait_status('controller', 'absent')
         self.assertEqual(status['lastRequest'], 'removed with its data')
         self.assertEqual(self.global_state()['default'], 'stock')
-        self.assertFalse((self.data/'service/a').exists())
+        self.assertFalse((self.data/'controller/a').exists())
         self.assertFalse((self.data/'data/disc-server').exists())
-        self.assertFalse((self.data/'service/state.json').exists())
+        self.assertFalse((self.data/'controller/state.json').exists())
 
     def test_the_package_log_is_capped(self):
-        self.install('service', 'a', 'head -c 100000 /dev/zero | tr "\\0" x\n' + GOOD)
+        self.install('controller', 'a', 'head -c 100000 /dev/zero | tr "\\0" x\n' + GOOD)
         self.early()
         self.boot('start', check=True)
-        self.wait_status('service', 'confirmed')
-        self.assertLessEqual((self.run_dir/'service/log').stat().st_size, 65536)
+        self.wait_status('controller', 'confirmed')
+        self.assertLessEqual((self.run_dir/'controller/log').stat().st_size, 65536)
 
     def test_an_unreadable_state_runs_nothing(self):
-        self.install('service', 'a', GOOD)
-        (self.data/'service/state.json').write_text('{"schema":1,"current":"c"}')
+        self.install('controller', 'a', GOOD)
+        (self.data/'controller/state.json').write_text('{"schema":1,"current":"c"}')
         (self.data/'state.json').write_text('not json')
         boot = self.early()
         self.assertEqual((boot['mode'], boot['stateReadable']), ('platform', False))
         self.boot('start', check=True)
-        self.assertIn('unreadable', self.wait_status('service', 'failed')['note'])
+        self.assertIn('unreadable', self.wait_status('controller', 'failed')['note'])
 
     def test_stock_mode_starts_nothing(self):
-        self.install('service', 'a', GOOD)
+        self.install('controller', 'a', GOOD)
         self.early('volume-up')
         self.boot('start', check=True)
-        self.assertEqual(self.status('service')['state'], 'stock-mode')
+        self.assertEqual(self.status('controller')['state'], 'stock-mode')
         self.assertFalse((self.run_dir/'supervisor.pid').exists())
+
+    # Boot API 1's controller: the server up to 2.57.5, a service package of boot API 1
+
+    def legacy(self, slot, script, confirmed=True, **kwargs):
+        """The server as boot API 1 kept it: role service, bootApi 1, in service/."""
+        self.package(self.data/'service'/slot, script, role='service', boot_api=1, **kwargs)
+        (self.data/'service/state.json').write_text(json.dumps(dict(schema=1, current=slot, confirmed=confirmed, previous=None,
+                                                                     previousManifest=None)))
+
+    def test_boot_api_1s_service_becomes_the_controller_once(self):
+        """The first boot of API 2 renames service/ to controller/ and says so; the package of API 1
+        runs as the controller, told the role it names, and its status is also service.json, where
+        that server reads it."""
+        script = 'env > "$DISC_BOOT_DATA/env.txt"\n' + GOOD
+        self.legacy('a', script)
+        self.early()
+        self.assertFalse((self.data/'service').exists())
+        self.assertEqual(self.role_state('controller'), dict(schema=1, current='a', confirmed=True, previous=None, previousManifest=None))
+        self.assertIn('layout: service/ of boot API 1 became controller/', self.boot_log())
+        self.boot('start', check=True)
+        status = self.wait_status('controller', 'confirmed')
+        self.assertEqual((status['role'], status['name'], status['slot']), ('controller', 'disc-server', 'a'))
+        self.assertEqual(self.status('service'), status, 'the same status where boot API 1 wrote it')
+        env = dict(line.split('=', 1) for line in (self.data/'data/disc-server/env.txt').read_text().splitlines() if '=' in line)
+        self.assertEqual((env['DISC_BOOT_ROLE'], env['DISC_BOOT_API']), ('service', '2'))
+        self.assertEqual(env['DISC_BOOT_SLOT'], str(self.data/'controller/a'))
+        self.assertEqual(env['DISC_BOOT_INACTIVE'], str(self.data/'controller/b'))
+        self.assertEqual(env['DISC_BOOT_REQUEST'], str(self.data/'controller/request'))
+        self.assertEqual(env['DISC_BOOT_RUN'], str(self.run_dir/'controller'))
+        self.boot('stop', check=True)
+        self.early()
+        self.assertEqual(self.boot_log().count('became controller/'), 1)
+        # A controller/ there already (a boot layer of API 1 again in between): service/ stays.
+        self.legacy('a', GOOD)
+        self.early()
+        self.assertTrue((self.data/'service/state.json').exists() and (self.data/'controller/state.json').exists())
+        self.assertIn('layout: service/ of boot API 1 stays, controller/ is there already', self.boot_log())
+
+    def test_a_controller_of_boot_api_1_updates_itself_to_one_of_boot_api_2(self):
+        """The server of API 1 checks its update as "service" and asks for its activation; its next
+        version names the controller's role, and service.json goes with the old one."""
+        staged = self.root/'staged'
+        self.package(staged, GOOD, version='2')
+        update = f'''if [ ! -e "$DISC_BOOT_DATA/updated" ]; then
+  : > "$DISC_BOOT_DATA/updated"
+  : > "$DISC_BOOT_RUN/ready"
+  cp -Rp "{staged}/." "$DISC_BOOT_INACTIVE/"
+  "$DISC_BOOT_PROGRAM" verify service "$DISC_BOOT_INACTIVE" > "$DISC_BOOT_DATA/verify.json"
+  printf '{{"action":"activate"}}' > "$DISC_BOOT_REQUEST"
+  exit 0
+fi
+''' + GOOD
+        self.legacy('a', update, version='1')
+        self.early()
+        self.boot('start', check=True)
+        status = self.wait_for(lambda s: s['slot'] == 'b' and s['state'] == 'confirmed')
+        self.assertEqual((status['version'], status['lastRequest']), ('2', 'activated disc-server 2'))
+        self.assertTrue(json.loads((self.data/'data/disc-server/verify.json').read_text())['ok'])
+        self.assertFalse((self.run_dir/'service.json').exists(), 'a controller of API 2 reads controller.json')
+        self.assertEqual(status['previous']['version'], '1')
+
+    def test_verify_takes_a_controller_as_service_for_the_server_of_boot_api_1(self):
+        directory = self.root/'pkg'
+        self.package(directory, GOOD, role='service', boot_api=1)
+        self.assertEqual(self.verify(directory, 'controller')[0], 0)
+        self.assertEqual(self.verify(directory, 'service')[0], 0)
+        self.assertIn('a service package of boot API 1 is the controller, not ui', self.verify(directory, 'ui')[1]['error'])
+        self.package(directory, GOOD)
+        self.assertEqual(self.verify(directory, 'service')[0], 0)
+        self.package(directory, GOOD, role='service', name='disc-health')
+        self.assertEqual(self.verify(directory, 'service')[0], 0)
+        self.assertIn('role is service, not controller', self.verify(directory, 'controller')[1]['error'])
+
+    # Services
+
+    def service(self, name, script, **kwargs):
+        return self.install('service', kwargs.pop('slot', 'a'), script, name=name, **kwargs)
+
+    def test_services_start_after_the_controller_each_with_its_environment_and_bounds(self):
+        order = self.root/'out/order'
+        probe = ('env > "$DISC_BOOT_DATA/env.txt"\nps -o nice= -p $$ > "$DISC_BOOT_DATA/nice.txt"\n'
+                 'ulimit -v > "$DISC_BOOT_DATA/memory.txt"\n'
+                 'for fd in 3 4 5 6 7 8 9; do { true >&$fd; } 2>/dev/null && echo $fd; done > "$DISC_BOOT_DATA/fds.txt"\n')
+        self.install('controller', 'a', f'sleep 0.5\necho controller >> "{order}"\n' + GOOD, confirmed=True)
+        self.service('disc-health', f'echo disc-health >> "{order}"\n' + probe + GOOD, edit=lambda m: m.update(memory=64))
+        self.service('disc-network', f'echo disc-network >> "{order}"\n' + GOOD)
+        self.early()
+        self.boot('start', check=True)
+        health = self.wait_status('service/disc-health', 'confirmed')
+        self.wait_status('service/disc-network', 'confirmed')
+        self.assertEqual(order.read_text().split()[0], 'controller', 'the services once the controller is ready')
+        self.assertEqual((health['role'], health['name'], health['slot'], health['autostart']), ('service', 'disc-health', 'a', True))
+        self.assertEqual(self.role_state('service/disc-health'),
+                         dict(schema=1, current='a', confirmed=True, previous=None, previousManifest=None, autostart=True))
+        env = dict(line.split('=', 1) for line in (self.data/'data/disc-health/env.txt').read_text().splitlines() if '=' in line)
+        self.assertEqual(env['DISC_BOOT_ROLE'], 'service')
+        self.assertEqual(env['DISC_BOOT_SLOT'], str(self.data/'service/disc-health/a'))
+        self.assertEqual(env['DISC_BOOT_INACTIVE'], str(self.data/'service/disc-health/b'))
+        self.assertEqual(env['DISC_BOOT_REQUEST'], str(self.data/'service/disc-health/request'))
+        self.assertEqual(env['DISC_BOOT_DATA'], str(self.data/'data/disc-health'))
+        self.assertEqual(env['DISC_BOOT_RUN'], str(self.run_dir/'service/disc-health'))
+        self.assertEqual(env['DISC_BOOT_STATUS'], str(self.run_dir))
+        self.assertEqual(int((self.data/'data/disc-health/nice.txt').read_text()), 10)
+        self.assertEqual((self.data/'data/disc-health/fds.txt').read_text(), '')
+        if sys.platform.startswith('linux'):  # The fixture's other hosts (macOS) refuse RLIMIT_AS.
+            self.assertEqual((self.data/'data/disc-health/memory.txt').read_text().strip(), str(64 * 1024))
+        status = json.loads(self.boot('status', check=True).stdout)
+        self.assertEqual(sorted(status['services']), ['disc-health', 'disc-network'])
+        self.assertEqual(status['controller']['state'], 'confirmed')
+        self.boot('stop', check=True)
+        for name in ('disc-health', 'disc-network'):
+            self.assertEqual(self.status(f'service/{name}')['state'], 'stopped')
+        self.assertEqual(self.status('controller')['state'], 'stopped')
+        self.assertFalse((self.run_dir/'supervisor.pid').exists())
+
+    def test_a_failing_service_stops_alone_and_never_counts_for_the_boot_loop_guard(self):
+        self.install('controller', 'a', GOOD, confirmed=True)
+        self.service('disc-health', 'exit 3\n')
+        self.service('disc-network', 'echo run >> "$DISC_BOOT_DATA/runs"\n: > "$DISC_BOOT_RUN/ready"\nsleep 0.3\nexit 1\n', confirmed=True)
+        self.early()
+        self.boot('start', check=True)
+        self.assertEqual(self.wait_status('service/disc-health', 'failed')['note'], 'exited before its confirmation')
+        self.assertEqual(self.wait_status('service/disc-network', 'failed')['note'], 'restarted too often')
+        self.assertEqual(self.wait_status('controller', 'confirmed')['failures'], 0)
+        self.assertEqual(self.global_state()['unconfirmed'], 0, 'a confirmed controller clears the count')
+        self.boot('stop', check=True)
+        # Services alone count nothing.
+        subprocess.run(['rm', '-rf', str(self.data/'controller')], check=True)
+        for _ in range(4):
+            self.assertEqual(self.early()['mode'], 'platform')
+        self.assertEqual(self.global_state()['unconfirmed'], 0)
+
+    def test_a_service_with_autostart_off_does_not_start(self):
+        self.service('disc-network', 'echo ran > "$DISC_BOOT_DATA/ran"\n' + GOOD)
+        state = self.role_state('service/disc-network')
+        (self.data/'service/disc-network/state.json').write_text(json.dumps(dict(state, autostart=False)))
+        self.early()
+        self.boot('start', check=True)
+        status = self.wait_status('service/disc-network', 'disabled')
+        self.assertEqual((status['name'], status['autostart'], status['note']), ('disc-network', False, 'autostart is off'))
+        time.sleep(0.5)
+        self.assertFalse((self.data/'data/disc-network/ran').exists())
+        self.boot('stop', check=True)
+        self.early('volume-up')
+        self.boot('start', check=True)
+        self.assertEqual(self.status('service/disc-network')['state'], 'stock-mode')
+
+    def test_a_service_asks_only_about_itself(self):
+        script = '''if [ ! -e "$DISC_BOOT_DATA/asked" ]; then
+  : > "$DISC_BOOT_DATA/asked"
+  printf '{"action":"default","mode":"stock"}' > "$DISC_BOOT_REQUEST"
+  exit 0
+fi
+if [ ! -e "$DISC_BOOT_DATA/asked-ui" ]; then
+  : > "$DISC_BOOT_DATA/asked-ui"
+  printf '{"action":"ui-next","ui":"stock"}' > "$DISC_BOOT_REQUEST"
+  exit 0
+fi
+printf '{"action":"remove","purge":true}' > "$DISC_BOOT_REQUEST"
+exit 0
+'''
+        self.service('disc-health', script, confirmed=True)
+        self.early()
+        self.boot('start', check=True)
+        status = self.wait_status('service/disc-health', 'absent')
+        self.assertEqual(status['lastRequest'], 'removed with its data')
+        self.assertEqual(status['failures'], 0)
+        self.assertEqual(self.log().count('service/disc-health request: refused: a service asks only for activate, rollback or remove'), 2)
+        self.assertFalse((self.data/'state.json').exists(), 'neither the default nor the choice changed')
+        self.assertFalse((self.data/'service/disc-health').exists())
+        self.assertFalse((self.data/'data/disc-health').exists())
 
     # The check after an installation at its first start
 
@@ -459,7 +635,7 @@ exit 0
         device and leaves the outcome on the card and in the boot log, once (plan, stage 4c)."""
         image = bytes(range(256)) * 4096
         result = self.rootfs(image, tail=b'\xff' * 131072)
-        self.install('service', 'a', GOOD, confirmed=True)
+        self.install('controller', 'a', GOOD, confirmed=True)
         self.early()
         self.boot('start', check=True)
         check = self.checked(result)
@@ -526,47 +702,91 @@ exit 0
 
     def test_play_installs_the_staged_packages(self):
         (self.root/'proc/mounts').write_text('/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
-        self.package(self.staged('service'), GOOD, version='7')
+        self.package(self.staged('controller'), GOOD, version='7')
         broken = self.staged('ui/other-ui')
         self.package(broken, GOOD, role='ui', name='other-ui')
         (broken/'bin/mq_ui').write_text('changed')
         self.early('play')
         self.boot('start', check=True)
-        status = self.wait_status('service', 'confirmed')
+        status = self.wait_status('controller', 'confirmed')
         self.assertEqual((status['version'], status['slot']), ('7', 'a'))
         result = json.loads((self.root/'tmp/sdcard/.disc/boot/result.json').read_text())
-        self.assertEqual(result['roles']['service'], dict(installed=True, note='installed disc-server 7'))
+        self.assertEqual(result['roles']['controller'], dict(installed=True, note='installed disc-server 7'))
         self.assertFalse(result['roles']['ui']['other-ui']['installed'])
         self.assertIn('bin/mq_ui has 7 bytes', result['roles']['ui']['other-ui']['note'])
-        self.assertFalse(self.staged('service').exists())
+        self.assertFalse(self.staged('controller').exists())
         self.assertTrue(broken.exists(), 'a refused package stays on the card')
-        self.assertEqual(oct((self.data/'service/a/bin/run').stat().st_mode & 0o777), '0o755')
+        self.assertEqual(oct((self.data/'controller/a/bin/run').stat().st_mode & 0o777), '0o755')
+
+    def test_play_installs_boot_api_1s_staged_server_as_the_controller(self):
+        """install/service/ holding a package.json itself: the server as the installers up to 2.57.6
+        staged it, installed as the controller; beside install/controller/ it is refused."""
+        (self.root/'proc/mounts').write_text('/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
+        self.package(self.staged('service'), GOOD, role='service', boot_api=1, version='7')
+        self.early('play')
+        self.boot('start', check=True)
+        status = self.wait_status('controller', 'confirmed')
+        self.assertEqual((status['version'], self.status('service')['version']), ('7', '7'))
+        result = json.loads((self.root/'tmp/sdcard/.disc/boot/result.json').read_text())
+        self.assertEqual(result['roles'], dict(controller=dict(installed=True, note='installed disc-server 7')))
+        self.assertFalse(self.staged('service').exists())
+        self.boot('stop', check=True)
+        self.package(self.staged('service'), GOOD, role='service', boot_api=1, version='8')
+        self.package(self.staged('controller'), GOOD, version='9')
+        self.early('play')
+        self.boot('start', check=True)
+        self.wait_for(lambda s: s['version'] == '9' and s['state'] == 'confirmed')
+        result = json.loads((self.root/'tmp/sdcard/.disc/boot/result.json').read_text())
+        self.assertEqual(result['roles']['service'],
+                         {'package.json': dict(installed=False, note='refused: the controller is staged in install/controller/')})
+        self.assertTrue(self.staged('service').exists())
+
+    def test_play_installs_each_staged_service_under_its_name(self):
+        (self.root/'proc/mounts').write_text('/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
+        self.package(self.staged('controller'), GOOD, version='7')
+        self.package(self.staged('service/disc-health'), GOOD, role='service', name='disc-health')
+        self.package(self.staged('service/other-name'), GOOD, role='service', name='disc-health')
+        self.package(self.staged('service/old-server'), GOOD, role='service', name='old-server', boot_api=1)
+        self.early('play')
+        self.boot('start', check=True)
+        self.wait_status('service/disc-health', 'confirmed')
+        result = json.loads((self.root/'tmp/sdcard/.disc/boot/result.json').read_text())
+        self.assertEqual(result['roles'], {
+            'controller': dict(installed=True, note='installed disc-server 7'),
+            'service': {
+                'disc-health': dict(installed=True, note='installed disc-health 1'),
+                'old-server': dict(installed=False, note='refused: a service package of boot API 1 is the controller, not service'),
+                'other-name': dict(installed=False, note='refused: the folder is named other-name, the package disc-health'),
+            }})
+        self.assertFalse(self.staged('service/disc-health').exists())
+        self.assertEqual(self.role_state('service/disc-health')['current'], 'a')
+        self.assertIn('recovery service disc-health: installed disc-health 1', self.boot_log())
 
     def test_play_leaves_the_running_package_as_it_is(self):
         """The package that runs already, byte for byte, is not installed again: its slot keeps its
         confirmation (2026-10-07: a reinstalled server turned tentative and quick restarts then fed the
         boot-loop guard). A damaged running slot is installed afresh."""
         (self.root/'proc/mounts').write_text('/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
-        self.install('service', 'a', GOOD, confirmed=True, version='7')
-        self.package(self.staged('service'), GOOD, version='7')
+        self.install('controller', 'a', GOOD, confirmed=True, version='7')
+        self.package(self.staged('controller'), GOOD, version='7')
         self.early('play')
         self.boot('start', check=True)
-        self.wait_status('service', 'confirmed')
+        self.wait_status('controller', 'confirmed')
         result = json.loads((self.root/'tmp/sdcard/.disc/boot/result.json').read_text())
-        self.assertEqual(result['roles']['service'], dict(installed=True, note='already installed disc-server 7'))
-        self.assertEqual((self.role_state('service')['current'], self.role_state('service')['confirmed']), ('a', True))
-        self.assertFalse((self.data/'service/b/package.json').exists(), 'nothing installed into the other slot')
-        self.assertFalse(self.staged('service').exists(), 'taken off the card')
+        self.assertEqual(result['roles']['controller'], dict(installed=True, note='already installed disc-server 7'))
+        self.assertEqual((self.role_state('controller')['current'], self.role_state('controller')['confirmed']), ('a', True))
+        self.assertFalse((self.data/'controller/b/package.json').exists(), 'nothing installed into the other slot')
+        self.assertFalse(self.staged('controller').exists(), 'taken off the card')
         self.boot('stop', check=True)
         # The running slot damaged: the same package goes into the other slot.
-        (self.data/'service/a/bin/run').write_text('#!/bin/sh\nexit 1\n')
-        self.package(self.staged('service'), GOOD, version='7')
+        (self.data/'controller/a/bin/run').write_text('#!/bin/sh\nexit 1\n')
+        self.package(self.staged('controller'), GOOD, version='7')
         self.early('play')
         self.boot('start', check=True)
-        self.wait_status('service', 'confirmed')
+        self.wait_status('controller', 'confirmed')
         result = json.loads((self.root/'tmp/sdcard/.disc/boot/result.json').read_text())
-        self.assertEqual(result['roles']['service']['note'], 'installed disc-server 7')
-        self.assertEqual(self.role_state('service')['current'], 'b')
+        self.assertEqual(result['roles']['controller']['note'], 'installed disc-server 7')
+        self.assertEqual(self.role_state('controller')['current'], 'b')
 
     def test_play_with_a_ui_package_stops_no_running_ui(self):
         # With Play the launcher runs from the start and waits for the installation: a process named
@@ -658,23 +878,23 @@ exit 0
 
     def test_recovery_needs_the_expected_card(self):
         (self.root/'proc/mounts').write_text('/dev/other /tmp/sdcard exfat rw 0 0\n')
-        self.package(self.staged('service'), GOOD)
+        self.package(self.staged('controller'), GOOD)
         self.early('play')
         self.boot('start', check=True)
-        self.wait_status('service', 'absent')
-        self.assertTrue(self.staged('service').exists())
+        self.wait_status('controller', 'absent')
+        self.assertTrue(self.staged('controller').exists())
         self.assertFalse((self.root/'tmp/sdcard/.disc/boot/result.json').exists())
         self.assertIn('recovery: the card is not mounted', self.boot_log())
         self.assertEqual(json.loads((self.run_dir/'install.json').read_text())['state'], 'done', 'the launchers go on')
 
     def test_nothing_is_taken_from_the_card_without_play(self):
         (self.root/'proc/mounts').write_text('/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
-        self.package(self.staged('service'), GOOD)
+        self.package(self.staged('controller'), GOOD)
         self.early()
         self.boot('start', check=True)
         time.sleep(0.5)
-        self.assertTrue(self.staged('service').exists())
-        self.assertFalse((self.data/'service').exists())
+        self.assertTrue(self.staged('controller').exists())
+        self.assertFalse((self.data/'controller').exists())
 
     # The ui role
 
@@ -830,25 +1050,25 @@ exit 0
 
     def test_next_chooses_one_boot_and_requests_are_checked(self):
         self.two_uis()
-        self.install('service', 'a', GOOD, confirmed=True)
+        self.install('controller', 'a', GOOD, confirmed=True)
         self.set_global(ui='alpha')
-        # A running service's request about the choice applies at the next boot, before anything starts.
-        (self.data/'service/request').write_text('{"action":"ui-next","ui":"beta"}')
+        # A running controller's request about the choice applies at the next boot, before anything starts.
+        (self.data/'controller/request').write_text('{"action":"ui-next","ui":"beta"}')
         self.early()
         self.assertEqual((self.choice()['ui'], self.choice()['by']), ('beta', 'next'))
-        self.assertFalse((self.data/'service/request').exists())
+        self.assertFalse((self.data/'controller/request').exists())
         self.assertIsNone(self.global_state()['next'])
         self.early()
         self.assertEqual((self.choice()['ui'], self.choice()['by']), ('alpha', 'default'))
         for request, why in (('{"action":"ui-default","ui":"gamma"}', 'ui-default refused: gamma is not installed'),
                              ('{"action":"ui-default","ui":"Bad Name"}', 'ui-default refused: ui must name an installed ui package or stock'),
-                             ('{"action":"ui-remove","ui":"alpha"}', 'ui-remove refused: only the service or the menu removes a ui package')):
+                             ('{"action":"ui-remove","ui":"alpha"}', 'ui-remove refused: only the controller or the menu removes a ui package')):
             with self.subTest(request):
                 (self.data/'ui/beta/request').write_text(request)
                 self.set_global(unconfirmed=0)  # each boot here counts; none runs long enough to confirm
                 self.early()
                 self.assertIn(f'ui/beta request: {why}', self.boot_log_of_early())
-        (self.data/'service/request').write_text('{"action":"ui-default","ui":"beta"}')
+        (self.data/'controller/request').write_text('{"action":"ui-default","ui":"beta"}')
         self.set_global(unconfirmed=0)
         self.early()
         self.assertEqual((self.global_state()['ui'], self.choice()['ui']), ('beta', 'beta'))
@@ -865,12 +1085,12 @@ exit 0
         self.last_early = self.boot('early', '--profile', PROFILE, '--card', '/tmp/sdcard', '--card-source', '/dev/mmcblk0p1', check=True)
         return json.loads((self.run_dir/'boot.json').read_text())
 
-    def test_ui_remove_from_the_service_goes_before_any_ui_starts(self):
+    def test_ui_remove_from_the_controller_goes_before_any_ui_starts(self):
         self.two_uis()
-        self.install('service', 'a', GOOD, confirmed=True)
+        self.install('controller', 'a', GOOD, confirmed=True)
         self.set_global(ui='alpha', next='alpha')
         (self.data/'data/alpha').mkdir(parents=True)
-        (self.data/'service/request').write_text('{"action":"ui-remove","ui":"alpha","purge":true}')
+        (self.data/'controller/request').write_text('{"action":"ui-remove","ui":"alpha","purge":true}')
         self.early()
         self.assertFalse((self.data/'ui/alpha').exists())
         self.assertFalse((self.data/'data/alpha').exists())
@@ -1189,7 +1409,8 @@ exit 0
         self.early()
         status = json.loads(self.boot('status', check=True).stdout)
         self.assertEqual(status['boot']['mode'], 'platform')
-        self.assertIsNone(status['service'])
+        self.assertIsNone(status['controller'])
+        self.assertEqual(status['services'], {})
 
     def test_the_production_build_has_no_fixture_switches(self):
         data = PRODUCTION.read_bytes()
