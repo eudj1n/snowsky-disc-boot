@@ -145,11 +145,12 @@ class InstallerTests(unittest.TestCase):
             if entry['name'] == 'disc-menu':
                 menu = dist/'disc-menu-2.57.9.zip'
                 entry.update(version='2.57.9', source=dict(url=release.url('2.57.9', menu.name), sha256=digest(menu), size=menu.stat().st_size))
-        health = dist/'disc-health-2.57.9.zip'
-        catalog['entries'].append(dict(name='disc-health', role='service', version='2.57.9', profiles=[PROFILE], bootApi=2, license='MIT',
-                                       default=True, source=dict(url=release.url('2.57.9', health.name), sha256=digest(health),
-                                                                 size=health.stat().st_size),
-                                       verified=dict(date='2026-10-09', acceptance='test')))
+        for name, ticked in (('disc-health', True), ('disc-network', False)):
+            zipped = dist/f'{name}-2.57.9.zip'
+            catalog['entries'].append(dict(name=name, role='service', version='2.57.9', profiles=[PROFILE], bootApi=2, license='MIT',
+                                           default=ticked, source=dict(url=release.url('2.57.9', zipped.name), sha256=digest(zipped),
+                                                                       size=zipped.stat().st_size),
+                                           verified=dict(date='2026-10-09', acceptance='test')))
         return catalog
 
     def test_the_installers_archive_runs_without_the_repository(self):
@@ -159,7 +160,7 @@ class InstallerTests(unittest.TestCase):
         import release
         mips = self.root/'mips'
         mips.mkdir()
-        for name in ('disc-boot', 'disc-usb-console', 'disc-menu', 'disc-health'):
+        for name in ('disc-boot', 'disc-usb-console', 'disc-menu', 'disc-health', 'disc-network'):
             (mips/name).write_bytes(b'\x7fELF' + name.encode() * 100)
         (mips/'build-id').write_text('b43034ba1e27\n')
 
@@ -174,7 +175,8 @@ class InstallerTests(unittest.TestCase):
         offered.write_text(json.dumps(catalog))
         built = release.installer('2.57.9', dist, [self.local], False, catalog_path=offered, committed=False)
         self.assertEqual(sorted(built['packages']), ['Disc Player-p1.zip', 'disc-boot-2.57.9-mips.tar.gz', 'disc-health-2.57.9.zip',
-                                                     'disc-menu-2.57.9.zip', 'disc-server-9.zip', 'disc-usb-payloads-2.57.9.tar.gz'])
+                                                     'disc-menu-2.57.9.zip', 'disc-network-2.57.9.zip', 'disc-server-9.zip',
+                                                     'disc-usb-payloads-2.57.9.tar.gz'])
         unpacked = self.root/'unpacked'
         with tarfile.open(dist/'disc-installer-2.57.9.tar.gz') as tar:
             names = tar.getnames()
@@ -201,6 +203,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(json.loads((card/'.disc/boot/install/menu/package.json').read_text())['version'], '2.57.9')
         self.assertTrue((card/'.disc/boot/install/controller/package.json').is_file() and (card/'Apps/Disc Player/app.json').is_file())
         self.assertEqual(json.loads((card/'.disc/boot/install/service/disc-health/package.json').read_text())['bootApi'], 2)
+        self.assertFalse((card/'.disc/boot/install/service/disc-network').exists(), 'offered, not ticked')
         self.assertFalse((top/'work').exists(), 'nothing of the run in the archive')
 
     def test_the_archive_downloads_what_it_was_not_given(self):
@@ -212,7 +215,7 @@ class InstallerTests(unittest.TestCase):
         from unittest import mock
         mips = self.root/'mips'
         mips.mkdir()
-        for name in ('disc-boot', 'disc-usb-console', 'disc-menu', 'disc-health'):
+        for name in ('disc-boot', 'disc-usb-console', 'disc-menu', 'disc-health', 'disc-network'):
             (mips/name).write_bytes(b'\x7fELF' + name.encode() * 100)
         (mips/'build-id').write_text('b43034ba1e27\n')
 

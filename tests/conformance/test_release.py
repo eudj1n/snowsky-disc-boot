@@ -22,7 +22,7 @@ class ReleaseTests(unittest.TestCase):
         self.root = Path(temp.name)
         self.mips = self.root/'mips'
         self.mips.mkdir()
-        for name in ('disc-boot', 'disc-usb-console', 'disc-menu', 'disc-health'):
+        for name in ('disc-boot', 'disc-usb-console', 'disc-menu', 'disc-health', 'disc-network'):
             (self.mips/name).write_bytes(b'\x7fELF' + name.encode() * 100)
         (self.mips/'build-id').write_text('b43034ba1e27\n')
         self.releases = self.root/'releases'
@@ -60,6 +60,9 @@ class ReleaseTests(unittest.TestCase):
             self.assertEqual((manifest['name'], manifest['role'], manifest['bootApi'], manifest['entry'], manifest['homepage']),
                              ('disc-health', 'service', 2, 'bin/disc-health', release.REPOSITORY))
             self.assertEqual(sorted(z.namelist()), ['LICENSE', 'bin/disc-health', 'package.json'])
+        with zipfile.ZipFile(self.root/'a/disc-network-2.57.1.zip') as z:
+            manifest = json.loads(z.read('package.json'))
+            self.assertEqual((manifest['role'], manifest['bootApi'], manifest['entry'], manifest['memory']), ('service', 2, 'bin/disc-network', 32))
         with tarfile.open(self.root/'a/disc-boot-2.57.1-mips.tar.gz') as tar:
             self.assertEqual(sorted(tar.getnames()), [f'disc-boot-2.57.1/{n}' for n in ('LICENSE', 'build-id', 'disc-boot', 'disc-usb-console')])
             self.assertEqual(tar.getmember('disc-boot-2.57.1/disc-boot').mode, 0o755)
@@ -104,7 +107,7 @@ class ReleaseTests(unittest.TestCase):
             self.build(folder, version='2.57.9')
         path = self.root/'packages.json'
         entries = []
-        for name, role, api in (('disc-menu', 'menu', 1), ('disc-health', 'service', 2)):
+        for name, role, api in (('disc-menu', 'menu', 1), ('disc-health', 'service', 2), ('disc-network', 'service', 2)):
             zipped = self.root/f'a/{name}-2.57.9.zip'
             entries.append(dict(name=name, role=role, version='2.57.9', profiles=['2.57'], bootApi=api, license='MIT', default=False,
                                 source=dict(url=release.url('2.57.9', zipped.name), sha256=release.digest(zipped), size=zipped.stat().st_size),
@@ -118,6 +121,14 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(release.ReleaseError, 'does not offer disc-health-2.57.9.zip by default'):
             release.installer('2.57.9', self.root/'a', allow_download=False, catalog_path=path, committed=False)
         data['entries'][1]['default'] = True
+        path.write_text(json.dumps(data))
+        # disc-network is named, not ticked (until it has run on the owner's player).
+        entries = data['entries']
+        data['entries'] = entries[:2]
+        path.write_text(json.dumps(data))
+        with self.assertRaisesRegex(release.ReleaseError, 'does not offer disc-network-2.57.9.zip: update'):
+            release.installer('2.57.9', self.root/'a', allow_download=False, catalog_path=path, committed=False)
+        data['entries'] = entries
         path.write_text(json.dumps(data))
         own = release.RELEASES/'2.57.4.json'
         for folder in ('a', 'b'):
