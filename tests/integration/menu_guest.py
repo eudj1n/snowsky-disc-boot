@@ -194,7 +194,11 @@ def run(menu, output):
     ui = bg.ui_runs(ONE)
     choice = bg.guest_json('/run/disc-boot/ui/choice.json')
     assert (choice['ui'], choice['by']) == (ONE, 'menu'), choice
-    bg.step('a touch chooses', choice=choice, ui=ui)
+    # Confirmed after its 180 s: the starts before were short (each a few seconds), and the boot-loop
+    # guard counts the platform starts until the chosen UI is confirmed.
+    confirmed = bg.wait(lambda: bg.guest_json('/run/disc-boot/ui.json'), lambda u: u['state'] == 'confirmed', f'{ONE} confirmed', 420)
+    assert bg.guest_json('/usr/data/disc-boot/state.json')['unconfirmed'] == 0
+    bg.step('a touch chooses', choice=choice, ui=ui, confirmed=confirmed)
     screens(buttons, work)
     bg.evidence['status'] = 'passed'
     Path(output).write_text(json.dumps(bg.evidence, indent=2) + '\n')
