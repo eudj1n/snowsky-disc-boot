@@ -160,12 +160,14 @@ only through USB Boot; everything above it becomes files.
 
 - `stock`: boot starts no package and leaves the UI launch to stock. The USB
   console still follows its marker, so a broken platform stays repairable.
-- `platform`: boot starts the installed `service` package and, for an
-  installed `ui` package, launches it instead of stock's `mq_ui`.
+- `platform`: boot starts the installed `controller` package and the
+  services ("Roles") and, for an installed `ui` package, launches it instead
+  of stock's `mq_ui`.
 - A failed or unavailable key read counts as "not held"; it never switches.
-- **Boot-loop guard:** a platform boot with an installed package (or a
-  recovery) counts as unconfirmed until every installed role has confirmed
-  its package; with 3 counted and the default `platform`, boot chooses
+- **Boot-loop guard:** a platform boot with an installed controller or `ui`
+  package (or a recovery) counts as unconfirmed until the controller and the
+  chosen UI have confirmed their packages (services never count: one that
+  fails stops alone); with 3 counted and the default `platform`, boot chooses
   `stock` (reason `boot-loop`). A key still chooses (Volume Up, Play). Stock
   boots are not counted. Confirming means running 180 s in that boot: a
   version restored by a rollback is marked confirmed at once, yet the count
@@ -177,26 +179,62 @@ only through USB Boot; everything above it becomes files.
 the keys and decides once; `/run/disc-boot/boot.json` keeps the decision for
 the rest of the boot.
 
-## Packages
+## Roles
 
-Three roles ("Several UIs and the boot menu" for the last two):
+Boot API 2 (owner, 2026-10-08/09; plan, stage 7) has four roles:
 
-- `service`, at most one: runs beside the stock UI and player (our server
-  is one).
+- `controller`, at most one: the server (snowsky-disc-server). It owns the
+  player's protocol, listens on the network and updates itself through its
+  manager. It lives in `controller/`; its status is `controller.json`.
+- `service`, any number with distinct names: background jobs (disc-health,
+  disc-network) that listen on no network port and report through a status
+  file of their own. Each has its own slots, state and requests in
+  `service/<name>/`, its own lifecycle, an autostart flag and limits
+  ("Lifecycle of a controller or service package"). Listening on no port
+  is a rule of the catalog's acceptance; boot does not enforce it.
 - `ui`, any number with distinct names: one of them, or stock's UI, runs
   instead of stock's `mq_ui` in each platform boot; stock's `mq_player`
-  always stays.
+  always stays ("Several UIs and the boot menu").
 - `menu`, at most one: asks at power-on which UI runs.
 
-Distributed as a zip; staged and installed as a folder with `package.json`:
+### From boot API 1
+
+Boot API 1 (the boot layer up to 2.57.6) had one `service` role, the
+server, in `service/`. The move needs no reinstallation:
+
+- The first boot of a boot program of API 2 renames `service/` to
+  `controller/` (one rename, under the state lock) and says so in the boot
+  log (`layout: service/ of boot API 1 became controller/`). When
+  `controller/` is there already (a boot layer of API 1 ran in between),
+  `service/` stays as it is and the log says so.
+- A package of boot API 1 with the role `service` (disc-server up to
+  2.57.5) is the controller: installed, verified and run as one, and told
+  the role it names (`DISC_BOOT_ROLE=service`). While it runs, boot writes
+  its status to `service.json` as well, where that server reads it.
+- That server checks its updates with `disc-boot verify service DIR`: a
+  controller's package passes as `service` too, so it can take its next
+  version, which names the `controller` role with `bootApi` 2 and reads
+  `controller.json` (boot then removes `service.json`). It finds every other
+  path in its environment, so its binary needs no change for the move.
+- On the card, `.disc/boot/install/service/` holding a `package.json` itself
+  is the controller as the installers up to 2.57.6 staged it; beside
+  `install/controller/` it is refused. The installers of boot API 2 stage
+  the controller in `install/controller/` and remove that old folder.
+- A service names `bootApi` 2: a `service` package of `bootApi` 1 is the
+  controller, and staged as a service it is refused.
+
+## Packages
+
+A package names its role ("Roles"). Distributed as a zip; staged and
+installed as a folder with `package.json`:
 
 ```json
 {
   "schema": 1,
   "name": "disc-server",
   "version": "2026.10.02-05a1422",
-  "role": "service",
-  "bootApi": 1,
+  "role": "controller",
+  "bootApi": 2,
   "arch": "mips32el-linux-static",
   "profiles": ["2.57"],
   "entry": "bin/disc-server",
@@ -211,7 +249,8 @@ Distributed as a zip; staged and installed as a folder with `package.json`:
 - `name` `[a-z0-9-]{1,32}`; `version` 1–64 characters; every string is
   printable ASCII (`\uXXXX` escapes are refused); a key given twice is
   refused; keys boot does not know are ignored.
-- `bootApi` is the lowest API the package needs; `arch` must be boot's own
+- `bootApi` is the lowest API the package needs (2 for the controller and a
+  service, which API 1 does not know); `arch` must be boot's own
   (`mips32el-linux-static` on the player); `profiles` lists the firmware
   profiles (`2.57`) the package supports, 1–8 of them; `ready` is 1–120
   seconds (30 when absent); `args` at most 32 strings of up to 256 bytes.
@@ -222,6 +261,10 @@ Distributed as a zip; staged and installed as a folder with `package.json`:
   folders), a link or a special file is refused.
 - Bounds: manifest 64 KiB, 256 files, 32 MiB per package; an installation
   checks free space first and keeps 16 MiB of `/usr/data` for stock.
+- `memory`, optional, 1–64 MiB (16 when absent): a service's address space,
+  set as its process's `RLIMIT_AS` before the entry starts, so that a
+  background job never crowds stock's audio (owner, 2026-10-09). The other
+  roles have no such bound; their manifests follow the same rule.
 - A `ui` or `menu` package's entry is named `mq_ui`, because stock's watch
   loop finds the UI by that exact name (the menu runs in its place); an entry
   that starts another program starts it as `mq_ui` too ("Process names").
@@ -247,14 +290,15 @@ Distributed as a zip; staged and installed as a folder with `package.json`:
   and never keep the player from starting:
   when stock restarts the pair, the watchdog the previous player started
   keeps running, and 10 s without a player reset the device.
-  A `service` package with `player` is refused.
+  A controller or service package with `player` is refused.
 - A package may carry its own shared libraries in `lib/`; boot puts that
   folder ahead of stock's `LD_LIBRARY_PATH`. Helper programs (diskOS's SSH
   tooling, say) are ordinary listed files of the package, found through
   `$DISC_BOOT_SLOT`, never installed into the rootfs.
 - `disc-boot verify ROLE DIR` checks a folder as boot would (manifest, fit,
   every file) and answers in JSON: a server checks a staged update with it
-  before asking for its activation. On a computer, `scripts/package.py`
+  before asking for its activation (`service` takes a controller's package
+  too: "From boot API 1"). On a computer, `scripts/package.py`
   writes a folder's `package.json`, checks it with the same rules and
   messages, zips it and stages it on a card.
 
@@ -298,10 +342,12 @@ a package folder checked as `disc-boot` checks it.
 /usr/data/disc-boot/
   state.json            {"default": "platform"|"stock", "unconfirmed": n,
                          "ui": "<name>"|"stock"|null, "next": "<name>"|"stock"|null}
-  service/a/ service/b/ the two slots of the service role
-  service/state.json    {"current": "a"|"b"|null, "confirmed": bool, "previous": "a"|"b"|null,
+  controller/a/ controller/b/  the two slots of the controller
+  controller/state.json {"current": "a"|"b"|null, "confirmed": bool, "previous": "a"|"b"|null,
                          "previousManifest": "<sha256 of its package.json>"|null}
-  service/request       a package's request, written atomically
+  controller/request    a package's request, written atomically
+  service/<name>/…      the same for each service, under its name; its state.json
+                        adds "autostart": bool (true when absent)
   menu/…                the same for the menu role
   ui/<name>/…           the same for each ui package, under its name; ui/<name>/remove
                         a removal another package asked for, done at the launcher's next start
@@ -324,23 +370,32 @@ was replaced`) nor when a tentative version fails (that one stops and says
 why). A server stages updates only while its own version is confirmed. An
 unreadable state runs nothing for that role and says so.
 
-## Lifecycle of a `service` package
+## Lifecycle of a controller or service package
 
 1. Start (`disc-boot start`, the `S99disc-boot` hook, which returns at once):
-   verify the current slot (manifest, fit, every file and its mode), then run
-   the entry in a session of its own with the arguments and the environment
-   below, in `$DISC_BOOT_DATA`, at a lower priority than stock (`nice` +5).
+   a supervisor process for each package, the controller's first and each
+   installed service's once the controller is ready or settled otherwise
+   (none installed, failed, restarting), at most 120 s later. Each verifies
+   its current slot (manifest, fit, every file and its mode), then runs the
+   entry in a session of its own with the arguments and the environment
+   below, in `$DISC_BOOT_DATA`, at a lower priority than stock: `nice` +5
+   for the controller, +10 for a service, whose address space is bounded by
+   its `memory`. A service whose `autostart` is off does not start (its
+   status says `disabled`); the menu's services screen will change the flag
+   (plan, stage 7).
 2. **Ready:** the package creates `$DISC_BOOT_RUN/ready` within `ready`
    seconds, or boot stops it and counts a failure.
 3. **Confirmed:** ready and still running 180 s later; a tentative slot
-   becomes the confirmed one and, once every installed role is confirmed,
-   the boot-loop count clears.
+   becomes the confirmed one and, once the controller and the chosen UI are
+   confirmed, the boot-loop count clears. A service's failures never count
+   for the boot-loop guard: a failing service stops alone, with the reason in
+   its status, and the player, the server and the UI run on.
 4. **Failures:** a tentative slot gives way to the previous confirmed one at
    its first failure (or stops, with the reason, when there is none). A
    confirmed one restarts after 2 s, at most 3 times in 10 minutes, then
    stays stopped and the status says why (stock keeps working).
-5. **Stop** (`disc-boot stop`, from `rcK`): SIGTERM to the package's session,
-   5 s, then SIGKILL.
+5. **Stop** (`disc-boot stop`, from `rcK`): SIGTERM to each package's
+   session, 5 s, then SIGKILL.
 
 Timings are initial values, tuned on the guest and the device.
 
@@ -356,6 +411,9 @@ exits:
 - `{"action": "default", "mode": "stock" | "platform"}`.
 - `{"action": "remove", "purge": false}`: the role's slots and state go;
   `purge` also removes `data/<name>/`.
+
+A service asks only about itself: `activate`, `rollback` or `remove` (all of
+its `service/<name>/`); any other request from it is refused.
 
 Boot applies a request only after the package has exited, removes the file
 and records the outcome (`lastRequest`) in the role's status; a refused or
@@ -469,8 +527,9 @@ launchers, the fallbacks); the screen that asks is a package and changes
 without USB Boot. That package is ours, `disc-menu`, built and released with
 this repository and staged by the installer by default (owner's decision 7);
 any `menu` package fits the same contract. Boot works without one: the
-default or a `ui-next` choice runs. Nothing has been released, so the API
-stays 1 and the single-package layout gets no migration.
+default or a `ui-next` choice runs. Nothing had been released, so the API
+stayed 1 and the single-package layout got no migration (boot API 2 later
+moved the server to the `controller` role: "From boot API 1").
 
 ### Packages and storage
 
@@ -503,7 +562,7 @@ Each platform boot runs one UI, recorded in `/run/disc-boot/ui/choice.json`
 runs. With stock's UI chosen and no menu, boot gives the launcher no
 permission: stock's UI starts from the wrapper alone, as without packages. Volume Up at power-on still means stock *mode* for this boot (no
 package runs, nor the menu) and Play still installs from the card; the
-menu's `stock` entry is stock's UI with the `service` package running.
+menu's `stock` entry is stock's UI with the controller and the services running.
 
 ### The menu's turn
 
@@ -564,16 +623,16 @@ menu's `stock` entry is stock's UI with the `service` package running.
 
 ### Requests
 
-- From any package: `{"action": "ui-default", "ui": "<name>"|"stock"}` and
+- From the controller, a `ui` package or the menu: `{"action": "ui-default", "ui": "<name>"|"stock"}` and
   `{"action": "ui-next", "ui": "<name>"|"stock"}`; a name that is not
   installed is refused. Our server's page can offer both.
 - `{"action": "remove", "purge": bool}` keeps its meaning for the package
   that asks. `{"action": "ui-remove", "ui": "<name>", "purge": bool}` from
-  the `service` or the `menu` package removes another `ui` package (the
+  the controller or the `menu` package removes another `ui` package (the
   server's manager); removing the default makes `stock` the default.
 - Requests about the choice apply to the next boot; a removal applies at
-  the next start of the launcher, never under the running UI. Since a
-  service keeps running, `disc-boot early` and each start of the launcher
+  the next start of the launcher, never under the running UI. Since the
+  controller keeps running, `disc-boot early` and each start of the launcher
   also take the requests about the choice (`ui-*`) that any package left,
   before anything of a package starts.
 
@@ -583,8 +642,8 @@ menu's `stock` entry is stock's UI with the `service` package running.
   role": a tentative version of the chosen UI gives way to its previous
   one, otherwise stock's UI runs for the rest of the boot (never another
   package).
-- The boot-loop count clears once the `service` package and the chosen UI
-  are confirmed; the menu's answer is part of the boot, not a condition.
+- The boot-loop count clears once the controller and the chosen UI are
+  confirmed (never waiting for a service); the menu's answer is part of the boot, not a condition.
   When both were confirmed before, it clears as soon as they are ready in
   this start: only a package not yet confirmed keeps a start counting until
   its confirmation (2026-10-07: quick restarts of a player whose packages
@@ -633,14 +692,17 @@ files and folders on the card included (stock's own file manager deletes
 them with `rm -rf`), goes to the real `rm` unchanged. A refusal answers 0, as
 stock ignores the answer, and is logged to `/run/disc-boot/guard.log`
 (capped at 64 KiB). It guards this removal, not every way to lose data; a
-service package starts with its own `PATH` and does not need it.
+controller or service package starts with its own `PATH` and does not need it.
 
 ## Recovery from the card (Play at power-on)
 
-- Staged folders: `.disc/boot/install/service/`, `.disc/boot/install/menu/`
-  and `.disc/boot/install/ui/<name>/` for each ui package, each with
-  `package.json` and its files. The installer or the page puts them there
-  (`scripts/package.py stage` places each by its role and name).
+- Staged folders: `.disc/boot/install/controller/`, `.disc/boot/install/menu/`,
+  `.disc/boot/install/service/<name>/` for each service and
+  `.disc/boot/install/ui/<name>/` for each ui package, each with
+  `package.json` and its files (the earlier `install/service/` of the
+  controller: "From boot API 1"). The installer or the page puts them there
+  (`scripts/package.py stage` places each by its role and name), in the
+  order controller, menu, services, UIs.
 - The installation comes before the pair (owner, 2026-10-07): stock mounts
   the card only once `mq_player` runs, and the player waits for the
   installation, so boot reads the card where stock mounted it or, within
@@ -650,8 +712,8 @@ service package starts with its own `PATH` and does not need it.
   each staged package completely (modes do not count on the card's file
   system), copies it into the role's inactive slot, verifies the copy with
   modes, makes it the tentative current one, removes the staged folder and
-  writes `.disc/boot/result.json` (per role, and per name under `ui`:
-  installed, or why not). A refused package stays on the card. The package
+  writes `.disc/boot/result.json` (per role, and per name under `service`
+  and `ui`: installed, or why not). A refused package stays on the card. The package
   that runs already, byte for byte (the same `package.json`, its slot still
   checking), is not installed again: its slot keeps its confirmation, the
   staged folder leaves the card and the note says "already installed". Each
@@ -672,20 +734,20 @@ service package starts with its own `PATH` and does not need it.
 
 | Variable | Meaning |
 | --- | --- |
-| `DISC_BOOT_API` | The boot layer's API version (1) |
-| `DISC_BOOT_ROLE` | `service`, `ui` or `menu` |
+| `DISC_BOOT_API` | The boot layer's API version (2) |
+| `DISC_BOOT_ROLE` | The role the package names: `controller`, `service`, `ui` or `menu` (a controller of boot API 1 names `service`) |
 | `DISC_BOOT_PROFILE` | The firmware profile (`2.57`) |
 | `DISC_BOOT_SLOT` | The running slot (read-only by contract) |
 | `DISC_BOOT_INACTIVE` | Where an update is staged |
 | `DISC_BOOT_REQUEST` | Where requests go |
-| `DISC_BOOT_DATA` | `data/<name>/`, persistent; the service's working folder and `HOME` |
-| `DISC_BOOT_RUN` | `/run/disc-boot/<role>/`, volatile; `ready` goes here |
+| `DISC_BOOT_DATA` | `data/<name>/`, persistent; the controller's or a service's working folder and `HOME` |
+| `DISC_BOOT_RUN` | `/run/disc-boot/<role>/`, a service's `/run/disc-boot/service/<name>/`; volatile; `ready` goes here, and a service's own `status.json` (at most 4 KiB: what it reports, which the server shows) |
 | `DISC_BOOT_STATUS` | `/run/disc-boot/`, the status files below |
 | `DISC_BOOT_CARD` | The card's mount point (it may be absent) |
 | `DISC_BOOT_PROGRAM` | The boot program (`/opt/disc-boot/disc-boot`), for `verify` of a staged update |
 | `DISC_BOOT_LAUNCHER` | The menu only: the UI launcher (`/opt/disc-boot/mq_ui`) it hands over to |
 
-A `service` package starts from a clean environment (these, `PATH`, `HOME`
+A controller or service package starts from a clean environment (these, `PATH`, `HOME`
 and `LD_LIBRARY_PATH`); its standard output and error go to
 `$DISC_BOOT_RUN/log`, capped at 64 KiB; standard input is `/dev/null`, and
 no other descriptor is open (none of the boot program's). A `ui` or `menu`
@@ -721,16 +783,20 @@ readback through USB Boot, which stays the way when it is missing or differs.
   reason (`default`, `key`, `boot-loop`, `recovery`), the key read, the count
   of unconfirmed boots before this one, whether the state was readable, the
   card.
-- `service.json`, `ui.json`, `menu.json`: the role's state (`starting`,
-  `ready`, `confirmed`, `restarting`, `rolled-back`, `failed`, `stopped`,
-  `absent`, `stock-mode`, `fallback`, `not-ready`; `stock-ui` for the ui
-  role, `asking` and `answered` for the menu), the package's name, version
+- `controller.json`, `ui.json`, `menu.json`, and `service/<name>.json` for
+  each service: the role's state (`starting`, `ready`, `confirmed`,
+  `restarting`, `rolled-back`, `failed`, `stopped`, `absent`, `stock-mode`,
+  `fallback`, `not-ready`; `stock-ui` for the ui role, `asking` and
+  `answered` for the menu, `disabled` for a service whose autostart is off,
+  with its `autostart`), the package's name, version
   and `homepage` (null when it names none),
   the slot, confirmed or not, failures, a note, the last request's outcome
   and `previous`: `{slot, name, version, manifest}` of the version a
   rollback returns to while its slot still holds it, else null (written
   with the rest of the status; a package compares `manifest` with
   `$DISC_BOOT_INACTIVE/package.json` to see whether it staged over it since).
+- `service.json`: the controller's status again while its package is of boot
+  API 1 ("From boot API 1").
 - `ui/choice.json`: this boot's choice of UI; `ui/choices.json`: what the
   menu was offered.
 - `ui/player.json`: how stock's player last started while the launcher ran
@@ -738,8 +804,9 @@ readback through USB Boot, which stays the way when it is missing or differs.
   menu's choice; the package; a note such as "the menu is choosing").
 - `player-ran`: a player has run in this boot.
 - `guard.log`: the card guard's refusals.
-- `disc-boot status` prints the boot, the roles, the choice and `player`
-  together; the server shows them in its diagnostics.
+- `disc-boot status` prints the boot, the controller, the services (by
+  name), the UI, the menu, the choice and `player` together; the server
+  shows them in its diagnostics.
 
 ## USB console
 
@@ -775,7 +842,8 @@ back (Volume Up for stock, USB Boot for the stock image).
 ## What changes against today
 
 - `/opt/disc-web/disc-service` and `S99disc-web` leave the image; the server
-  becomes the `service` package, and its `--supervise` moves into boot. This
+  becomes the `service` package (the `controller` since boot API 2), and its
+  `--supervise` moves into boot. This
   stage renames the on-device paths explicitly (`/usr/data/disc-web.disabled`
   is replaced by the default mode); the console's marker stays.
 - The image builder's invariant stays: stock objects unchanged, only listed
@@ -791,8 +859,9 @@ back (Volume Up for stock, USB Boot for the stock image).
 - Host (`test_boot`): a fixture build of `disc-boot` (`-DDISC_BOOT_FIXTURE`,
   never packaged) runs under a temporary root with keys, the card's mount and
   stock's UI as files and shortened timings, against shell-script packages:
-  modes, the boot-loop guard, every manifest refusal, the service's
-  lifecycle, requests, recovery and the launcher behind the real wrapper. The
+  modes, the boot-loop guard, every manifest refusal, the controller's and
+  the services' lifecycles, the move from boot API 1, requests, recovery and
+  the launcher behind the real wrapper. The
   same tests run on Linux against the MIPS build under `qemu-user`.
 - Packed tree (`tests/integration/boot_layer.py`): the image's hooks and
   wrappers on its own stock BusyBox with the production build and its real
@@ -800,7 +869,10 @@ back (Volume Up for stock, USB Boot for the stock image).
   stock's "umount, then rm -rf" on a busy mount through the guard.
 - Guest (V2.57), once the emulator runs stock's init: power loss between
   steps (kill and reboot), `stock` and `platform` boots, a `ui` package under
-  stock's watch loop.
+  stock's watch loop; the roles of boot API 2 (`tests/integration/roles_guest.py`:
+  the move from API 1, the old server's update to a controller, services
+  with Play, autostart, stock mode). qemu-user ignores a guest's
+  `RLIMIT_AS`: a service's memory bound takes effect on the player only.
 - The key read sits behind one function; until the emulator models the GPIO
   pins it is tested on the host and confirmed on the device once.
 
@@ -808,7 +880,7 @@ back (Volume Up for stock, USB Boot for the stock image).
 
 The contract holds when projects that know nothing of each other run side by
 side through it: **diskOS's UI as the `ui` package and our server as the
-`service` package, with the player on the card**, first on the guest, then on
+`service` package (the controller since boot API 2), with the player on the card**, first on the guest, then on
 the device. diskOS (MIT; its UI under `ui/` is GPL-3.0) is built from its
 own sources, locally; nothing of it enters this repository or is passed on.
 
@@ -873,7 +945,9 @@ confirmed one without touching the server. What diskOS would change to fit
 - Play on GPB15 read on this unit: the stock kernel settles the pin and its
   level (facts above); the device read confirms it before the image is
   written.
-- Memory and priority limits that keep stock's audio smooth (the device).
+- Memory and priority limits that keep stock's audio smooth (the device):
+  boot API 2 gives a service `nice` +10 and 16 MiB unless it names its own;
+  disc-health on the owner's player confirms them.
 - The emulator runs stock's `rcS` and `fiio_init.sh`, so boot's hooks and the
   `mq_ui` launcher can be accepted on the guest (the emulator session).
 - An optional "official" label for packages signed by us (shown, never

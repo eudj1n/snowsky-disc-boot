@@ -53,7 +53,12 @@ snapshot() {
     section partitions "$PROC/mtd" 2048
     # The boot layer's decision and its roles (docs/dev/contract.md, "Status").
     section boot_decision "$RUN/disc-boot/boot.json" 1024
-    section boot_service "$RUN/disc-boot/service.json" 1024
+    section boot_controller "$RUN/disc-boot/controller.json" 1024
+    for status in "$RUN/disc-boot/service/"*.json; do
+        [ -f "$status" ] || continue
+        name=${status##*/}
+        section "boot_service_${name%.json}" "$status" 1024
+    done
     section boot_ui "$RUN/disc-boot/ui.json" 1024
     section boot_log "$RUN/disc-boot/boot.log" 2048
     section usb_launch "$RUN/disc-usb.log" 4096

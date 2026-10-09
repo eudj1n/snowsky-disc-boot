@@ -133,6 +133,10 @@ int write_atomic(const char *abs, const char *data, size_t len, mode_t mode) {
     return sync_dir_of(abs);
 }
 
+int rename_synced(const char *from, const char *to) {
+    return rename(from, to) ? -1 : sync_dir_of(to);
+}
+
 int mkdirs(const char *abs, mode_t mode) {
     char p[PATH_MAX];
     if (snprintf(p, sizeof(p), "%s", abs) >= (int)sizeof(p)) return -1;
@@ -382,14 +386,17 @@ static int slot_value(const bjson *j, int i, char *out) {
     return 0;
 }
 
+/* The domains of named services keep the autostart flag. */
+static int service_domain(const char *domain) { return !strncmp(domain, "service/", 8); }
+
 int rstate_read(const char *domain, role_state *r) {
     char p[PATH_MAX], buf[SMALL_FILE];
-    r->current = r->previous = 0; r->confirmed = 0; r->previous_manifest[0] = 0;
+    r->current = r->previous = 0; r->confirmed = 0; r->autostart = 1; r->previous_manifest[0] = 0;
     bpath(p, DATA_DIR "/%s/state.json", domain);
     size_t len;
     if (read_small(p, buf, sizeof(buf), &len)) return exists(p) ? -1 : 0;
     bjson j;
-    int c, pv, cf, pm;
+    int c, pv, cf, pm, as;
     if (bjson_parse(&j, buf, len, 32)) return -1;
     int bad = (c = bjson_find(&j, 0, "current")) < 0 || slot_value(&j, c, &r->current)
         || (pv = bjson_find(&j, 0, "previous")) < 0 || slot_value(&j, pv, &r->previous)
@@ -400,8 +407,10 @@ int rstate_read(const char *domain, role_state *r) {
         bad = bjson_string(&j, pm, r->previous_manifest, sizeof(r->previous_manifest)) || strlen(r->previous_manifest) != 64;
         for (int i = 0; !bad && i < 64; i++) bad = !strchr("0123456789abcdef", r->previous_manifest[i]);
     }
+    /* Optional: absent means on. */
+    if (!bad && service_domain(domain) && (as = bjson_find(&j, 0, "autostart")) != -1) bad = as < 0 || bjson_bool(&j, as, &r->autostart);
     bjson_free(&j);
-    if (bad) { r->current = r->previous = 0; r->confirmed = 0; r->previous_manifest[0] = 0; return -1; }
+    if (bad) { r->current = r->previous = 0; r->confirmed = 0; r->autostart = 1; r->previous_manifest[0] = 0; return -1; }
     if (!r->previous) r->previous_manifest[0] = 0;
     return 0;
 }
@@ -415,8 +424,9 @@ int rstate_write(const char *domain, const role_state *r) {
     snprintf(prev, sizeof(prev), r->previous ? "\"%c\"" : "null", r->previous);
     if (r->previous && r->previous_manifest[0]) snprintf(manifest, sizeof(manifest), "\"%.64s\"", r->previous_manifest);
     else snprintf(manifest, sizeof(manifest), "null");
-    int n = snprintf(buf, sizeof(buf), "{\"schema\":1,\"current\":%s,\"confirmed\":%s,\"previous\":%s,\"previousManifest\":%s}\n",
-                     cur, r->confirmed ? "true" : "false", prev, manifest);
+    int n = snprintf(buf, sizeof(buf), "{\"schema\":1,\"current\":%s,\"confirmed\":%s,\"previous\":%s,\"previousManifest\":%s%s}\n",
+                     cur, r->confirmed ? "true" : "false", prev, manifest,
+                     !service_domain(domain) ? "" : r->autostart ? ",\"autostart\":true" : ",\"autostart\":false");
     return write_atomic(p, buf, (size_t)n, 0644);
 }
 

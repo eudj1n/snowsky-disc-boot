@@ -24,7 +24,7 @@ from firmware_profile import load_profile  # noqa: E402
 PROFILE = load_profile()['version']
 
 
-def package(root, directory, role, entry, script, player=None):
+def package(root, directory, role, entry, script, player=None, name=None, boot_api=1):
     target = root/directory.lstrip('/')
     (target/'bin').mkdir(parents=True)
     files = {}
@@ -33,7 +33,7 @@ def package(root, directory, role, entry, script, player=None):
         (target/path).write_bytes(data)
         (target/path).chmod(0o755)
         files[path] = dict(size=len(data), sha256=hashlib.sha256(data).hexdigest(), mode='0755')
-    manifest = dict(schema=1, name='probe-' + role, version='1', role=role, bootApi=1, arch='mips32el-linux-static',
+    manifest = dict(schema=1, name=name or 'probe-' + role, version='1', role=role, bootApi=boot_api, arch='mips32el-linux-static',
                     profiles=[PROFILE], entry=entry, ready=30, files=files)
     if player:
         manifest['player'] = player[0]
@@ -108,7 +108,8 @@ def run(output):
     holder.kill()
     holder.wait()
 
-    # A service and a UI package, installed into their slots as recovery would leave them.
+    # The server as boot API 1 left it (service/, role service, bootApi 1) and a UI package,
+    # installed into their slots as recovery would leave them.
     package(root, '/usr/data/disc-boot/service/a', 'service', 'bin/run',
             'trap "exit 0" TERM\nenv > "$DISC_BOOT_DATA/env"\n: > "$DISC_BOOT_RUN/ready"\nwhile :; do sleep 1; done\n')
     package(root, '/usr/data/disc-boot/ui/probe-ui/a', 'ui', 'bin/mq_ui',
@@ -117,6 +118,14 @@ def run(output):
     for domain in ('service', 'ui/probe-ui'):
         (root/f'usr/data/disc-boot/{domain}/state.json').write_text('{"schema":1,"current":"a","confirmed":false,"previous":null}')
     chroot('/bin/sh', '/etc/init.d/S22disc-boot', 'start')
+    # Boot API 2 took service/ as the controller's, once, and said so.
+    assert (root/'usr/data/disc-boot/controller/a/package.json').exists() and not (root/'usr/data/disc-boot/service').exists()
+    assert 'layout: service/ of boot API 1 became controller/' in (root/'usr/data/disc-boot/boot.log').read_text()
+    # A service of boot API 2 beside it.
+    package(root, '/usr/data/disc-boot/service/probe-health/a', 'service', 'bin/run',
+            'trap "exit 0" TERM\nenv > "$DISC_BOOT_DATA/env"\n: > "$DISC_BOOT_RUN/ready"\nwhile :; do sleep 1; done\n',
+            name='probe-health', boot_api=2)
+    (root/'usr/data/disc-boot/service/probe-health/state.json').write_text('{"schema":1,"current":"a","confirmed":false,"previous":null}')
     assert json.loads((root/'usr/data/disc-boot/state.json').read_text())['unconfirmed'] == 1
     assert (root/'run/disc-boot/ui-launch').exists()
     started = time.monotonic()
@@ -128,25 +137,34 @@ def run(output):
     assert (root/'run/player-runs').read_text().splitlines()[1:] == ['launcher ui', 'player /opt/disc-boot/guard/rm']
     launched = json.loads((root/'run/disc-boot/ui/player.json').read_text())
     assert (launched['launch'], launched['name']) == ('package', 'probe-ui'), launched
-    service = wait(root/'run/disc-boot/service.json', lambda s: s['state'] == 'confirmed', 260)
+    controller = wait(root/'run/disc-boot/controller.json', lambda s: s['state'] == 'confirmed', 260)
     ui_status = wait(root/'run/disc-boot/ui.json', lambda s: s['state'] == 'confirmed', 60)
+    health = wait(root/'run/disc-boot/service/probe-health.json', lambda s: s['state'] == 'confirmed', 60)
     confirmed_after = round(time.monotonic() - started, 1)
-    assert service['name'] == 'probe-service' and ui_status['name'] == 'probe-ui'
+    assert controller['name'] == 'probe-service' and ui_status['name'] == 'probe-ui' and health['name'] == 'probe-health'
+    # The server of boot API 1 reads its status where it did.
+    assert json.loads((root/'run/disc-boot/service.json').read_text())['name'] == 'probe-service'
     assert (root/'run/ui-runs').read_text().split() == ['stock', 'package']
     assert json.loads((root/'usr/data/disc-boot/state.json').read_text())['unconfirmed'] == 0
     env = dict(line.split('=', 1) for line in (root/'usr/data/disc-boot/data/probe-service/env').read_text().splitlines() if '=' in line)
-    assert env['DISC_BOOT_SLOT'] == '/usr/data/disc-boot/service/a' and env['DISC_BOOT_PROFILE'] == PROFILE, env
-    assert env['LD_LIBRARY_PATH'].startswith('/usr/data/disc-boot/service/a/lib:/usr/lib:'), env
+    assert env['DISC_BOOT_SLOT'] == '/usr/data/disc-boot/controller/a' and env['DISC_BOOT_PROFILE'] == PROFILE, env
+    assert env['LD_LIBRARY_PATH'].startswith('/usr/data/disc-boot/controller/a/lib:/usr/lib:'), env
+    assert (env['DISC_BOOT_ROLE'], env['DISC_BOOT_API']) == ('service', '2'), env
+    env = dict(line.split('=', 1) for line in (root/'usr/data/disc-boot/data/probe-health/env').read_text().splitlines() if '=' in line)
+    assert (env['DISC_BOOT_ROLE'], env['DISC_BOOT_RUN']) == ('service', '/run/disc-boot/service/probe-health'), env
     status = json.loads(chroot('/opt/disc-boot/disc-boot', 'status').stdout)
-    assert status['service']['state'] == 'confirmed' and status['boot']['mode'] == 'platform'
-    # rcK's stop ends the supervisor and the package.
+    assert status['controller']['state'] == 'confirmed' and status['boot']['mode'] == 'platform'
+    assert status['services']['probe-health']['state'] == 'confirmed', status['services']
+    # rcK's stop ends the supervisors and the packages.
     chroot('/bin/sh', '/etc/init.d/S99disc-boot', 'stop', timeout=30)
-    wait(root/'run/disc-boot/service.json', lambda s: s['state'] == 'stopped', 15)
+    wait(root/'run/disc-boot/controller.json', lambda s: s['state'] == 'stopped', 15)
+    wait(root/'run/disc-boot/service/probe-health.json', lambda s: s['state'] == 'stopped', 15)
     assert not (root/'run/disc-boot/supervisor.pid').exists()
     ui.terminate()
     result = dict(status='passed', stockBusyBox=True, productionBinary=True, stockPathLookup=path,
                   stockUiWithoutPackage=True, stockPlayerGuarded=True, busyCardKept=True,
-                  packagePlayerLauncher=True, serviceConfirmed=True, uiConfirmed=True,
+                  packagePlayerLauncher=True, controllerMovedFromBootApi1=True, controllerConfirmed=True,
+                  serviceConfirmed=True, uiConfirmed=True,
                   confirmedAfterSeconds=confirmed_after, bootLoopCountCleared=True, stopped=True,
                   scope='Packed tree in private namespaces; keys unreadable, no kernel/driver/card/USB acceptance')
     (output/'boot-layer-test.json').write_text(json.dumps(result, indent=2) + '\n')

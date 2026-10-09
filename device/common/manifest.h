@@ -8,6 +8,9 @@
 #define MANIFEST_BYTES 65536
 #define PACKAGE_BYTES (32LL * 1024 * 1024)
 #define MAX_READY 120
+/* A service's address space in MiB (contract, "Lifecycle of a service package"). */
+#define MEMORY_DEFAULT 16
+#define MEMORY_MAX 64
 
 #ifdef DISC_BOOT_FIXTURE
 #define BOOT_ARCH "fixture"
@@ -21,9 +24,10 @@ typedef struct { char path[201]; long long size; char sha[65]; int mode; } pkg_f
 typedef struct {
     /* player: a ui package's own launcher of stock's player ("" when it brings none);
        title: the name a menu shows ("" when none: the menu shows the name);
-       homepage: the project's page the status names ("" when none or not a plain https address). */
-    char name[33], version[65], role[8], arch[48], entry[201], player[201], title[33], homepage[201];
-    int boot_api, ready, nargs, nprofiles, nfiles;
+       homepage: the project's page the status names ("" when none or not a plain https address);
+       memory: the limit of a service's address space in MiB (other roles have none). */
+    char name[33], version[65], role[12], arch[48], entry[201], player[201], title[33], homepage[201];
+    int boot_api, ready, memory, nargs, nprofiles, nfiles;
     char args[MAX_ARGS][257];
     char profiles[MAX_PROFILES][17];
     pkg_file files[MAX_FILES];
@@ -32,7 +36,10 @@ typedef struct {
 
 /* Reads and validates dir/package.json; err names the first problem. */
 int manifest_load(const char *dir, manifest *m, char *err, size_t cap);
-/* The package fits this boot layer: role, API, architecture and firmware profile. */
+/* The role a package takes: its own, except that a service package of boot API 1 (the server up to
+   2.57.5) is the controller (contract, "Roles"). */
+const char *manifest_role(const manifest *m);
+/* The package fits this boot layer: role (manifest_role), API, architecture and firmware profile. */
 int manifest_fits(const manifest *m, const char *role, const char *profile, char *err, size_t cap);
 /* Every listed file is a regular file of its size and digest (and mode, when asked);
    nothing else but package.json and folders lies in dir. */

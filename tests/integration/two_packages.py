@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Two independent packages through the boot layer, inside the emulator's container (plan, stage 3).
 
-Our server (snowsky-disc-server's service package) and diskOS's UI as the ui
+Our server (snowsky-disc-server's package, the controller) and diskOS's UI as the ui
 package (tests/integration/diskos_package.py, built locally), with the player
 page installed through the server's application manager:
 
@@ -160,7 +160,7 @@ def run(server, ui, app, output):
             bg.package.stage(staged, root, profile=bg.PROFILE)
     # 1. Play installs both; both confirm.
     bg.power('on', hold='play')
-    service = bg.service(lambda s: s['state'] == 'confirmed', 'server confirmed', 480)
+    service = bg.controller(lambda s: s['state'] == 'confirmed', 'server confirmed', 480)
     ui_state = ui_confirmed(ui_version)
     boot = bg.guest_json('/run/disc-boot/boot.json')
     assert boot['reason'] == 'recovery', boot
@@ -201,7 +201,7 @@ def run(server, ui, app, output):
     stock = bg.wait(lambda: (bg.guest_pids('mq_ui') and bg.guest_pids('mq_player')
                              and b'/usr/bin/mq_ui' in cmdline(bg.guest_pids('mq_ui')[0])) or None, bool, "stock's UI", 120)
     assert not service_pid() and not bg.guest('cat /tmp/.diskos_launch_status 2>/dev/null').strip()
-    bg.step('stock mode with both installed', boot=boot, stockUi=bool(stock), service=bg.guest_json('/run/disc-boot/service.json'))
+    bg.step('stock mode with both installed', boot=boot, stockUi=bool(stock), service=bg.guest_json('/run/disc-boot/controller.json'))
     # 6. A broken diskOS update with Play gives way to the confirmed one; the server stays as it was.
     bg.power('off')
     with bg.card() as root:
@@ -209,7 +209,7 @@ def run(server, ui, app, output):
     bg.power('on', hold='play')                   # diskOS's UI from the start of the boot
     back = bg.wait(ui_status, lambda u: u['version'] == ui_version and u['slot'] == ui_state['slot'],
                    'diskOS back after the broken update', 300)
-    after = bg.service(lambda s: s['state'] == 'confirmed', 'server confirmed after the ui rollback', 480)
+    after = bg.controller(lambda s: s['state'] == 'confirmed', 'server confirmed after the ui rollback', 480)
     assert (after['version'], after['slot']) == (service['version'], service['slot']), (service, after)
     runs = bg.wait(lambda: diskos_runs(slot), bool, "diskOS's UI again", 120)
     bg.power('off')
@@ -217,7 +217,7 @@ def run(server, ui, app, output):
         result = json.loads((root/'.disc/boot/result.json').read_text())
     staged = result['roles']['ui'][ui_state['name']]
     assert staged['installed'] and staged['note'].endswith('-broken'), result
-    assert 'service' not in result['roles'], result
+    assert 'controller' not in result['roles'], result
     bg.step('broken ui update rolled back', result=result, ui=back, service=after, runs=runs)
     bg.evidence['status'] = 'passed'
     Path(output).write_text(json.dumps(bg.evidence, indent=2) + '\n')
@@ -226,7 +226,7 @@ def run(server, ui, app, output):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--server', type=Path, required=True, help="The server's service package (zip or folder)")
+    parser.add_argument('--server', type=Path, required=True, help="The server's package (zip or folder)")
     parser.add_argument('--ui', type=Path, required=True, help="diskOS's ui package folder (diskos_package.py)")
     parser.add_argument('--app', type=Path, required=True, help="The player page's release zip")
     parser.add_argument('--output', required=True)
@@ -236,6 +236,6 @@ if __name__ == '__main__':
     except BaseException as error:
         bg.evidence['status'] = f'failed: {error}'
         bg.evidence['ui'] = bg.guest_json('/run/disc-boot/ui.json')
-        bg.evidence['service'] = bg.guest_json('/run/disc-boot/service.json')
+        bg.evidence['service'] = bg.guest_json('/run/disc-boot/controller.json')
         Path(args.output).write_text(json.dumps(bg.evidence, indent=2, default=str) + '\n')
         raise

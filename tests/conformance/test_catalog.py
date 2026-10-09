@@ -42,6 +42,8 @@ class CatalogTests(unittest.TestCase):
         entries = {e['name']: e for e in data['entries']}
         self.assertEqual(sorted(entries), ['disc-menu', 'disc-server', 'diskos'])
         self.assertEqual({n: e['role'] for n, e in entries.items()}, {'disc-menu': 'menu', 'disc-server': 'service', 'diskos': 'ui'})
+        # The server of boot API 1 (up to 2.57.5) is the controller.
+        self.assertEqual(package.taken(entries['disc-server']), 'controller' if entries['disc-server']['bootApi'] < 2 else 'service')
         self.assertEqual(sorted(n for n, e in entries.items() if e['default']), ['disc-menu', 'disc-server'])
         # diskOS is built from its own published release on the user's computer, never from here.
         self.assertEqual(entries['diskos']['source']['recipe'], 'diskos-release')
@@ -124,12 +126,12 @@ class CatalogTests(unittest.TestCase):
         (folder/'bin').mkdir(parents=True)
         (folder/'bin/run').write_text('#!/bin/sh\nexit 0\n')
         (folder/'bin/run').chmod(0o755)
-        package.describe(folder, 'disc-server', '7', 'service', 'bin/run', profiles=[PROFILE])
+        package.describe(folder, 'disc-server', '7', 'controller', 'bin/run', profiles=[PROFILE])
         local = self.root/'local'
         local.mkdir()
         package.zip_package(folder, local/'server.zip')
         data = (local/'server.zip').read_bytes()
-        entry = dict(name='disc-server', role='service', version='7', source=dict(url=None, sha256=digest(data), size=len(data)))
+        entry = dict(name='disc-server', role='controller', bootApi=2, version='7', source=dict(url=None, sha256=digest(data), size=len(data)))
         (local/'other.zip').write_bytes(b'x' * len(data))
         fetched = catalog.fetch(entry, self.root/'out', [local])
         self.assertEqual(json.loads((fetched/'package.json').read_text())['version'], '7')
@@ -140,19 +142,28 @@ class CatalogTests(unittest.TestCase):
         entry['source']['sha256'] = digest(data)
         with self.assertRaisesRegex(catalog.CatalogError, 'the catalog names disc-server 8'):
             catalog.fetch(entry, self.root/'out3', [local])
+        entry.update(version='7', role='service')
+        with self.assertRaisesRegex(catalog.CatalogError, 'the package takes the role controller, the catalog names service'):
+            catalog.fetch(entry, self.root/'out4', [local])
+        # The server of boot API 1 (role service, bootApi 1), as the catalog names it up to 2.57.5.
+        package.describe(folder, 'disc-server', '7', 'service', 'bin/run', profiles=[PROFILE], boot_api=1)
+        package.zip_package(folder, local/'old-server.zip')
+        data = (local/'old-server.zip').read_bytes()
+        entry.update(bootApi=1, source=dict(url=None, sha256=digest(data), size=len(data)))
+        self.assertEqual(json.loads((catalog.fetch(entry, self.root/'out5', [local])/'package.json').read_text())['bootApi'], 1)
 
     def test_a_published_archive_is_downloaded_checked_and_kept(self):
         folder = self.root/'src'
         (folder/'bin').mkdir(parents=True)
         (folder/'bin/run').write_text('#!/bin/sh\n')
         (folder/'bin/run').chmod(0o755)
-        package.describe(folder, 'disc-server', '7', 'service', 'bin/run', profiles=['2.57'])
+        package.describe(folder, 'disc-server', '7', 'controller', 'bin/run', profiles=['2.57'])
         published = self.root/'published'
         published.mkdir()
         package.zip_package(folder, published/'server.zip')
         data = (published/'server.zip').read_bytes()
         source = dict(url=(published/'server.zip').as_uri(), sha256=digest(data), size=len(data))
-        entry = dict(name='disc-server', role='service', version='7', source=source)
+        entry = dict(name='disc-server', role='controller', bootApi=2, version='7', source=source)
         seen = []
         with self.assertRaisesRegex(catalog.NotLocal, 'downloads not allowed'):
             catalog.fetch(entry, self.root/'out0', [])

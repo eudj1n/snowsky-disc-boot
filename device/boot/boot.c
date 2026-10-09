@@ -33,6 +33,9 @@
 #define UI_STARTS 3
 #define MENU_FAILURES 2
 #define MAX_UIS 16
+#define MAX_SERVICES 16
+/* "service/" and a package's name. */
+#define DOMAIN 48
 /* A role's status file: sixteen installed interfaces, each with its project's page, fit. */
 #define STATUS_BYTES 8192
 #define LOG_CAP 65536
@@ -126,11 +129,22 @@ static void options(int argc, char **argv, int from) {
 
 static char other(char slot) { return slot == 'a' ? 'b' : 'a'; }
 
-/* Where a package lives under DATA_DIR (contract, "Several UIs and the boot menu"): "service",
-   "menu", or "ui/<name>" for each ui package. The role is what the domain holds. */
-static const char *role_of(const char *domain) { return strncmp(domain, "ui/", 3) ? domain : "ui"; }
+/* Where a package lives under DATA_DIR (contract, "Roles"): "controller", "menu", "ui/<name>"
+   for each ui package and "service/<name>" for each service. The role is what the domain holds. */
+static const char *role_of(const char *domain) {
+    if (!strncmp(domain, "ui/", 3)) return "ui";
+    return strncmp(domain, "service/", 8) ? domain : "service";
+}
 static const char *ui_name(const char *domain) { return strncmp(domain, "ui/", 3) ? NULL : domain + 3; }
-static void ui_domain(char out[40], const char *name) { snprintf(out, 40, "ui/%s", name); }
+static const char *service_name(const char *domain) { return strncmp(domain, "service/", 8) ? NULL : domain + 8; }
+/* The name a ui or service package is kept under; NULL for the controller and the menu. */
+static const char *domain_name(const char *domain) { return ui_name(domain) ? ui_name(domain) : service_name(domain); }
+static void ui_domain(char out[DOMAIN], const char *name) { snprintf(out, DOMAIN, "ui/%.32s", name); }
+static void service_domain(char out[DOMAIN], const char *name) { snprintf(out, DOMAIN, "service/%.32s", name); }
+/* Under RUN_DIR: the role's folder and status (<role>/, <role>.json), each service's own
+   (service/<name>/, service/<name>.json). */
+static const char *run_name(const char *domain) { return service_name(domain) ? domain : role_of(domain); }
+static void run_file(char out[PATH_MAX], const char *domain, const char *file) { bpath(out, RUN_DIR "/%s/%s", run_name(domain), file); }
 
 /* The SHA-256 of a slot's package.json: the fingerprint a rollback target keeps. */
 static int slot_fingerprint(const char *domain, char slot, char hex[65]) {
@@ -186,7 +200,7 @@ static int read_choice(ui_choice *c) {
 }
 
 static int ui_installed(const char *name) {
-    char domain[40];
+    char domain[DOMAIN];
     role_state rs;
     if (!package_name_ok(name)) return 0;
     ui_domain(domain, name);
@@ -207,7 +221,7 @@ static int list_uis(ui_entry *out, int cap) {
     struct dirent *e;
     int n = 0;
     while (m && n < cap && (e = readdir(d))) {
-        char domain[40], slot[PATH_MAX], err[160];
+        char domain[DOMAIN], slot[PATH_MAX], err[160];
         role_state rs;
         if (!package_name_ok(e->d_name)) continue;
         ui_domain(domain, e->d_name);
@@ -256,9 +270,9 @@ static void role_status(const char *domain, const char *state, const manifest *m
     plog("%s %s%s%s%s%s", domain, state, m ? " " : "", m ? m->version : "", note && *note ? ": " : "", note ? note : "");
     char p[PATH_MAX], buf[STATUS_BYTES], name[80], version[80], homepage[220] = "null", noted[300], request[260], previous[400] = "null",
          extra[6400] = "";
-    bpath(p, RUN_DIR);
+    bpath(p, service_name(domain) ? RUN_DIR "/service" : RUN_DIR);
     mkdirs(p, 0755);
-    bpath(p, RUN_DIR "/%s.json", role);
+    bpath(p, RUN_DIR "/%s.json", run_name(domain));
     json_str(name, sizeof(name), m ? m->name : "");
     json_str(version, sizeof(version), m ? m->version : "");
     if (m && m->homepage[0]) json_str(homepage, sizeof(homepage), m->homepage);
@@ -278,24 +292,32 @@ static void role_status(const char *domain, const char *state, const manifest *m
         free(pm);
     }
     if (!strcmp(role, "ui")) ui_extra(extra, sizeof(extra));
+    else if (service_name(domain)) snprintf(extra, sizeof(extra), ",\"autostart\":%s", !rs || rs->autostart ? "true" : "false");
     int n = snprintf(buf, sizeof(buf),
         "{\"schema\":1,\"role\":\"%s\",\"state\":\"%s\",\"name\":%s,\"version\":%s,\"homepage\":%s,\"slot\":%s%c%s,\"confirmed\":%s,"
         "\"failures\":%d,\"note\":%s,\"lastRequest\":%s,\"previous\":%s%s}\n",
         role, state, m ? name : "null", m ? version : "null", homepage,
         rs && rs->current ? "\"" : "nul", rs && rs->current ? rs->current : 'l', rs && rs->current ? "\"" : "",
         rs && rs->confirmed ? "true" : "false", failures, noted, last_request[0] ? request : "null", previous, extra);
-    if (n > 0 && n < (int)sizeof(buf)) write_atomic(p, buf, (size_t)n, 0644);
+    if (n <= 0 || n >= (int)sizeof(buf)) return;
+    write_atomic(p, buf, (size_t)n, 0644);
+    /* A controller of boot API 1 (the server up to 2.57.5) reads its status as service.json. */
+    if (!strcmp(domain, "controller")) {
+        bpath(p, RUN_DIR "/service.json");
+        if (m && m->boot_api < 2) write_atomic(p, buf, (size_t)n, 0644);
+        else unlink(p);
+    }
 }
 
-/* The boot-loop count clears once nothing that runs in this boot is tentative: the service package,
-   and the UI chosen for this boot when it is a package (the menu's answer is no condition).
-   Called under the state lock. */
+/* The boot-loop count clears once nothing that runs in this boot is tentative: the controller,
+   and the UI chosen for this boot when it is a package (the menu's answer is no condition; the
+   services are none: one that fails stops alone). Called under the state lock. */
 static void maybe_clear_loop(void) {
     role_state rs;
     ui_choice c;
-    if (rstate_read("service", &rs) || (rs.current && !rs.confirmed)) return;
+    if (rstate_read("controller", &rs) || (rs.current && !rs.confirmed)) return;
     if (!read_choice(&c) && strcmp(c.ui, "stock")) {
-        char domain[40];
+        char domain[DOMAIN];
         ui_domain(domain, c.ui);
         if (rstate_read(domain, &rs) || (rs.current && !rs.confirmed)) return;
     }
@@ -303,7 +325,7 @@ static void maybe_clear_loop(void) {
     if (!gstate_read(&g) && g.unconfirmed) { g.unconfirmed = 0; gstate_write(&g); }
 }
 
-/* A start whose service and chosen UI were confirmed before and are ready now is a healthy one:
+/* A start whose controller and chosen UI were confirmed before and are ready now is a healthy one:
    the boot-loop count clears at once, not after their confirmation time again (2026-10-07: quick
    restarts of a player whose packages were all confirmed reached the guard). Only a package not
    yet confirmed keeps it counting until its confirmation. */
@@ -325,8 +347,8 @@ static int slot_check(const char *domain, char slot, manifest *m, char *err, siz
     char dir[PATH_MAX];
     bpath(dir, DATA_DIR "/%s/%c", domain, slot);
     if (manifest_load(dir, m, err, cap) || manifest_fits(m, role_of(domain), profile, err, cap)) return -1;
-    /* A ui package lives under its own name: an update staged under another name is not it. */
-    const char *want = ui_name(domain);
+    /* A ui or service package lives under its own name: an update staged under another name is not it. */
+    const char *want = domain_name(domain);
     if (want && strcmp(m->name, want)) { snprintf(err, cap, "the package is named %s, not %s", m->name, want); return -1; }
     return package_verify(dir, m, 1, err, cap) ? -1 : 0;
 }
@@ -355,8 +377,9 @@ static void remove_ui_locked(const char *name, int purge) {
     }
 }
 
-/* The requests about the choice of UI, from any package (ui-remove only from the service or the
-   menu): they change the next boots, and a removal waits for the launcher's next start. */
+/* The requests about the choice of UI, from the controller, a ui package or the menu (ui-remove only
+   from the controller or the menu): they change the next boots, and a removal waits for the
+   launcher's next start. */
 static void ui_request(const char *domain, const bjson *j, const char *action) {
     char wanted[33] = "", p[PATH_MAX];
     int v = bjson_find(j, 0, "ui");
@@ -367,8 +390,8 @@ static void ui_request(const char *domain, const bjson *j, const char *action) {
     int is_stock = !strcmp(wanted, "stock");
     if (!is_stock && !ui_installed(wanted)) { snprintf(last_request, sizeof(last_request), "%s refused: %s is not installed", action, wanted); return; }
     if (!strcmp(action, "ui-remove")) {
-        if (strcmp(role_of(domain), "service") && strcmp(role_of(domain), "menu")) {
-            snprintf(last_request, sizeof(last_request), "ui-remove refused: only the service or the menu removes a ui package"); return;
+        if (strcmp(role_of(domain), "controller") && strcmp(role_of(domain), "menu")) {
+            snprintf(last_request, sizeof(last_request), "ui-remove refused: only the controller or the menu removes a ui package"); return;
         }
         if (is_stock) { snprintf(last_request, sizeof(last_request), "ui-remove refused: stock's UI stays"); return; }
         int purge = 0, pv = bjson_find(j, 0, "purge");
@@ -404,7 +427,10 @@ static int handle_request(const char *domain, const char *current_name) {
     int lock = state_lock();
     role_state rs;
     if (rstate_read(domain, &rs)) { snprintf(last_request, sizeof(last_request), "refused: the role's state is unreadable"); goto done; }
-    if (!strcmp(action, "activate")) {
+    /* A service asks about itself only. */
+    if (service_name(domain) && strcmp(action, "activate") && strcmp(action, "rollback") && strcmp(action, "remove")) {
+        snprintf(last_request, sizeof(last_request), "refused: a service asks only for activate, rollback or remove");
+    } else if (!strcmp(action, "activate")) {
         char target = rs.current ? other(rs.current) : 'a';
         manifest *m = malloc(sizeof(*m));
         if (!m || slot_check(domain, target, m, err, sizeof(err))) snprintf(last_request, sizeof(last_request), "activate refused: %s", m ? err : "out of memory");
@@ -441,7 +467,10 @@ static int handle_request(const char *domain, const char *current_name) {
         int purge = 0, v = bjson_find(&j, 0, "purge");
         if (v >= 0) bjson_bool(&j, v, &purge);
         if (ui_name(domain)) remove_ui_locked(ui_name(domain), purge);
-        else {
+        else if (service_name(domain)) {
+            bpath(p, DATA_DIR "/%s", domain); remove_tree(p);
+            if (purge && current_name && current_name[0]) { bpath(p, DATA_DIR "/data/%s", current_name); remove_tree(p); }
+        } else {
             bpath(p, DATA_DIR "/%s/a", domain); remove_tree(p);
             bpath(p, DATA_DIR "/%s/b", domain); remove_tree(p);
             bpath(p, DATA_DIR "/%s/state.json", domain); unlink(p);
@@ -473,18 +502,18 @@ static int choice_request_pending(const char *domain) {
 }
 
 /* At a platform boot and at each start of the UI launcher no ui package runs: the requests about
-   the choice that any package left (a running service's too) and the removals they asked for apply. */
+   the choice that any package left (a running controller's too) and the removals they asked for apply. */
 static void apply_pending(void) {
     char saved[sizeof(last_request)], dir[PATH_MAX];
     snprintf(saved, sizeof(saved), "%s", last_request);
-    if (choice_request_pending("service")) handle_request("service", NULL);
+    if (choice_request_pending("controller")) handle_request("controller", NULL);
     if (choice_request_pending("menu")) handle_request("menu", NULL);
     bpath(dir, DATA_DIR "/ui");
     DIR *d = opendir(dir);
     if (d) {
         struct dirent *e;
         while ((e = readdir(d))) {
-            char domain[40], p[PATH_MAX], buf[64];
+            char domain[DOMAIN], p[PATH_MAX], buf[64];
             if (!package_name_ok(e->d_name)) continue;
             ui_domain(domain, e->d_name);
             if (choice_request_pending(domain)) handle_request(domain, NULL);
@@ -580,7 +609,7 @@ static char **package_env(const char *domain, const manifest *m, char slot, int 
     bpath(inactive, DATA_DIR "/%s/%c", domain, other(slot));
     bpath(request, DATA_DIR "/%s/request", domain);
     bpath(data, DATA_DIR "/data/%s", m->name);
-    bpath(run, RUN_DIR "/%s", role);
+    bpath(run, RUN_DIR "/%s", run_name(domain));
     bpath(status, RUN_DIR);
     bpath(cardp, "%s", card);
     mkdirs(data, 0755); mkdirs(run, 0755); mkdirs(inactive, 0755);
@@ -598,7 +627,8 @@ static char **package_env(const char *domain, const manifest *m, char slot, int 
     add_env(envp, &n, "LD_LIBRARY_PATH", libs);
     char api[8]; snprintf(api, sizeof(api), "%d", BOOT_API);
     add_env(envp, &n, "DISC_BOOT_API", api);
-    add_env(envp, &n, "DISC_BOOT_ROLE", role);
+    /* The role the package names: a controller of boot API 1 is told "service", as it was. */
+    add_env(envp, &n, "DISC_BOOT_ROLE", m->role);
     add_env(envp, &n, "DISC_BOOT_PROFILE", profile);
     add_env(envp, &n, "DISC_BOOT_SLOT", slotdir);
     add_env(envp, &n, "DISC_BOOT_INACTIVE", inactive);
@@ -825,19 +855,30 @@ static void only_standard_descriptors(void) {
     for (int fd = 3; fd < most; fd++) close(fd);
 }
 
-static pid_t spawn_service(const manifest *m, char slot) {
+/* A controller or service package in a session of its own (contract, "Lifecycle of a controller or
+   service package"): the controller at nice +5, a service at nice +10 with its address space bounded
+   by its manifest's memory. */
+static pid_t spawn_package(const char *domain, const manifest *m, char slot) {
     char entry[PATH_MAX], data[PATH_MAX], log[PATH_MAX], ready[PATH_MAX];
-    bpath(entry, DATA_DIR "/service/%c/%s", slot, m->entry);
+    int service = service_name(domain) != NULL;
+    bpath(entry, DATA_DIR "/%s/%c/%s", domain, slot, m->entry);
     bpath(data, DATA_DIR "/data/%s", m->name);
-    bpath(log, RUN_DIR "/service/log");
-    bpath(ready, RUN_DIR "/service/ready");
-    char **envp = package_env("service", m, slot, 0);
+    char **envp = package_env(domain, m, slot, 0);
     char **argv = package_argv(entry, m);
+    run_file(log, domain, "log");
+    run_file(ready, domain, "ready");
     unlink(ready);
     pid_t pid = fork();
     if (pid == 0) {
         setsid();
-        setpriority(PRIO_PROCESS, 0, 5);
+        setpriority(PRIO_PROCESS, 0, service ? 10 : 5);
+#ifdef __linux__
+        /* Other hosts of the fixture (macOS) refuse RLIMIT_AS. */
+        if (service) {
+            struct rlimit limit = {(rlim_t)m->memory * 1024 * 1024, (rlim_t)m->memory * 1024 * 1024};
+            if (setrlimit(RLIMIT_AS, &limit)) _exit(126);
+        }
+#endif
         signal(SIGTERM, SIG_DFL);
         int in = open("/dev/null", O_RDONLY), out = open(log, O_WRONLY | O_CREAT | O_APPEND | O_NOFOLLOW, 0644);
         if (in >= 0) dup2(in, 0);
@@ -863,67 +904,157 @@ static void stop_child(pid_t pid) {
     waitpid(pid, NULL, 0);
 }
 
-static void cap_log(const char *role) {
+static void cap_log(const char *domain) {
     char p[PATH_MAX];
     struct stat s;
-    bpath(p, RUN_DIR "/%s/log", role);
+    run_file(p, domain, "log");
     if (!lstat(p, &s) && S_ISREG(s.st_mode) && s.st_size > LOG_CAP && truncate(p, 0)) blog("cannot cap %s", p);
 }
 
-/* The service role: ready, confirmed, restarted within bounds, rolled back (contract, "Lifecycle"). */
-static void supervise_service(void) {
+/* A controller or service package: ready, confirmed, restarted within bounds, rolled back
+   (contract, "Lifecycle of a controller or service package"). A service whose autostart is off
+   does not start. */
+static void supervise(const char *domain) {
     manifest *m = malloc(sizeof(*m));
     if (!m) return;
-    int failures = 0, nrestarts = 0;
+    int failures = 0, nrestarts = 0, service = service_name(domain) != NULL;
     double restarts[RESTARTS + 2];
-    char err[200], ready[PATH_MAX];
-    bpath(ready, RUN_DIR "/service/ready");
+    char err[200], ready[PATH_MAX], dir[PATH_MAX];
+    run_file(ready, domain, "ready");
     while (!stopping) {
         role_state rs;
-        if (rstate_read("service", &rs)) { role_status("service", "failed", NULL, NULL, failures, "the role's state is unreadable"); break; }
-        if (!rs.current) { role_status("service", "absent", NULL, NULL, failures, NULL); break; }
-        if (slot_check("service", rs.current, m, err, sizeof(err))) {
-            blog("service slot %c refused: %s", rs.current, err);
-            if (!rs.confirmed && !rollback("service", &rs)) { role_status("service", "rolled-back", NULL, &rs, failures, err); continue; }
-            role_status("service", "failed", NULL, &rs, failures, err);
+        if (rstate_read(domain, &rs)) { role_status(domain, "failed", NULL, NULL, failures, "the role's state is unreadable"); break; }
+        if (!rs.current) { role_status(domain, "absent", NULL, NULL, failures, NULL); break; }
+        if (service && !rs.autostart) {
+            bpath(dir, DATA_DIR "/%s/%c", domain, rs.current);
+            int known = !manifest_load(dir, m, err, sizeof(err));
+            role_status(domain, "disabled", known ? m : NULL, &rs, failures, "autostart is off");
             break;
         }
-        pid_t child = spawn_service(m, rs.current);
-        if (child < 0) { role_status("service", "failed", m, &rs, failures, "fork failed"); break; }
-        role_status("service", "starting", m, &rs, failures, NULL);
+        if (slot_check(domain, rs.current, m, err, sizeof(err))) {
+            blog("%s slot %c refused: %s", domain, rs.current, err);
+            if (!rs.confirmed && !rollback(domain, &rs)) { role_status(domain, "rolled-back", NULL, &rs, failures, err); continue; }
+            role_status(domain, "failed", NULL, &rs, failures, err);
+            break;
+        }
+        pid_t child = spawn_package(domain, m, rs.current);
+        if (child < 0) { role_status(domain, "failed", m, &rs, failures, "fork failed"); break; }
+        role_status(domain, "starting", m, &rs, failures, NULL);
         double started = mono(), ready_at = 0;
         int is_ready = 0, confirmed_now = 0, exited = 0, timed_out = 0;
         while (!exited) {
-            if (stopping) { stop_child(child); role_status("service", "stopped", m, &rs, failures, NULL); free(m); return; }
+            if (stopping) { stop_child(child); role_status(domain, "stopped", m, &rs, failures, NULL); free(m); return; }
             if (waitpid(child, NULL, WNOHANG) == child) { exited = 1; break; }
-            if (!is_ready && exists(ready)) { is_ready = 1; ready_at = mono(); role_status("service", "ready", m, &rs, failures, NULL); proven_ready(); }
+            if (!is_ready && exists(ready)) {
+                is_ready = 1; ready_at = mono();
+                role_status(domain, "ready", m, &rs, failures, NULL);
+                if (!service) proven_ready();
+            }
             if (!is_ready && mono() - started > m->ready) { stop_child(child); exited = timed_out = 1; break; }
             if (is_ready && !confirmed_now && mono() - ready_at >= t_confirm) {
-                confirm("service"); confirmed_now = 1; rs.confirmed = 1;
-                role_status("service", "confirmed", m, &rs, failures, NULL);
+                confirm(domain); confirmed_now = 1; rs.confirmed = 1;
+                role_status(domain, "confirmed", m, &rs, failures, NULL);
             }
-            cap_log("service");
+            cap_log(domain);
             pause_s(0.1);
         }
-        if (handle_request("service", m->name)) { failures = 0; nrestarts = 0; continue; }
+        if (handle_request(domain, m->name)) { failures = 0; nrestarts = 0; continue; }
         failures++;
         const char *why = timed_out ? "not ready in time" : "exited";
-        if (rstate_read("service", &rs)) continue;
+        if (rstate_read(domain, &rs)) continue;
         if (!rs.confirmed) {
-            if (!rollback("service", &rs)) { role_status("service", "rolled-back", m, &rs, failures, why); nrestarts = 0; continue; }
-            role_status("service", "failed", m, &rs, failures, timed_out ? "not ready in time before its confirmation" : "exited before its confirmation");
+            if (!rollback(domain, &rs)) { role_status(domain, "rolled-back", m, &rs, failures, why); nrestarts = 0; continue; }
+            role_status(domain, "failed", m, &rs, failures, timed_out ? "not ready in time before its confirmation" : "exited before its confirmation");
             break;
         }
         double now = mono();
         int kept = 0;
         for (int k = 0; k < nrestarts; k++) if (now - restarts[k] < t_window) restarts[kept++] = restarts[k];
         nrestarts = kept;
-        if (nrestarts >= RESTARTS) { role_status("service", "failed", m, &rs, failures, "restarted too often"); break; }
+        if (nrestarts >= RESTARTS) { role_status(domain, "failed", m, &rs, failures, "restarted too often"); break; }
         restarts[nrestarts++] = now;
-        role_status("service", "restarting", m, &rs, failures, why);
+        role_status(domain, "restarting", m, &rs, failures, why);
         pause_s(t_backoff);
     }
     free(m);
+}
+
+static int name_order(const void *a, const void *b) { return strcmp((const char *)a, (const char *)b); }
+
+/* The services kept under DATA_DIR/service/, by name: installed ones, and those whose state is
+   unreadable (their supervisor says so). */
+static int list_services(char names[][33], int cap) {
+    char dir[PATH_MAX];
+    bpath(dir, DATA_DIR "/service");
+    DIR *d = opendir(dir);
+    if (!d) return 0;
+    struct dirent *e;
+    int n = 0;
+    while (n < cap && (e = readdir(d))) {
+        char domain[DOMAIN];
+        role_state rs;
+        if (!package_name_ok(e->d_name)) continue;
+        service_domain(domain, e->d_name);
+        if (!rstate_read(domain, &rs) && !rs.current) continue;
+        snprintf(names[n++], 33, "%.32s", e->d_name);
+    }
+    closedir(d);
+    qsort(names, (size_t)n, 33, name_order);
+    return n;
+}
+
+static pid_t start_supervisor(const char *domain) {
+    pid_t pid = fork();
+    if (pid == 0) { supervise(domain); _exit(0); }
+    return pid;
+}
+
+/* A status file's state ("" when there is none). */
+static void status_state(const char *path, char *out, size_t cap) {
+    char buf[STATUS_BYTES];
+    size_t len;
+    bjson j;
+    out[0] = 0;
+    if (read_small(path, buf, sizeof(buf), &len) || bjson_parse(&j, buf, len, 256)) return;
+    if (bjson_string(&j, bjson_find(&j, 0, "state"), out, cap)) out[0] = 0;
+    bjson_free(&j);
+}
+
+/* The controller's supervisor first; each installed service's once the controller is ready or
+   settled otherwise (absent, failed, restarting), at most MAX_READY s later. Each supervisor is a
+   process of its own; SIGTERM reaches every one, and each stops its package. */
+static void supervise_all(void) {
+    pid_t kids[1 + MAX_SERVICES];
+    int n = 0;
+    char status[PATH_MAX], state[16], names[MAX_SERVICES][33];
+    bpath(status, RUN_DIR "/controller.json");
+    unlink(status);
+    kids[n++] = start_supervisor("controller");
+    double until = mono() + MAX_READY + t_grace;
+    while (!stopping && kids[0] > 0 && mono() < until) {
+        status_state(status, state, sizeof(state));
+        if (state[0] && strcmp(state, "starting")) break;
+        if (waitpid(kids[0], NULL, WNOHANG) == kids[0]) kids[0] = 0;
+        else pause_s(0.1);
+    }
+    int count = list_services(names, MAX_SERVICES);
+    for (int k = 0; k < count && !stopping; k++) {
+        char domain[DOMAIN];
+        service_domain(domain, names[k]);
+        kids[n++] = start_supervisor(domain);
+    }
+    for (;;) {
+        int alive = 0;
+        for (int k = 0; k < n; k++)
+            if (kids[k] > 0) { if (waitpid(kids[k], NULL, WNOHANG) == kids[k]) kids[k] = 0; else alive++; }
+        if (!alive) break;
+        if (stopping) {
+            for (int k = 0; k < n; k++) if (kids[k] > 0) kill(kids[k], SIGTERM);
+            for (int k = 0; k < n; k++) if (kids[k] > 0) waitpid(kids[k], NULL, 0);
+            break;
+        }
+        pause_s(0.1);
+    }
 }
 
 static int card_mounted(void) {
@@ -1027,7 +1158,7 @@ static int install(const char *domain, const char *staged, char *note, size_t ca
     if (manifest_load(staged, m, err, sizeof(err)) || manifest_fits(m, role_of(domain), profile, err, sizeof(err)) || package_verify(staged, m, 0, err, sizeof(err))) {
         snprintf(note, cap, "refused: %s", err); goto out;
     }
-    if (ui_name(domain) && strcmp(m->name, ui_name(domain))) { snprintf(note, cap, "refused: the folder is named %s, the package %s", ui_name(domain), m->name); goto out; }
+    if (domain_name(domain) && strcmp(m->name, domain_name(domain))) { snprintf(note, cap, "refused: the folder is named %s, the package %s", domain_name(domain), m->name); goto out; }
     struct statvfs v;
     bpath(slot, DATA_DIR);
     mkdirs(slot, 0755);
@@ -1083,12 +1214,45 @@ static int add_result(char *out, size_t cap, size_t *o, int first, const char *k
     return *o < cap ? 0 : -1;
 }
 
-static int name_order(const void *a, const void *b) { return strcmp((const char *)a, (const char *)b); }
+/* A staged folder (install/<folder> on the card): its key in result.json, under group ("" for the
+   controller and the menu), and the domain it is installed into ("" for a folder refused as it is). */
+typedef struct { const char *group, *refusal; char key[33], folder[48], domain[DOMAIN]; } staged_pkg;
+
+static int add_staged(staged_pkg *list, int n, const char *group, const char *key, const char *folder, const char *domain, const char *refusal) {
+    staged_pkg *e = &list[n];
+    e->group = group; e->refusal = refusal;
+    snprintf(e->key, sizeof(e->key), "%s", key);
+    snprintf(e->folder, sizeof(e->folder), "%s", folder);
+    snprintf(e->domain, sizeof(e->domain), "%s", domain);
+    return n + 1;
+}
+
+/* The folders named as packages in install/<group>/, by name; loose: a package.json there itself. */
+static int staged_names(const char *root, const char *group, char names[][33], int cap, int *loose) {
+    char dir[PATH_MAX], sub[PATH_MAX];
+    int n = 0;
+    *loose = 0;
+    bpath(dir, "%s/.disc/boot/install/%s", root, group);
+    DIR *d = is_dir(dir) ? opendir(dir) : NULL;
+    if (!d) return 0;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        if (!strcmp(e->d_name, "package.json")) *loose = 1;
+        if (!package_name_ok(e->d_name) || n >= cap) continue;
+        bpath(sub, "%s/.disc/boot/install/%s/%s", root, group, e->d_name);
+        if (is_dir(sub)) snprintf(names[n++], 33, "%.32s", e->d_name);
+    }
+    closedir(d);
+    qsort(names, (size_t)n, 33, name_order);
+    return n;
+}
 
 /* Play held at power-on: the packages staged on the card (contract, "Recovery from the card"):
-   install/service/, install/menu/ and one folder per ui package, install/ui/<name>/. It runs before
-   the pair (the launchers wait for it, the menu shows its progress), from the card where stock
-   mounted it or from a mount of the boot layer's own, and every step reaches the boot log. */
+   install/controller/, install/menu/, one folder per service, install/service/<name>/, and one per
+   ui package, install/ui/<name>/. install/service/ holding a package.json itself is the controller
+   as the installers up to 2.57.6 staged it. It runs before the pair (the launchers wait for it,
+   the menu shows its progress), from the card where stock mounted it or from a mount of the boot
+   layer's own, and every step reaches the boot log. */
 static void recovery(void) {
     install_progress("waiting", 0, 0, NULL);
     char root[PATH_MAX], result[SMALL_FILE], dir[PATH_MAX], note[260];
@@ -1098,72 +1262,66 @@ static void recovery(void) {
         install_progress("done", 0, 0, NULL);
         return;
     }
-    static const char *SINGLE[] = {"service", "menu"};
-    char names[MAX_UIS][33];
-    int count = 0, loose = 0, total = 0, done = 0;
-    for (size_t k = 0; k < sizeof(SINGLE) / sizeof(*SINGLE); k++) {
-        bpath(dir, "%s/.disc/boot/install/%s", root, SINGLE[k]);
-        total += is_dir(dir);
+    staged_pkg list[4 + MAX_SERVICES + MAX_UIS];
+    char names[MAX_UIS > MAX_SERVICES ? MAX_UIS : MAX_SERVICES][33], folder[48], domain[DOMAIN];
+    int n = 0, legacy = 0, loose = 0, count, total = 0, done = 0;
+    bpath(dir, "%s/.disc/boot/install/controller", root);
+    int controller = is_dir(dir);
+    if (controller) n = add_staged(list, n, "", "controller", "controller", "controller", NULL);
+    count = staged_names(root, "service", names, MAX_SERVICES, &legacy);
+    if (legacy && !controller) n = add_staged(list, n, "", "controller", "service", "controller", NULL);
+    bpath(dir, "%s/.disc/boot/install/menu", root);
+    if (is_dir(dir)) n = add_staged(list, n, "", "menu", "menu", "menu", NULL);
+    if (legacy && controller) n = add_staged(list, n, "service", "package.json", "service", "", "refused: the controller is staged in install/controller/");
+    for (int k = 0; k < count && !legacy; k++) {
+        snprintf(folder, sizeof(folder), "service/%.32s", names[k]);
+        service_domain(domain, names[k]);
+        n = add_staged(list, n, "service", names[k], folder, domain, NULL);
     }
-    bpath(dir, "%s/.disc/boot/install/ui", root);
-    DIR *d = is_dir(dir) ? opendir(dir) : NULL;
-    if (d) {
-        struct dirent *e;
-        while ((e = readdir(d))) {
-            if (!strcmp(e->d_name, "package.json")) loose = 1;
-            if (!package_name_ok(e->d_name) || count >= MAX_UIS) continue;
-            char sub[PATH_MAX];
-            bpath(sub, "%s/.disc/boot/install/ui/%s", root, e->d_name);
-            if (is_dir(sub)) snprintf(names[count++], sizeof(names[0]), "%.32s", e->d_name);
-        }
-        closedir(d);
-        qsort(names, (size_t)count, sizeof(names[0]), name_order);
+    count = staged_names(root, "ui", names, MAX_UIS, &loose);
+    if (loose) n = add_staged(list, n, "ui", "package.json", "ui", "", "refused: stage a ui package in install/ui/<its name>/");
+    for (int k = 0; k < count; k++) {
+        snprintf(folder, sizeof(folder), "ui/%.32s", names[k]);
+        ui_domain(domain, names[k]);
+        n = add_staged(list, n, "ui", names[k], folder, domain, NULL);
     }
-    total += count;
+    for (int k = 0; k < n; k++) total += list[k].domain[0] != 0;
     plog("recovery: %d staged on the card", total);
     size_t o = (size_t)snprintf(result, sizeof(result), "{\"schema\":1,\"roles\":{");
-    int any = 0, ui_installed_now = 0, menu_installed = 0;
-    for (size_t k = 0; k < sizeof(SINGLE) / sizeof(*SINGLE); k++) {
-        bpath(dir, "%s/.disc/boot/install/%s", root, SINGLE[k]);
-        if (!is_dir(dir)) continue;
-        install_progress("installing", done, total, SINGLE[k]);
-        int ok = install(SINGLE[k], dir, note, sizeof(note)) == 0;
-        done++;
-        if (ok && !strcmp(SINGLE[k], "menu")) menu_installed = 1;
-        add_result(result, sizeof(result), &o, !any, SINGLE[k], ok, note);
-        any = 1;
-        plog("recovery %s: %s", SINGLE[k], note);
-    }
-    if (d) {
-        char first_ui[33] = "";
-        if (o < sizeof(result)) o += (size_t)snprintf(result + o, sizeof(result) - o, "%s\"ui\":{", any ? "," : "");
-        any = 1;
-        int first = 1;
-        if (loose) {
-            add_result(result, sizeof(result), &o, first, "package.json", 0, "refused: stage a ui package in install/ui/<its name>/");
-            first = 0;
+    int top_first = 1, group_first = 1, ui_installed_now = 0, menu_installed = 0;
+    const char *group = "";
+    char first_ui[33] = "";
+    for (int k = 0; k < n; k++) {
+        staged_pkg *e = &list[k];
+        if (strcmp(e->group, group)) {
+            if (group[0] && o < sizeof(result)) o += (size_t)snprintf(result + o, sizeof(result) - o, "}");
+            if (o < sizeof(result)) o += (size_t)snprintf(result + o, sizeof(result) - o, "%s\"%s\":{", top_first ? "" : ",", e->group);
+            top_first = 0; group_first = 1;
+            group = e->group;
         }
-        for (int k = 0; k < count; k++) {
-            char domain[40], staged[PATH_MAX];
-            ui_domain(domain, names[k]);
-            bpath(staged, "%s/.disc/boot/install/ui/%s", root, names[k]);
-            install_progress("installing", done, total, names[k]);
-            int ok = install(domain, staged, note, sizeof(note)) == 0;
+        int ok = 0;
+        if (e->refusal) snprintf(note, sizeof(note), "%s", e->refusal);
+        else {
+            char staged[PATH_MAX];
+            bpath(staged, "%s/.disc/boot/install/%s", root, e->folder);
+            install_progress("installing", done, total, e->key);
+            ok = install(e->domain, staged, note, sizeof(note)) == 0;
             done++;
-            if (ok && !first_ui[0]) snprintf(first_ui, sizeof(first_ui), "%.32s", names[k]);
-            if (ok) ui_installed_now = 1;
-            add_result(result, sizeof(result), &o, first, names[k], ok, note);
-            first = 0;
-            plog("recovery ui %s: %s", names[k], note);
         }
-        if (o < sizeof(result)) o += (size_t)snprintf(result + o, sizeof(result) - o, "}");
-        if (first_ui[0]) {
-            /* The first ui package installed becomes the default when there is none. */
-            int lock = state_lock();
-            global_state g;
-            if (!gstate_read(&g) && !g.ui[0]) { snprintf(g.ui, sizeof(g.ui), "%s", first_ui); gstate_write(&g); }
-            state_unlock(lock);
-        }
+        if (ok && !strcmp(e->domain, "menu")) menu_installed = 1;
+        if (ok && ui_name(e->domain)) { ui_installed_now = 1; if (!first_ui[0]) snprintf(first_ui, sizeof(first_ui), "%s", e->key); }
+        int *first = group[0] ? &group_first : &top_first;
+        add_result(result, sizeof(result), &o, *first, e->key, ok, note);
+        *first = 0;
+        plog("recovery %s%s%s: %s", e->group, e->group[0] ? " " : "", e->key, note);
+    }
+    if (group[0] && o < sizeof(result)) o += (size_t)snprintf(result + o, sizeof(result) - o, "}");
+    if (first_ui[0]) {
+        /* The first ui package installed becomes the default when there is none. */
+        int lock = state_lock();
+        global_state g;
+        if (!gstate_read(&g) && !g.ui[0]) { snprintf(g.ui, sizeof(g.ui), "%s", first_ui); gstate_write(&g); }
+        state_unlock(lock);
     }
     if (o < sizeof(result)) o += (size_t)snprintf(result + o, sizeof(result) - o, "}}\n");
     bpath(dir, "%s/.disc/boot", root);
@@ -1209,7 +1367,25 @@ static int read_boot(void) {
     return 0;
 }
 
+/* Boot API 2 (contract, "Roles"): what boot API 1 kept as its service role, the server, is the
+   controller. Once, at the first boot of a boot program of API 2: DATA_DIR/service/ (its slots and
+   state.json) becomes DATA_DIR/controller/ in one rename, under the state lock, and the boot log
+   says so. Named services live in service/<name>/ afterwards. */
+static void move_controller(void) {
+    char from[PATH_MAX], to[PATH_MAX], p[PATH_MAX];
+    bpath(p, DATA_DIR "/service/state.json");
+    if (!exists(p)) return;
+    bpath(from, DATA_DIR "/service");
+    bpath(to, DATA_DIR "/controller");
+    int lock = state_lock();
+    if (exists(to)) plog("layout: service/ of boot API 1 stays, controller/ is there already");
+    else if (rename_synced(from, to)) plog("layout: service/ could not become controller/: %s", strerror(errno));
+    else plog("layout: service/ of boot API 1 became controller/");
+    state_unlock(lock);
+}
+
 static int cmd_early(void) {
+    move_controller();
     global_state g;
     int readable = gstate_read(&g) == 0;
     int volume_up = 0, play = 0, keys = read_keys(&volume_up, &play) == 0;
@@ -1228,7 +1404,7 @@ static int cmd_early(void) {
     if (platform) { apply_pending(); launch = decide_ui(1) || !strcmp(why, "recovery"); }
     else { bpath(p, RUN_DIR "/ui/choice.json"); unlink(p); }
     role_state rs;
-    int installed = launch || (!rstate_read("service", &rs) && rs.current);
+    int installed = launch || (!rstate_read("controller", &rs) && rs.current);
     int count = g.unconfirmed;
     if (platform && (installed || !strcmp(why, "recovery"))) {
         int lock = state_lock();
@@ -1360,7 +1536,13 @@ static void start_rootfs_check(void) {
 static int cmd_start(void) {
     if (read_boot()) { blog("start: no boot decision"); return 0; }
     start_rootfs_check();
-    if (strcmp(mode, "platform")) { role_status("service", "stock-mode", NULL, NULL, 0, NULL); return 0; }
+    if (strcmp(mode, "platform")) {
+        char names[MAX_SERVICES][33], domain[DOMAIN];
+        role_status("controller", "stock-mode", NULL, NULL, 0, NULL);
+        int count = list_services(names, MAX_SERVICES);
+        for (int k = 0; k < count; k++) { service_domain(domain, names[k]); role_status(domain, "stock-mode", NULL, NULL, 0, NULL); }
+        return 0;
+    }
     pid_t first = fork();
     if (first < 0) return 0;
     if (first > 0) { waitpid(first, NULL, 0); return 0; }
@@ -1378,7 +1560,7 @@ static int cmd_start(void) {
     int n = snprintf(buf, sizeof(buf), "%ld\n", (long)getpid());
     write_atomic(p, buf, (size_t)n, 0644);
     if (!strcmp(reason, "recovery")) recovery();
-    supervise_service();
+    supervise_all();
     bpath(p, RUN_DIR "/supervisor.pid");
     unlink(p);
     _exit(0);
@@ -1405,8 +1587,29 @@ static void print_file(const char *name) {
 }
 
 static int cmd_status(void) {
+    char dir[PATH_MAX], names[MAX_SERVICES][33], file[48];
+    int count = 0;
     fputs("{\"boot\":", stdout); print_file("boot.json");
-    fputs(",\"service\":", stdout); print_file("service.json");
+    fputs(",\"controller\":", stdout); print_file("controller.json");
+    /* Each service with a status in this boot, by name. */
+    bpath(dir, RUN_DIR "/service");
+    DIR *d = opendir(dir);
+    struct dirent *e;
+    while (d && count < MAX_SERVICES && (e = readdir(d))) {
+        size_t len = strlen(e->d_name);
+        if (len < 6 || len > 37 || strcmp(e->d_name + len - 5, ".json")) continue;
+        snprintf(names[count], 33, "%.*s", (int)(len - 5), e->d_name);
+        if (package_name_ok(names[count])) count++;
+    }
+    if (d) closedir(d);
+    qsort(names, (size_t)count, 33, name_order);
+    fputs(",\"services\":{", stdout);
+    for (int k = 0; k < count; k++) {
+        printf("%s\"%s\":", k ? "," : "", names[k]);
+        snprintf(file, sizeof(file), "service/%.32s.json", names[k]);
+        print_file(file);
+    }
+    fputs("}", stdout);
     fputs(",\"ui\":", stdout); print_file("ui.json");
     fputs(",\"menu\":", stdout); print_file("menu.json");
     fputs(",\"choice\":", stdout); print_file("ui/choice.json");
@@ -1420,8 +1623,15 @@ static int cmd_verify(const char *role, const char *dir) {
     char err[200], quoted[260];
     if (!m) return 2;
     if (!profile[0]) read_boot();
-    int ok = strcmp(role, "service") && strcmp(role, "ui") && strcmp(role, "menu") ? (snprintf(err, sizeof(err), "role must be service, ui or menu"), 0)
-           : !(manifest_load(dir, m, err, sizeof(err)) || manifest_fits(m, role, profile, err, sizeof(err)) || package_verify(dir, m, 1, err, sizeof(err)));
+    int ok = 0;
+    if (strcmp(role, "controller") && strcmp(role, "service") && strcmp(role, "ui") && strcmp(role, "menu"))
+        snprintf(err, sizeof(err), "role must be controller, service, ui or menu");
+    else if (!manifest_load(dir, m, err, sizeof(err))) {
+        /* A controller of boot API 1 (the server up to 2.57.5) checks its updates as "service": a
+           controller's package passes as one, its next version naming the controller's role included. */
+        const char *want = !strcmp(role, "service") && !strcmp(manifest_role(m), "controller") ? "controller" : role;
+        ok = !(manifest_fits(m, want, profile, err, sizeof(err)) || package_verify(dir, m, 1, err, sizeof(err)));
+    }
     if (ok) {
         char name[80], version[80];
         json_str(name, sizeof(name), m->name); json_str(version, sizeof(version), m->version);
@@ -1671,7 +1881,7 @@ static int menu_turn(ui_choice *c, manifest *m, char **argv) {
 
 static int launcher(int argc, char **argv) {
     (void)argc;
-    char p[PATH_MAX], buf[32], err[200], fallback[PATH_MAX], domain[40], name[33] = "";
+    char p[PATH_MAX], buf[32], err[200], fallback[PATH_MAX], domain[DOMAIN], name[33] = "";
     fixture_init(argv[0]);
     if (read_boot()) exec_stock(argv);
     if (!strcmp(mode, "platform")) capture_start("mq_ui");
@@ -1802,7 +2012,7 @@ static void player_status(const char *launch, const manifest *m, const char *not
    player never waits for a package. */
 static int player_launcher(int argc, char **argv) {
     (void)argc;
-    char fallback[PATH_MAX], err[200], entry[PATH_MAX], domain[40];
+    char fallback[PATH_MAX], err[200], entry[PATH_MAX], domain[DOMAIN];
     fixture_init(argv[0]);
     bpath(fallback, RUN_DIR "/ui/fallback");
     role_state rs;

@@ -42,17 +42,17 @@ def run(server, menu, apps_from, output):
     menu_status = bg.wait(lambda: bg.guest_json('/run/disc-boot/menu.json'), lambda m: m['state'] == 'answered', 'the menu answered', 300)
     choice = bg.guest_json('/run/disc-boot/ui/choice.json')
     assert (choice['ui'], choice['by']) == ('stock', 'menu'), choice
-    service = bg.service(lambda s: s['state'] == 'confirmed', 'server confirmed', 480)
+    controller = bg.controller(lambda s: s['state'] == 'confirmed', 'server confirmed', 480)
     with urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:7870/', headers={'Host': '127.0.0.1:7870'}), timeout=60) as response:
         page = response.read()
     assert response.status == 200 and b'<html' in page.lower(), page[:200]
     bg.step('play installs, the menu starts stock\'s UI, the server serves the page', menu=menu_status, choice=choice,
-            service=service, pageBytes=len(page))
+            controller=controller, pageBytes=len(page))
     bg.power('off')
     with bg.card() as root:
         result = json.loads((root/'.disc/boot/result.json').read_text())
         kept = (root/'.disc/dev/usb-console').read_text()
-    assert result['roles']['service']['installed'] and result['roles']['menu']['installed'], result
+    assert result['roles']['controller']['installed'] and result['roles']['menu']['installed'], result
     assert kept == cards.MARKER_TEXT, 'the console marker stays'
     bg.step('after the installation', result=result, marker=kept.strip())
     bg.evidence['status'] = 'passed'
@@ -71,7 +71,7 @@ if __name__ == '__main__':
         run(args.server, args.menu, args.apps_from, args.output)
     except BaseException as error:
         bg.evidence['status'] = f'failed: {error}'
-        bg.evidence['service'] = bg.guest_json('/run/disc-boot/service.json')
+        bg.evidence['controller'] = bg.guest_json('/run/disc-boot/controller.json')
         bg.evidence['menu'] = bg.guest_json('/run/disc-boot/menu.json')
         Path(args.output).write_text(json.dumps(bg.evidence, indent=2, default=str) + '\n')
         raise

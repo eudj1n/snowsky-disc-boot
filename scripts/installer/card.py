@@ -39,13 +39,26 @@ def stage_packages(folders, card, profile):
     return [package.stage(folder, card, profile=profile) for folder in folders]
 
 
-def clear_unchosen(card, staged):
-    """What an earlier run staged and this one did not choose leaves the card, so that Play installs
-    only this run's choice (2026-10-07: a server staged by a run that stopped at its review was
-    installed by the next run's Play). Only folders under .disc/boot/install/; returns their paths."""
+def places(folders):
+    """Where each package folder is staged (package.place)."""
+    return [package.place(package.load(folder)) for folder in folders]
+
+
+def clear_unchosen(card, chosen):
+    """What an earlier run staged and this one does not choose leaves the card before this run's
+    packages are staged, so that Play installs only this run's choice (2026-10-07: a server staged by
+    a run that stopped at its review was installed by the next run's Play). install/service/ holding
+    a package.json itself is a controller as the installers up to 2.57.6 staged it: it goes too,
+    since the controller is staged in install/controller/ now. Only folders under .disc/boot/install/;
+    returns their paths."""
     root = Path(card)/package.STAGING
-    keep = {('ui', s['name']) if s['role'] == 'ui' else (s['role'],) for s in staged}
-    found = [('service',), ('menu',)]
+    keep = {tuple(place) for place in chosen}
+    found = [('controller',), ('menu',)]
+    if (root/'service/package.json').is_file():
+        found.append(('service',))
+    else:
+        found += [('service', p.name) for p in sorted((root/'service').iterdir()) if p.is_dir() and not p.name.startswith('.')] \
+            if (root/'service').is_dir() else []
     if (root/'ui').is_dir():
         found += [('ui', p.name) for p in sorted((root/'ui').iterdir()) if p.is_dir() and not p.name.startswith('.')]
     cleared = []

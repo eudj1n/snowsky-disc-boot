@@ -58,7 +58,8 @@ class InstallerTests(unittest.TestCase):
         if catalog:
             (folder/'catalog').mkdir()
             (folder/'catalog/apps.json').write_text(json.dumps(catalog))
-        package.describe(folder, name, '9', role, entry, profiles=[PROFILE])
+        # As the catalog names them today: the server of boot API 1 (role service, the controller).
+        package.describe(folder, name, '9', role, entry, profiles=[PROFILE], boot_api=1)
         return folder
 
     def app(self, path, name, version, extra=None):
@@ -81,7 +82,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(report['status'], 'prepared')
         card = self.root/'run/card'
-        self.assertTrue((card/'.disc/boot/install/service/package.json').exists())
+        self.assertTrue((card/'.disc/boot/install/controller/package.json').exists())
         self.assertTrue((card/'.disc/boot/install/menu/package.json').exists())
         self.assertEqual(json.loads((card/'Apps/Disc Player/app.json').read_text())['version'], 'p1')
         self.assertEqual((card/'.disc/dev/usb-console').read_text(), 'DISC_WEB_LOCAL_ROOT_CONSOLE\n')
@@ -97,7 +98,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(list(card.iterdir()), [], 'nothing written without the confirmation')
         result, report = self.install('--card', str(card), '--yes')
         self.assertEqual(result.returncode, 0, result.stdout)
-        self.assertTrue((card/'.disc/boot/install/service').is_dir() and (card/'Apps/Disc Player').is_dir())
+        self.assertTrue((card/'.disc/boot/install/controller').is_dir() and (card/'Apps/Disc Player').is_dir())
 
     def test_a_package_without_a_local_file_stops_the_run(self):
         (self.local/'disc-menu.zip').unlink()
@@ -188,7 +189,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(json.loads(report.read_text())['status'], 'prepared')
         card = report.parent/'card'
         self.assertEqual(json.loads((card/'.disc/boot/install/menu/package.json').read_text())['version'], '2.57.9')
-        self.assertTrue((card/'.disc/boot/install/service/package.json').is_file() and (card/'Apps/Disc Player/app.json').is_file())
+        self.assertTrue((card/'.disc/boot/install/controller/package.json').is_file() and (card/'Apps/Disc Player/app.json').is_file())
         self.assertFalse((top/'work').exists(), 'nothing of the run in the archive')
 
     def test_the_archive_downloads_what_it_was_not_given(self):
@@ -317,13 +318,18 @@ class InstallerTests(unittest.TestCase):
         old_ui = card/'.disc/boot/install/ui/old-ui'
         old_ui.mkdir(parents=True)
         (old_ui/'package.json').write_text('{}')
+        # A server as the installers up to 2.57.6 staged it: install/service/ holding a package.json.
+        old_server = card/'.disc/boot/install/service'
+        (old_server/'bin').mkdir(parents=True)
+        (old_server/'package.json').write_text('{}')
         result, report = self.install('--card', str(card), '--yes', '--package', 'disc-menu')
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertTrue((card/'.disc/boot/install/menu/package.json').exists())
-        self.assertFalse((card/'.disc/boot/install/service').exists(), 'the earlier run\'s server is gone')
-        self.assertFalse(old_ui.exists())
+        self.assertFalse((card/'.disc/boot/install/controller').exists(), 'the earlier run\'s server is gone')
+        self.assertFalse(old_server.exists() or old_ui.exists())
         step = next(s for s in report['steps'] if s['step'] == 'card')
-        self.assertEqual(sorted(step['cleared']), ['.disc/boot/install/service', '.disc/boot/install/ui/old-ui'])
+        self.assertEqual(sorted(step['cleared']), ['.disc/boot/install/controller', '.disc/boot/install/service',
+                                                   '.disc/boot/install/ui/old-ui'])
         self.assertIn('no longer staged', result.stdout)
 
     def test_packages_are_chosen_by_role(self):
@@ -333,13 +339,13 @@ class InstallerTests(unittest.TestCase):
         self.catalog.write_text(json.dumps(data))
         result, report = self.install('--dry-run', '--yes')
         self.assertEqual(result.returncode, 0, result.stdout)
-        self.assertIn('Service   one at most', result.stdout)
+        self.assertIn('Server   one at most', result.stdout)
         self.assertIn('Boot menu   one at most', result.stdout)
-        self.assertEqual([p['name'] for p in report['steps'][2]['packages']], ['disc-menu', 'disc-server'], 'the menu, the UIs, the service')
-        self.assertLess(result.stdout.index('Boot menu'), result.stdout.index('Service'))
+        self.assertEqual([p['name'] for p in report['steps'][2]['packages']], ['disc-menu', 'disc-server'], 'the menu, the UIs, the server')
+        self.assertLess(result.stdout.index('Boot menu'), result.stdout.index('Server'))
         result, report = self.install('--dry-run', '--yes', '--package', 'disc-server', '--package', 'other-server')
         self.assertEqual(result.returncode, 1)
-        self.assertIn('one service at most: disc-server, other-server', report['status'])
+        self.assertIn('one server at most: disc-server, other-server', report['status'])
         result, report = self.install('--dry-run', '--yes', '--package', 'nothing-like-it')
         self.assertIn('not in the catalog: nothing-like-it', report['status'])
 
@@ -433,7 +439,7 @@ class InstallerTests(unittest.TestCase):
             elif args[0] == 'status':
                 out = json.dumps(statuses.pop(0) if len(statuses) > 1 else statuses[0])
             elif args[0] == 'read':
-                out = json.dumps(result or dict(schema=1, roles=dict(service=dict(installed=True, note='installed 9'),
+                out = json.dumps(result or dict(schema=1, roles=dict(controller=dict(installed=True, note='installed 9'),
                                                                      menu=dict(installed=True, note='installed 9'))))
             elif args[0] == 'down':
                 state.unlink()
@@ -455,28 +461,28 @@ class InstallerTests(unittest.TestCase):
 
     def test_the_guest_takes_the_card_and_is_followed_to_the_end(self):
         code, report, calls, card = self.guest([
-            dict(service=dict(state='starting'), menu=dict(state='asking')),
-            dict(service=dict(state='ready'), menu=dict(state='answered'), choice=dict(ui='stock', by='menu')),
-            dict(service=dict(state='confirmed'), menu=dict(state='answered'), choice=dict(ui='stock', by='menu'))])
+            dict(controller=dict(state='starting'), menu=dict(state='asking')),
+            dict(controller=dict(state='ready'), menu=dict(state='answered'), choice=dict(ui='stock', by='menu')),
+            dict(controller=dict(state='confirmed'), menu=dict(state='answered'), choice=dict(ui='stock', by='menu'))])
         self.assertEqual(code, 0, report['status'])
         self.assertEqual(calls, ['up', 'power off', 'put', 'power on --hold', 'status', 'status', 'status', 'power off', 'read', 'down'])
-        self.assertIn('.disc/boot/install/service/package.json', card)
+        self.assertIn('.disc/boot/install/controller/package.json', card)
         self.assertIn('.disc/boot/install/menu/package.json', card)
         self.assertEqual(card['.disc/dev/usb-console'], cards.MARKER_TEXT.encode())
         self.assertIn('Apps/Disc Player/index.html', card)
         boot = report['steps'][-1]
-        self.assertEqual((boot['step'], boot['status']['service']['state']), ('first boot', 'confirmed'))
+        self.assertEqual((boot['step'], boot['status']['controller']['state']), ('first boot', 'confirmed'))
         self.assertTrue(boot['result']['roles']['menu']['installed'])
         self.assertEqual(report['steps'][1]['ota'], str(self.root/'ota'), 'the update as given')
 
     def test_a_guest_that_does_not_get_there_stops_the_run_and_goes(self):
-        code, report, calls, card = self.guest([dict(service=dict(state='rolled-back'), menu=dict(state='answered'))])
+        code, report, calls, card = self.guest([dict(controller=dict(state='rolled-back'), menu=dict(state='answered'))])
         self.assertEqual(code, 1)
-        self.assertIn('did not finish: service rolled-back', report['status'])
+        self.assertIn('did not finish: controller rolled-back', report['status'])
         self.assertEqual(calls[-1], 'down', 'the guest is removed in every case')
-        code, report, calls, card = self.guest([dict(service=dict(state='confirmed'), menu=dict(state='answered'))],
-                                               result=dict(schema=1, roles=dict(service=dict(installed=False, note='refused: checksum'))))
-        self.assertIn('service: refused: checksum', report['status'])
+        code, report, calls, card = self.guest([dict(controller=dict(state='confirmed'), menu=dict(state='answered'))],
+                                               result=dict(schema=1, roles=dict(controller=dict(installed=False, note='refused: checksum'))))
+        self.assertIn('controller: refused: checksum', report['status'])
 
     def test_the_guest_is_not_a_way_back_to_stock(self):
         result = subprocess.run([sys.executable, str(ROOT/'install.py'), '--guest', '--restore'], capture_output=True, text=True)

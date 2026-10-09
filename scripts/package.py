@@ -4,9 +4,10 @@
 Describes a folder as a package (package.json), checks a folder or a zip the
 way disc-boot does (same rules, same messages), packs a checked folder as a
 deterministic zip, and stages a package on a card for the recovery with Play
-(.disc/boot/install/service/, .disc/boot/install/menu/, or
-.disc/boot/install/ui/<name>/ for each ui package). Only `stage` writes to a
-card, and only with --confirm-card-write.
+(.disc/boot/install/controller/, .disc/boot/install/menu/, or
+.disc/boot/install/service/<name>/ and .disc/boot/install/ui/<name>/ for each
+service and ui package). Only `stage` writes to a card, and only with
+--confirm-card-write.
 """
 import argparse
 import hashlib
@@ -25,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from firmware_profile import load_profile  # noqa: E402
 
 # disc-boot's bounds (device/common/manifest.h).
-BOOT_API = 1
+BOOT_API = 2
 ARCH = 'mips32el-linux-static'
 MAX_FILES = 256
 MAX_ARGS = 32
@@ -33,7 +34,8 @@ MAX_PROFILES = 8
 MANIFEST_BYTES = 65536
 PACKAGE_BYTES = 32 * 1024 * 1024
 MAX_READY = 120
-ROLES = ('service', 'ui', 'menu')
+MEMORY_DEFAULT, MEMORY_MAX = 16, 64
+ROLES = ('controller', 'service', 'ui', 'menu')
 STAGING = Path('.disc/boot/install')
 RESULT = Path('.disc/boot/result.json')
 ZIP_TIME = (2026, 1, 1, 0, 0, 0)
@@ -134,10 +136,12 @@ def load(folder):
         fail('version must be 1-64 printable ASCII')
     m['role'] = root.get('role')
     if m['role'] not in ROLES:
-        fail('role must be service, ui or menu')
+        fail('role must be controller, service, ui or menu')
     m['bootApi'] = root.get('bootApi')
     if not integer(m['bootApi'], 1, 1000):
         fail('bootApi must be a positive integer')
+    if m['role'] == 'controller' and m['bootApi'] < 2:
+        fail('the controller role needs bootApi 2')
     m['arch'] = root.get('arch')
     if not printable(m['arch'], 47):
         fail('arch is required')
@@ -160,6 +164,10 @@ def load(folder):
     if ready is not Missing and not integer(ready, 1, MAX_READY):
         fail('ready must be 1-120 seconds')
     m['ready'] = 30 if ready is Missing else ready
+    memory = root.get('memory', Missing)
+    if memory is not Missing and not integer(memory, 1, MEMORY_MAX):
+        fail('memory must be 1-64 MiB')
+    m['memory'] = MEMORY_DEFAULT if memory is Missing else memory
     profiles = root.get('profiles')
     if not isinstance(profiles, list) or not 1 <= len(profiles) <= MAX_PROFILES:
         fail('profiles must list 1-8 firmware profiles')
@@ -194,7 +202,7 @@ def load(folder):
     if m['files'].get(m['entry'], {}).get('mode') != '0755':
         fail('entry must be a listed file with mode 0755')
     # Stock's watch loop finds the UI by its process name, and the menu runs in its place.
-    if m['role'] != 'service' and m['entry'].rsplit('/', 1)[-1] != 'mq_ui':
+    if m['role'] in ('ui', 'menu') and m['entry'].rsplit('/', 1)[-1] != 'mq_ui':
         fail(f"a {m['role']} package's entry must be named mq_ui")
     if m['player'] is not None and m['role'] != 'ui':
         fail('only a ui package brings a player launcher')
@@ -204,9 +212,23 @@ def load(folder):
     return m
 
 
+def taken(m):
+    """The role a package (or a catalog entry) takes: its own, except that a service package of boot
+    API 1 (the server up to 2.57.5) is the controller (contract, "Roles")."""
+    return 'controller' if m['role'] == 'service' and m.get('bootApi', BOOT_API) < 2 else m['role']
+
+
+def place(m):
+    """Where a package is staged under STAGING: controller/, menu/, service/<name>/ or ui/<name>/."""
+    role = taken(m)
+    return (role, m['name']) if role in ('service', 'ui') else (role,)
+
+
 def fits(m, role, profile, arch=ARCH, boot_api=BOOT_API):
-    """The package fits a boot layer: role, API, architecture and firmware profile."""
-    if m['role'] != role:
+    """The package fits a boot layer: role (taken), API, architecture and firmware profile."""
+    if taken(m) != role:
+        if taken(m) != m['role']:
+            fail(f'a service package of boot API 1 is the controller, not {role}')
         fail(f"the package's role is {m['role']}, not {role}")
     if m['bootApi'] > boot_api:
         fail(f"the package needs boot API {m['bootApi']} (this boot layer has {boot_api})")
@@ -261,15 +283,22 @@ def verify(folder, m, check_modes=True):
 
 
 def check(folder, role=None, profile=None, arch=ARCH, check_modes=True):
+    """A folder checked as `disc-boot verify ROLE` checks it: a controller's package passes as
+    "service", which the server of boot API 1 names for its own updates."""
     m = load(folder)
-    fits(m, role or m['role'], profile or load_profile()['version'], arch)
+    if role == 'service' and taken(m) == 'controller':
+        role = 'controller'
+    fits(m, role or taken(m), profile or load_profile()['version'], arch)
     verify(folder, m, check_modes)
     return m
 
 
-def describe(folder, name, version, role, entry, args=(), ready=None, profiles=None, arch=ARCH, boot_api=BOOT_API,
-             player=None, title=None, homepage=None):
-    """package.json for a folder: every file with its size, digest and mode (0755 when executable)."""
+def describe(folder, name, version, role, entry, args=(), ready=None, profiles=None, arch=ARCH, boot_api=None,
+             player=None, title=None, homepage=None, memory=None):
+    """package.json for a folder: every file with its size, digest and mode (0755 when executable).
+    bootApi is the lowest the package needs: 2 for the controller and a service, else 1."""
+    if boot_api is None:
+        boot_api = 2 if role in ('controller', 'service') else 1
     folder = Path(folder)
     files = {}
     for path in sorted(folder.rglob('*')):
@@ -295,6 +324,8 @@ def describe(folder, name, version, role, entry, args=(), ready=None, profiles=N
                     ready=30 if ready is None else ready, files=files)
     if player is not None:
         manifest['player'] = player
+    if memory is not None:
+        manifest['memory'] = memory
     if title is not None:
         manifest['title'] = title
     if homepage is not None:
@@ -376,8 +407,8 @@ def write_new(path, data):
 
 def stage(source, card, profile=None, arch=ARCH):
     """Copies a package (zip or folder) into <card>/.disc/boot/install/ for the recovery with Play:
-    service/ and menu/ by role, ui/<name>/ for each ui package, replacing what was staged there.
-    Written beside, checked, then swapped in."""
+    controller/ and menu/ by role, service/<name>/ and ui/<name>/ for each service and ui package
+    (place), replacing what was staged there. Written beside, checked, then swapped in."""
     card = Path(card)
     if not card.is_dir() or card.is_symlink():
         fail('Card mount is not a directory')
@@ -385,9 +416,11 @@ def stage(source, card, profile=None, arch=ARCH):
         folder = source_folder(source, temp)
         m = check(folder, profile=profile, arch=arch)
         files = {path: (folder/path).read_bytes() for path in ['package.json', *m['files']]}
-    staging = card/STAGING/'ui' if m['role'] == 'ui' else card/STAGING
-    place = m['name'] if m['role'] == 'ui' else m['role']
-    target, fresh = staging/place, staging/f'.{place}.staging'
+    where = place(m)
+    if where[0] == 'service' and (card/STAGING/'service/package.json').exists():
+        fail('install/service/ holds a controller as boot API 1 staged it; remove it first')
+    staging = card/STAGING/Path(*where[:-1])
+    target, fresh = staging/where[-1], staging/f'.{where[-1]}.staging'
     if fresh.exists():
         shutil.rmtree(fresh)
     space = os.statvfs(card)
@@ -407,8 +440,8 @@ def stage(source, card, profile=None, arch=ARCH):
         os.sync()
     except (OSError, PackageError) as failure:
         shutil.rmtree(fresh, ignore_errors=True)
-        fail(f'Staging failed ({failure}); nothing new is staged for {place}')
-    return dict(role=m['role'], name=m['name'], version=m['version'], path=str(target),
+        fail(f"Staging failed ({failure}); nothing new is staged for {'/'.join(where)}")
+    return dict(role=taken(m), name=m['name'], version=m['version'], place='/'.join(where), path=str(target),
                 files=len(m['files']), physical_device_accessed=False)
 
 
@@ -433,6 +466,7 @@ def main():
     d.add_argument('--homepage', help="The project's page (an https address; disc-boot ignores it, the server's manager shows it)")
     d.add_argument('--arg', action='append', default=[], help='An argument for the entry (repeat for more)')
     d.add_argument('--ready', type=int, help='Seconds to become ready (1-120, default 30)')
+    d.add_argument('--memory', type=int, help="A service's address space in MiB (1-64, default 16)")
     d.add_argument('--profile', action='append', help='A supported firmware profile (default: the active one)')
     d.add_argument('--arch', default=ARCH)
     c = sub.add_parser('check', help='Check a package folder or zip as disc-boot does')
@@ -455,7 +489,7 @@ def main():
     try:
         if args.command == 'describe':
             m = describe(args.source, args.name, args.version, args.role, args.entry, args.arg, args.ready, args.profile, args.arch,
-                         player=args.player, title=args.title, homepage=args.homepage)
+                         player=args.player, title=args.title, homepage=args.homepage, memory=args.memory)
             out = dict(name=m['name'], version=m['version'], role=m['role'], files=len(m['files']),
                        bytes=sum(f['size'] for f in m['files'].values()))
         elif args.command == 'check':

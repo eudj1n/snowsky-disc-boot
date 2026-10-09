@@ -234,7 +234,7 @@ def bundled(version, dist, catalog_path, places, downloads, allow_download):
             if path is None:
                 raise ReleaseError(f'{entry["name"]} {entry["version"]}: no file with its digest (--from) and no download')
             found[file_name(entry)] = path
-            if entry['role'] == 'service':
+            if package.taken(entry) == 'controller':
                 folder = catalog.fetch(entry, Path(temp)/entry['name'], [path], False)
                 apps = Path(folder)/'catalog/apps.json'
                 for app in (catalog.load(apps, kind='apps')['entries'] if apps.exists() else []):

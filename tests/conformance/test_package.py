@@ -43,7 +43,7 @@ class PackageToolTests(unittest.TestCase):
             (folder/path).chmod(0o644)
         return folder
 
-    def describe(self, folder, role='service', entry='bin/run', arch='fixture', **kwargs):
+    def describe(self, folder, role='controller', entry='bin/run', arch='fixture', **kwargs):
         return package.describe(folder, kwargs.pop('name', 'disc-server'), kwargs.pop('version', '1'), role, entry,
                                 arch=arch, profiles=[PROFILE], **kwargs)
 
@@ -89,7 +89,7 @@ class PackageToolTests(unittest.TestCase):
             with self.subTest(player), self.assertRaisesRegex(package.PackageError, 'not an executable file'):
                 self.describe(folder, role='ui', entry='bin/mq_ui', player=player)
         with self.assertRaisesRegex(package.PackageError, 'only a ui package'):
-            self.describe(self.folder(name='service'), player='bin/run')
+            self.describe(self.folder(name='server'), player='bin/run')
 
     def test_a_homepage_is_a_plain_https_address(self):
         folder = self.folder()
@@ -104,7 +104,7 @@ class PackageToolTests(unittest.TestCase):
             with self.subTest(bad), self.assertRaisesRegex(package.PackageError, 'homepage must be an https address'):
                 self.describe(folder, homepage=bad)
         self.assertTrue(package.homepage_ok('https://github.com/' + 'x' * 181))
-        described = self.cli('describe', '--source', str(folder), '--name', 'disc-server', '--version', '2', '--role', 'service',
+        described = self.cli('describe', '--source', str(folder), '--name', 'disc-server', '--version', '2', '--role', 'controller',
                              '--entry', 'bin/run', '--arch', 'fixture', '--profile', PROFILE, '--homepage', url)
         self.assertEqual(described.returncode, 0, described.stdout + described.stderr)
         self.assertEqual(json.loads((folder/'package.json').read_text())['homepage'], url)
@@ -118,8 +118,8 @@ class PackageToolTests(unittest.TestCase):
                 manifest = self.describe(folder)
                 manifest['homepage'] = homepage
                 (folder/'package.json').write_text(json.dumps(manifest))
-                self.assertIsNone(self.boot_verify(folder, 'service'))
-                self.assertEqual(self.tool_verify(folder, 'service') is None, label == 'good')
+                self.assertIsNone(self.boot_verify(folder, 'controller'))
+                self.assertEqual(self.tool_verify(folder, 'controller') is None, label == 'good')
 
     def test_a_zip_is_deterministic_and_checks_like_its_folder(self):
         folder = self.folder(extra={'lib/libx.so': 'x'})
@@ -166,7 +166,7 @@ class PackageToolTests(unittest.TestCase):
         self.assertFalse((card/'.disc').exists())
         staged = self.cli('stage', '--package', str(archive), '--card', str(card), '--confirm-card-write')
         self.assertEqual(staged.returncode, 0, staged.stdout + staged.stderr)
-        target = card/'.disc/boot/install/service'
+        target = card/'.disc/boot/install/controller'
         self.assertEqual(sorted(p.relative_to(target).as_posix() for p in target.rglob('*') if p.is_file()), ['bin/run', 'package.json'])
         # A broken package stages nothing and leaves what was staged.
         (folder/'bin/run').write_text('changed')
@@ -174,7 +174,7 @@ class PackageToolTests(unittest.TestCase):
         self.assertEqual(broken.returncode, 1)
         self.assertIn('bin/run has 7 bytes', json.loads(broken.stdout)['error'])
         self.assertEqual((target/'bin/run').read_text(), RUN)
-        self.assertFalse((card/'.disc/boot/install/.service.staging').exists())
+        self.assertFalse((card/'.disc/boot/install/.controller.staging').exists())
         self.assertEqual(json.loads(self.cli('result', '--card', str(card)).stdout)['result'], None)
 
     def test_ui_packages_are_staged_under_their_names(self):
@@ -189,6 +189,27 @@ class PackageToolTests(unittest.TestCase):
         self.describe(menu, role='menu', entry='bin/mq_ui', name='disc-menu', arch=package.ARCH)
         self.assertEqual(package.stage(menu, card, profile=PROFILE)['path'], str(card/'.disc/boot/install/menu'))
         self.assertEqual(sorted(p.name for p in (card/'.disc/boot/install/ui').iterdir()), ['alpha', 'beta'])
+
+    def test_each_role_is_staged_where_disc_boot_takes_it(self):
+        """The controller in install/controller/ (the server of boot API 1 too), each service under
+        its name in install/service/<name>/; a controller staged as boot API 1 did (install/service/
+        holding a package.json) is no folder of services."""
+        card = self.root/'card'
+        card.mkdir()
+        old = self.folder(name='old-server')
+        self.describe(old, role='service', boot_api=1, arch=package.ARCH)
+        staged = package.stage(old, card, profile=PROFILE)
+        self.assertEqual((staged['role'], staged['place']), ('controller', 'controller'))
+        health = self.folder(name='health')
+        manifest = self.describe(health, role='service', name='disc-health', arch=package.ARCH, memory=24)
+        self.assertEqual((manifest['bootApi'], manifest['memory']), (2, 24))
+        staged = package.stage(health, card, profile=PROFILE)
+        self.assertEqual((staged['role'], staged['path']), ('service', str(card/'.disc/boot/install/service/disc-health')))
+        (card/'.disc/boot/install/service/package.json').write_text('{}')
+        with self.assertRaisesRegex(package.PackageError, 'install/service/ holds a controller as boot API 1 staged it'):
+            package.stage(health, card, profile=PROFILE)
+        self.assertEqual(package.taken(dict(role='service', bootApi=1)), 'controller')
+        self.assertEqual(package.taken(dict(role='service', bootApi=2)), 'service')
 
     # The tool and disc-boot agree, decision and message alike.
 
@@ -213,7 +234,9 @@ class PackageToolTests(unittest.TestCase):
         manifest_cases = {
             'good': None,
             'schema': edit(schema=2), 'name': edit(name='Disc Server'), 'version': edit(version=''),
-            'role': edit(role='daemon'), 'api': edit(bootApi=0), 'api ahead': edit(bootApi=2),
+            'role': edit(role='daemon'), 'api': edit(bootApi=0), 'api ahead': edit(bootApi=3),
+            'controller of api 1': edit(bootApi=1), 'memory': edit(memory=65), 'memory kind': edit(memory='16'),
+            'boot api 1 server': edit(role='service', bootApi=1), 'service': edit(role='service'),
             'arch': edit(arch='mips32el-linux-static'), 'no arch': edit(arch=''), 'entry path': edit(entry='/bin/run'),
             'ready': edit(ready=0), 'profiles': edit(profiles=[]), 'profile kind': edit(profiles=[257]),
             'other profile': edit(profiles=['2.58']), 'args': edit(args='--x'), 'arg kind': edit(args=[1]),
@@ -224,7 +247,7 @@ class PackageToolTests(unittest.TestCase):
             'too big': lambda m: m['files'].update({'big': dict(size=33 * 1024 * 1024, sha256='0' * 64, mode='0644')}),
             'entry unlisted': edit(entry='bin/other'),
             'float size': lambda m: m['files']['bin/run'].update(size=1.0),
-            'service player': edit(player='bin/run'),
+            'controller player': edit(player='bin/run'),
             'title': edit(title='Disc Server'), 'title empty': edit(title=''), 'title long': edit(title='x' * 33),
             'title kind': edit(title=7),
         }
@@ -235,7 +258,8 @@ class PackageToolTests(unittest.TestCase):
                 if change:
                     change(manifest)
                     (folder/'package.json').write_text(json.dumps(manifest))
-                self.assertEqual(self.tool_verify(folder, 'service'), self.boot_verify(folder, 'service'))
+                for role in ('controller', 'service', 'ui'):
+                    self.assertEqual(self.tool_verify(folder, role), self.boot_verify(folder, role), role)
         ui_cases = {
             'ui good': None, 'ui player': edit(player='bin/mq_ui'), 'ui player unlisted': edit(player='bin/other'),
             'ui player path': edit(player='../bin/mq_ui'), 'ui player kind': edit(player=1),
@@ -279,7 +303,7 @@ class PackageToolTests(unittest.TestCase):
                 self.describe(folder)
                 if damage:
                     damage(folder)
-                role = 'ui' if label == 'role mismatch' else 'service'
+                role = 'ui' if label == 'role mismatch' else 'controller'
                 tool, boot = self.tool_verify(folder, role), self.boot_verify(folder, role)
                 self.assertIsNotNone(boot, label)
                 self.assertEqual(tool, boot)
@@ -294,7 +318,7 @@ class PackageToolTests(unittest.TestCase):
         self.describe(folder, version='7')
         package.zip_package(folder, self.root/'server.zip')
         staged = package.stage(self.root/'server.zip', root/'tmp/sdcard', profile=PROFILE, arch='fixture')
-        self.assertEqual((staged['role'], staged['version']), ('service', '7'))
+        self.assertEqual((staged['role'], staged['place'], staged['version']), ('controller', 'controller', '7'))
         env = dict(os.environ, DISC_BOOT_FIXTURE_ROOT=str(root), DISC_BOOT_FIXTURE_TIMING='confirm=1,grace=1,card=2')
         boot = lambda *a: subprocess.run([str(FIXTURE), *a], env=env, capture_output=True, text=True, timeout=30, check=True)
         try:
@@ -303,14 +327,14 @@ class PackageToolTests(unittest.TestCase):
             until = time.monotonic() + 15
             status = None
             while time.monotonic() < until:
-                path = root/'run/disc-boot/service.json'
+                path = root/'run/disc-boot/controller.json'
                 status = json.loads(path.read_text()) if path.exists() else None
                 if status and status['state'] == 'confirmed':
                     break
                 time.sleep(0.1)
             self.assertEqual((status['state'], status['version']), ('confirmed', '7'), status)
             result = package.result(root/'tmp/sdcard')
-            self.assertEqual(result['roles']['service'], dict(installed=True, note='installed disc-server 7'))
+            self.assertEqual(result['roles']['controller'], dict(installed=True, note='installed disc-server 7'))
         finally:
             subprocess.run([str(FIXTURE), 'stop'], env=env, capture_output=True, timeout=30)
             subprocess.run(['pkill', '-f', str(root)], capture_output=True)

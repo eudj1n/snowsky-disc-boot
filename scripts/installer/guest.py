@@ -3,7 +3,8 @@
 A disposable guest of the image (scripts/guest.py, with its record in the run folder) stands in
 for the player after the write: it takes the card the installer staged, starts with Play held
 as the owner would start the player, and is followed until the boot layer has done its part:
-the recovery installed the packages, the menu answered, the service was confirmed. The card's
+the recovery installed the packages, the menu answered, the server (the controller) and the
+services were confirmed. The card's
 .disc/boot/result.json is then read with the guest off, and the guest is removed (its folder in
 the run folder keeps the card's media). Nothing here touches a player or a real card.
 """
@@ -15,7 +16,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[2]
 # States a role does not leave in this boot: waiting longer would not change them.
-SERVICE_ENDS = ('rolled-back', 'stock-mode', 'absent')
+SERVICE_ENDS = ('rolled-back', 'stock-mode', 'absent', 'failed', 'disabled')
 MENU_ENDS = ('absent',)
 
 
@@ -66,18 +67,19 @@ class Guest:
         except ValueError:
             raise GuestError('the status is not JSON')
 
-    def follow(self, roles, timeout=600, pause=5, show=lambda status: None):
+    def follow(self, roles, services=(), timeout=600, pause=5, show=lambda status: None):
         """The status until each installed role is where the boot layer leaves it: the menu
-        answered, the service confirmed (its 180 s). Returns the last status and whether it got there."""
+        answered, the controller and each service confirmed (their 180 s). Returns the last status
+        and whether it got there."""
         until, status = self.clock.monotonic() + timeout, {}
         while True:
             status = self.status()
             show(status)
-            service, menu = status.get('service') or {}, status.get('menu') or {}
-            done = (('service' not in roles or service.get('state') == 'confirmed')
-                    and ('menu' not in roles or menu.get('state') == 'answered'))
-            ended = (('service' in roles and service.get('state') in SERVICE_ENDS)
-                     or ('menu' in roles and menu.get('state') in MENU_ENDS))
+            controller, menu = status.get('controller') or {}, status.get('menu') or {}
+            states = [(controller if name == 'controller' else (status.get('services') or {}).get(name) or {}).get('state')
+                      for name in (['controller'] if 'controller' in roles else []) + list(services)]
+            done = all(state == 'confirmed' for state in states) and ('menu' not in roles or menu.get('state') == 'answered')
+            ended = any(state in SERVICE_ENDS for state in states) or ('menu' in roles and menu.get('state') in MENU_ENDS)
             if done or ended or self.clock.monotonic() >= until:
                 return status, done
             self.clock.sleep(pause)
