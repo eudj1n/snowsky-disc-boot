@@ -1581,6 +1581,19 @@ the only installer. Play at power-on stays the recovery path only.
   and a first start's check without an expected digest on the card (the
   installer compares it).
 
+- [x] Release 2.57.6 (2026-10-09): FiiO's own interface first, the player
+  restarted by the installer after the write, the archive's downloads into a
+  folder of their own. On the guest: `boot_guest.py` 16 of 16 (its offer's
+  order fixed in the test), `menu_guest.py` 3 of 3, `two_packages.py` 6 of 6,
+  `boot_report.py` and `boot_layer.py`, `install.py --guest` from the
+  unpacked archive with an empty home; the image `c46ad1f1…` the same on
+  macOS without root and in the Linux container. On the owner's player from
+  the other computer with the archive only: written in the review's entry,
+  the first start's check matched ([record](observations/first-write-observation.md#the-ninth-write-release-2576-the-player-restarted-by-the-installer)).
+- [ ] The run's report names the restart's outcome (`report.json`, the player
+  step), not only its `usb/restart/result.json`; with the next release, as
+  it changes the archive.
+
 ## Later
 
 - An update of the image by the running system from the card (owner,
