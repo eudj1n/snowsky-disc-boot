@@ -1599,6 +1599,17 @@ the only installer. Play at power-on stays the recovery path only.
 
 ## Later
 
+- diskOS Disco! as another interface before the large public release (owner,
+  2026-10-09): zmd22's fork of diskOS (https://zmd22.github.io/diskos-disco/,
+  https://github.com/zmd22/diskos-disco; 1.2.1 for V2.57; its UI under
+  GPL-3.0-or-later, installer and documents under MIT), whose release carries
+  the built `payload/mq_ui` as diskOS's does. As a `ui` package assembled on
+  the user's computer by a recipe like diskOS's (its `mq_ui` from the release
+  by its digest, the boot layer's entry beside it, nothing of it
+  redistributed from here), its boot choice and card protection checked
+  against what diskOS 1.2.0 expects, then the guest's two-package acceptance
+  beside the server and diskOS, and the owner's player.
+
 - An update of the image by the running system from the card (owner,
   2026-10-08: FiiO's own update takes about 2 minutes, ours over USB Boot
   about 10): the new rootfs written on the player as FiiO's recovery does,
