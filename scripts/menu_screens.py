@@ -53,8 +53,9 @@ def scene(name, output, choices, install=None, keys=(), wait=0.6, countdown=6000
         (root/'fb0').write_bytes(bytes(PANEL * PANEL * 4 * 3))
         (root/'keys').write_bytes(b'')
         (root/'touch').write_bytes(b'')
-        entries = [dict(ui=ui, title=title, version=version, confirmed=True) for ui, title, version in choices[1]]
-        entries.append(dict(ui='stock', version='2.57'))
+        # As boot offers them (write_choices): FiiO's own first, then the installed UIs.
+        entries = [dict(ui='stock', version='2.57')]
+        entries += [dict(ui=ui, title=title, version=version, confirmed=True) for ui, title, version in choices[1]]
         (root/'status/ui/choices.json').write_text(json.dumps(dict(schema=1, default=choices[0], entries=entries)))
         if install:
             (root/'status/install.json').write_text(json.dumps(dict(schema=1, **install)))
@@ -79,7 +80,8 @@ def main():
     p.add_argument('--output', type=Path, default=ROOT/'docs/assets/menu')
     args = p.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    installed = ('diskos', [('diskos', 'diskOS', '1.2.0')])
+    # One interface beside FiiO's own (diskOS, a project of its own), FiiO's chosen last time.
+    installed = ('stock', [('diskos', 'diskOS', '1.2.0')])
     scene('choose', args.output, installed, wait=1.5, countdown=5000)
     scene('reading-the-card', args.output, installed, install=dict(state='waiting', done=0, total=0, current=None))
     scene('installing', args.output, installed, install=dict(state='installing', done=1, total=3, current='disc-menu'))

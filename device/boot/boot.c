@@ -543,20 +543,22 @@ static int decide_ui(int consume_next) {
     return c.menu || strcmp(c.ui, "stock");
 }
 
-/* What the menu offers: every installed ui package (its title, or its name) and stock's UI with
-   the firmware profile's version, with this boot's default. */
+/* What the menu offers: stock's UI first, with the firmware profile's version (owner, 2026-10-09:
+   FiiO's own interface leads, the packages are additions to it), then every installed ui package
+   (its title, or its name), with this boot's default. */
 static void write_choices(const ui_choice *c) {
     char p[PATH_MAX], buf[SMALL_FILE], version[80], title[48];
     ui_entry list[MAX_UIS];
     int count = list_uis(list, MAX_UIS);
-    size_t o = (size_t)snprintf(buf, sizeof(buf), "{\"schema\":1,\"default\":\"%s\",\"entries\":[", c->ui);
+    size_t o = (size_t)snprintf(buf, sizeof(buf), "{\"schema\":1,\"default\":\"%s\",\"entries\":[{\"ui\":\"stock\",\"version\":\"%s\"}",
+                                c->ui, profile);
     for (int k = 0; k < count && o < sizeof(buf); k++) {
         json_str(version, sizeof(version), list[k].version);
         json_str(title, sizeof(title), list[k].title[0] ? list[k].title : list[k].name);
-        o += (size_t)snprintf(buf + o, sizeof(buf) - o, "{\"ui\":\"%s\",\"title\":%s,\"version\":%s,\"confirmed\":%s},",
+        o += (size_t)snprintf(buf + o, sizeof(buf) - o, ",{\"ui\":\"%s\",\"title\":%s,\"version\":%s,\"confirmed\":%s}",
                               list[k].name, title, version, list[k].confirmed ? "true" : "false");
     }
-    if (o < sizeof(buf)) o += (size_t)snprintf(buf + o, sizeof(buf) - o, "{\"ui\":\"stock\",\"version\":\"%s\"}]}\n", profile);
+    if (o < sizeof(buf)) o += (size_t)snprintf(buf + o, sizeof(buf) - o, "]}\n");
     if (o >= sizeof(buf)) return;
     bpath(p, RUN_DIR "/ui/choices.json");
     write_atomic(p, buf, o, 0644);

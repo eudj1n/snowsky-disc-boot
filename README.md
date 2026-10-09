@@ -14,7 +14,7 @@ writes the player's system memory over USB; read [the risk](docs/install.md#the-
 [Changelog](CHANGELOG.md) · [Releases](https://github.com/eudj1n/snowsky-disc-boot/releases)
 
 <p align="center">
-  <img src="docs/assets/menu/choose.png" width="240" alt="The boot menu on the player's round screen: Start with diskOS 1.2.0 or FiiO 2.57, starting in 4 seconds">
+  <img src="docs/assets/menu/choose.png" width="240" alt="The boot menu on the player's round screen: Start with FiiO 2.57 or diskOS 1.2.0, starting in 4 seconds">
   &nbsp;&nbsp;
   <img src="docs/assets/menu/installing.png" width="240" alt="The boot menu installing disc-menu from the card, 2 of 3">
 </p>
