@@ -667,9 +667,9 @@ screens; the second and the third are rows at the end of the first list
   (the menu's hand-over), a service at the next start before the services
   run; last "Everything ours", with two questions: at the next start, before
   anything of ours runs, boot removes everything in `/usr/data/disc-boot` and
-  the card's `.disc` folder (music and `Apps` stay). The networks disc-network
-  gave to stock stay in stock's configuration until stock's next connection
-  removes them. The controller and the menu are removed only with everything
+  the card's `.disc` folder (music and `Apps` stay). The network disc-network
+  last put in stock's place stays in stock's configuration, as one stock
+  connected to would (it keeps one network). The controller and the menu are removed only with everything
   ours or by the installer.
 - Play at power-on stays the recovery: it installs everything staged without
   asking.

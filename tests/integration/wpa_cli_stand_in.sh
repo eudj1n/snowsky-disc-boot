@@ -3,11 +3,14 @@
 # and on the guest (the emulator has no Wi-Fi). Installed as <root>/usr/sbin/wpa_cli, it keeps
 # wpa_supplicant's networks in <root>/run/wpa-stand-in/net/<id>/<key> and saves them as wpa_supplicant
 # writes <root>/usr/data/wpa_supplicant.conf (beside, then renamed). wpa_cli's commands: ping, status,
-# list_networks, add_network, set_network, enable_network, select_network, remove_network, save_config.
-# The tests' own begin with _: _up and _down (wpa_supplicant started, with the networks of the file, or
-# stopped), _state <wpa_state> [id], _stock_connect <ssid> <psk|NONE> (stock's connect_wifi: remove
-# all, add, set, select, save; then connected to it), _scan <id>... (those networks in range: the
-# first enabled one by priority connects).
+# list_networks, add_network, set_network, enable_network, select_network, remove_network, save_config,
+# scan, scan_results. What is in range is <root>/run/wpa-stand-in/range (a configuration's SSID value
+# and its signal a line); after each change the first enabled network in range by priority, then id,
+# connects, unless it is one that fails. The tests' own commands begin with _: _up and _down
+# (wpa_supplicant started, with the networks of the file, or stopped), _state <wpa_state> [id],
+# _stock_connect <ssid> <psk|NONE> (stock's connect_wifi: remove all, add, set, select, save; the
+# network in range), _range <ssid>... (those in range, the first the strongest) and _fail <ssid> (a
+# network in range that never connects, as with a wrong key).
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
 base=$(cd "$here/../.." && pwd)
@@ -65,6 +68,23 @@ load() {
     done < "$conf"
 }
 need_up() { [ -e "$S/up" ] || { echo "Failed to connect to non-global ctrl_ifname: wlan0  error: No such file or directory"; exit 255; }; }
+in_range() { cut -f1 "$S/range" 2>/dev/null | grep -qxF -- "$1"; }
+fails() { grep -qxF -- "$1" "$S/fail" 2>/dev/null; }
+# The connection after a change: the first enabled network in range, by priority then id.
+settle() {
+    [ -e "$S/up" ] || return 0
+    best='' bestp=''
+    for i in $(ids); do
+        [ "$(field "$i" disabled)" != 1 ] || continue
+        v=$(field "$i" ssid)
+        in_range "$v" && ! fails "$v" || continue
+        p=$(field "$i" priority); p=${p:-0}
+        if [ -z "$best" ] || [ "$p" -gt "$bestp" ]; then best=$i bestp=$p; fi
+    done
+    if [ -n "$best" ]; then echo COMPLETED > "$S/state"; echo "$best" > "$S/current"
+    elif [ -n "$(ids)" ]; then echo SCANNING > "$S/state"
+    else echo INACTIVE > "$S/state"; fi
+}
 
 case $cmd in
     ping) need_up; echo PONG ;;
@@ -92,25 +112,33 @@ case $cmd in
         id=$1 key=$2; shift 2
         [ -d "$S/net/$id" ] || { echo FAIL; exit 0; }
         printf '%s' "$*" > "$S/net/$id/$key"; echo OK ;;
-    enable_network) need_up; [ -d "$S/net/$1" ] && echo 0 > "$S/net/$1/disabled"; echo OK ;;
-    select_network) need_up; for i in $(ids); do if [ "$i" = "$1" ]; then echo 0; else echo 1; fi > "$S/net/$i/disabled"; done; echo OK ;;
-    remove_network) need_up; if [ "$1" = all ]; then rm -rf "$S/net" && mkdir -p "$S/net"; else rm -rf "$S/net/$1"; fi; echo OK ;;
+    enable_network) need_up; [ -d "$S/net/$1" ] && echo 0 > "$S/net/$1/disabled"; settle; echo OK ;;
+    select_network) need_up; for i in $(ids); do if [ "$i" = "$1" ]; then echo 0; else echo 1; fi > "$S/net/$i/disabled"; done; settle; echo OK ;;
+    remove_network) need_up; if [ "$1" = all ]; then rm -rf "$S/net" && mkdir -p "$S/net"; else rm -rf "$S/net/$1"; fi; settle; echo OK ;;
     save_config) need_up; save; echo OK ;;
-    _up) load; mkdir -p "$base/var/run/wpa_supplicant"; : > "$base/var/run/wpa_supplicant/wlan0"; : > "$S/up"; echo DISCONNECTED > "$S/state" ;;
+    scan) need_up; echo OK ;;
+    scan_results)
+        need_up
+        printf 'bssid / frequency / signal level / flags / ssid\n'
+        n=0
+        while IFS="$(printf '\t')" read -r v signal; do
+            n=$((n + 1))
+            printf '02:00:00:00:01:%02d\t2412\t%s\t[WPA2-PSK-CCMP][ESS]\t%s\n' "$n" "$signal" "$(printed "$v")"
+        done < "$S/range" 2>/dev/null ;;
+    _up) load; mkdir -p "$base/var/run/wpa_supplicant"; : > "$base/var/run/wpa_supplicant/wlan0"; : > "$S/up"; echo DISCONNECTED > "$S/state"; settle ;;
     _down) rm -f "$S/up" "$base/var/run/wpa_supplicant/wlan0" ;;
     _state) echo "$1" > "$S/state"; [ $# -gt 1 ] && echo "$2" > "$S/current"; true ;;
     _stock_connect)
         rm -rf "$S/net" && mkdir -p "$S/net/0"
         printf '%s' "$1" > "$S/net/0/ssid"; printf 1 > "$S/net/0/scan_ssid"; echo 0 > "$S/net/0/disabled"
         if [ "$2" = NONE ]; then printf NONE > "$S/net/0/key_mgmt"; else printf '%s' "$2" > "$S/net/0/psk"; fi
-        save; echo COMPLETED > "$S/state"; echo 0 > "$S/current" ;;
-    _scan)
-        best='' bestp=''
-        for i in "$@"; do
-            [ -d "$S/net/$i" ] && [ "$(field "$i" disabled)" != 1 ] || continue
-            p=$(field "$i" priority); p=${p:-0}
-            if [ -z "$best" ] || [ "$p" -gt "$bestp" ]; then best=$i bestp=$p; fi
-        done
-        if [ -n "$best" ]; then echo COMPLETED > "$S/state"; echo "$best" > "$S/current"; else echo SCANNING > "$S/state"; fi ;;
+        in_range "$1" || printf '%s\t-45\n' "$1" >> "$S/range"
+        save; settle ;;
+    _range)
+        : > "$S/range"
+        signal=-40
+        for v in "$@"; do printf '%s\t%s\n' "$v" "$signal" >> "$S/range"; signal=$((signal - 10)); done
+        settle ;;
+    _fail) printf '%s\n' "$1" >> "$S/fail"; settle ;;
     *) echo "Unknown command '$cmd'"; exit 1 ;;
 esac

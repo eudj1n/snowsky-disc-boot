@@ -1,16 +1,18 @@
 /* disc-network: the player keeps several Wi-Fi networks and joins whichever is in range (a service
    of boot API 2; plan, stage 7; docs/dev/network.md). Stock's connection removes every saved network
    before it adds the new one (remove_network all), so its configuration (/usr/data/wpa_supplicant.conf)
-   holds one. While Wi-Fi is on, every 5 s this service looks at stock's wpa_supplicant through
-   wpa_cli: it keeps the network stock connected to (its block of the configuration) in its own store
-   ($DISC_BOOT_DATA/networks.json, mode 0600, at most 8, the least recently used dropped first), and
-   adds the others back after stock's own, below it in priority, through wpa_supplicant itself
-   (add_network, set_network, enable_network, save_config: the owner's decision of 2026-10-09; it never
-   edits the file). It acts only when wpa_supplicant's networks are those saved in the file and both
-   stayed so for two looks, never in the middle of stock's own sequence. A configuration with no
-   network at all when Wi-Fi comes on (stock's reset; S43wifi writes a new one) makes it forget its own
-   too; one emptied while Wi-Fi is on gets them back. Its report ($DISC_BOOT_RUN/status.json) names the
-   networks, never a key. */
+   holds one, and stock's UI fails with more (the owner's player, 2026-10-09). While Wi-Fi is on, every
+   5 s this service looks at stock's wpa_supplicant through wpa_cli: it keeps the network stock
+   connected to (its block of the configuration) in its own store ($DISC_BOOT_DATA/networks.json, mode
+   0600, at most 8, the least recently used dropped first). When Wi-Fi has had no connection for 20 s,
+   a minute after the configuration last changed, and a kept network is in range, it puts that network
+   in the place of stock's one with stock's own sequence through wpa_supplicant (remove all, add, set,
+   select, save: the owner's decisions of 2026-10-09; it never edits the file), so the configuration
+   keeps one network. A network that does not connect after that waits 10 minutes. It acts only when
+   wpa_supplicant's networks are those saved in the file and both stayed so for two looks, never in the
+   middle of stock's own sequence. A configuration with no network at all when Wi-Fi comes on (stock's
+   reset; S43wifi writes a new one) makes it forget its own too. Its report ($DISC_BOOT_RUN/status.json)
+   names the networks, never a key. */
 #define _XOPEN_SOURCE 700
 #define _DARWIN_C_SOURCE
 #include "boot_util.h"
@@ -29,6 +31,13 @@
 
 #define INTERVAL 5
 #define STEADY 2
+/* In looks (of INTERVAL s): no connection for this long before another network takes stock's place;
+   so long after the configuration changed (stock's connection or this service's); a network that did
+   not connect after it took the place waits this long; a scan asked at most this often while away. */
+#define AWAY_LOOKS 4
+#define QUIET_LOOKS 12
+#define RETRY_LOOKS 120
+#define SCAN_LOOKS 6
 #define MAX_KEPT 8
 #define MAX_LISTED 32
 #define ANSWER 8192
@@ -56,6 +65,12 @@ static long last_used;
 typedef struct { char ssid[VALUE], psk[VALUE], key_mgmt[40]; int scan_ssid, other; } block;
 /* A network wpa_supplicant holds now (list_networks): its id, SSID and flags. */
 typedef struct { int id, current, disabled; unsigned char ssid[32]; size_t len; } listed;
+/* A network in range (scan_results): its SSID and best signal (dBm). */
+typedef struct { unsigned char ssid[32]; size_t len; int signal; } heard;
+/* A kept network that did not connect after it took stock's place, and the look it failed at. */
+typedef struct { char ssid[VALUE]; long at; } missed;
+static missed misses[MAX_KEPT];
+static int nmisses;
 
 static void on_term(int sig) { (void)sig; stopping = 1; }
 
@@ -234,6 +249,31 @@ static int list(listed *out, int cap) {
     return n;
 }
 
+/* scan_results: "bssid\tfrequency\tsignal\tflags\tssid" after a header; each SSID once, its best signal. */
+static int scan_results(heard *out, int cap) {
+    char answer[ANSWER];
+    int n = 0;
+    if (wpa(answer, sizeof(answer), "scan_results", NULL)) return 0;
+    char *save = NULL;
+    for (char *line = strtok_r(answer, "\n", &save); line; line = strtok_r(NULL, "\n", &save)) {
+        char *field[5] = {line};
+        int f = 1;
+        for (char *c = line; *c && f < 5; c++) if (*c == '\t') { *c = 0; field[f++] = c + 1; }
+        if (f < 5 || !strchr(field[0], ':')) continue;
+        unsigned char ssid[32];
+        size_t len;
+        printed_bytes(field[4], ssid, &len);
+        if (!len) continue;
+        int signal = atoi(field[2]), at = -1;
+        for (int k = 0; k < n; k++) if (same(out[k].ssid, out[k].len, ssid, len)) at = k;
+        if (at >= 0) { if (signal > out[at].signal) out[at].signal = signal; continue; }
+        if (n == cap) continue;
+        memcpy(out[n].ssid, ssid, len); out[n].len = len; out[n].signal = signal;
+        n++;
+    }
+    return n;
+}
+
 /* The configuration's network blocks, and the file's identity for the steadiness. -1 when unreadable. */
 static int conf(block *out, int cap, struct stat *st) {
     char p[PATH_MAX], *text = malloc(CONF_BYTES);
@@ -337,19 +377,35 @@ static int keep(const block *b, char *change, size_t cap) {
     return 1;
 }
 
-/* A kept network wpa_supplicant does not hold: added after stock's, below it in priority. */
-static int add_back(const kept *s) {
+/* A kept network in the place of stock's one, by stock's own sequence (connect_wifi): every network
+   removed, this one added, set, selected and saved, so the configuration holds it alone. */
+static int take_place(const kept *s) {
     char answer[64], id[16];
+    if (wpa(answer, sizeof(answer), "remove_network", "all", NULL) || !ok(answer)) return -1;
     if (wpa(answer, sizeof(answer), "add_network", NULL) || answer[0] < '0' || answer[0] > '9') return -1;
     snprintf(id, sizeof(id), "%d", atoi(answer));
     int good = !wpa(answer, sizeof(answer), "set_network", id, "ssid", s->ssid, NULL) && ok(answer);
     if (good && s->psk[0]) good = !wpa(answer, sizeof(answer), "set_network", id, "psk", s->psk, NULL) && ok(answer);
     if (good && s->key_mgmt[0]) good = !wpa(answer, sizeof(answer), "set_network", id, "key_mgmt", s->key_mgmt, NULL) && ok(answer);
     if (good && s->scan_ssid) good = !wpa(answer, sizeof(answer), "set_network", id, "scan_ssid", "1", NULL) && ok(answer);
-    if (good) good = !wpa(answer, sizeof(answer), "set_network", id, "priority", "-1", NULL) && ok(answer);
-    if (good) good = !wpa(answer, sizeof(answer), "enable_network", id, NULL) && ok(answer);
-    if (!good) wpa(answer, sizeof(answer), "remove_network", id, NULL);
+    if (good) good = !wpa(answer, sizeof(answer), "select_network", id, NULL) && ok(answer);
+    if (good) good = !wpa(answer, sizeof(answer), "save_config", NULL) && ok(answer);
     return good ? 0 : -1;
+}
+
+/* Whether a kept network failed to connect within RETRY_LOOKS. */
+static int missed_lately(const kept *s, long look) {
+    for (int k = 0; k < nmisses; k++) if (!strcmp(misses[k].ssid, s->ssid)) return look - misses[k].at < RETRY_LOOKS;
+    return 0;
+}
+
+static void miss(const char *ssid, long look) {
+    int at = nmisses;
+    for (int k = 0; k < nmisses; k++) if (!strcmp(misses[k].ssid, ssid)) at = k;
+    if (at == MAX_KEPT) at = 0;
+    snprintf(misses[at].ssid, VALUE, "%.71s", ssid);
+    misses[at].at = look;
+    if (at == nmisses) nmisses++;
 }
 
 static const char *wifi_word(int on, const char *state) {
@@ -361,7 +417,7 @@ static const char *wifi_word(int on, const char *state) {
 }
 
 static void report(int on, const char *state, const unsigned char *ssid, size_t len, const listed *present, int npresent,
-                   const char *change, time_t changed) {
+                   const heard *range, int nrange, const char *change, time_t changed) {
     char p[PATH_MAX], buf[REPORT_BYTES];
     size_t o = 0;
     put(buf, sizeof(buf), &o, "{\"schema\":1,\"wifi\":\"%s\",\"connected\":", wifi_word(on, state));
@@ -371,11 +427,13 @@ static void report(int on, const char *state, const unsigned char *ssid, size_t 
         unsigned char name[32];
         size_t nl;
         if (kept_bytes(&store[k], name, &nl)) nl = 0;
-        int here = 0;
+        int here = 0, near = 0;
         for (int m = 0; m < npresent; m++) here |= same(name, nl, present[m].ssid, present[m].len);
+        for (int m = 0; m < nrange; m++) near |= same(name, nl, range[m].ssid, range[m].len);
         put(buf, sizeof(buf), &o, "%s{\"name\":", k ? "," : "");
         put_name(buf, sizeof(buf), &o, name, nl);
-        put(buf, sizeof(buf), &o, ",\"open\":%s,\"held\":%s}", !strcmp(store[k].key_mgmt, "NONE") ? "true" : "false", here ? "true" : "false");
+        put(buf, sizeof(buf), &o, ",\"open\":%s,\"held\":%s,\"inRange\":%s}", !strcmp(store[k].key_mgmt, "NONE") ? "true" : "false",
+            here ? "true" : "false", near ? "true" : "false");
     }
     put(buf, sizeof(buf), &o, "],\"lastChange\":");
     if (change[0]) {
@@ -412,23 +470,29 @@ int main(void) {
     signal(SIGINT, on_term);
     signal(SIGPIPE, SIG_IGN);
     store_load();
-    char ready[PATH_MAX], change[200] = "", seen[80] = "";
+    char ready[PATH_MAX], change[200] = "", seen[80] = "", placed[VALUE] = "";
     time_t changed = 0;
     snprintf(ready, sizeof(ready), "%s/ready", run_dir);
     /* fresh: the first look since Wi-Fi came on (or this service started), where an empty
-       configuration means a reset. */
-    int steady = 0, first = 1, fresh = 1;
+       configuration means a reset. away: looks in a row without a connection. The look the
+       configuration last changed at, a scan was last asked at, and a kept network took stock's place at
+       (placed, until it connects or misses). */
+    int steady = 0, first = 1, fresh = 1, away = 0;
+    long look = 0, conf_look = -QUIET_LOOKS, scan_look = -SCAN_LOOKS, placed_look = 0;
     static listed present[MAX_LISTED], before[MAX_LISTED];
     static block blocks[MAX_LISTED];
+    static heard range[MAX_LISTED];
     int nbefore = -1;
     while (!stopping) {
         char state[32] = "";
         unsigned char ssid[32];
         size_t slen = 0;
-        int on = wifi_on(), npresent = 0;
+        int on = wifi_on(), npresent = 0, nrange = 0;
+        look++;
         if (on) {
             status(state, ssid, &slen);
             npresent = list(present, MAX_LISTED);
+            nrange = scan_results(range, MAX_LISTED);
             struct stat st;
             int nblocks = conf(blocks, MAX_LISTED, &st);
             /* The file and wpa_supplicant's networks as they were at the last look: steady. */
@@ -438,6 +502,7 @@ int main(void) {
             for (int k = 0; listed_same && k < npresent; k++)
                 listed_same = present[k].id == before[k].id && present[k].disabled == before[k].disabled
                               && same(present[k].ssid, present[k].len, before[k].ssid, before[k].len);
+            if (seen[0] && strcmp(now, seen)) conf_look = look;
             steady = nblocks >= 0 && npresent >= 0 && !strcmp(now, seen) && listed_same ? steady + 1 : 0;
             snprintf(seen, sizeof(seen), "%s", now);
             memcpy(before, present, sizeof(present));
@@ -449,16 +514,25 @@ int main(void) {
                 size_t bl;
                 saved = !conf_bytes(blocks[k].ssid, b, &bl) && same(b, bl, present[k].ssid, present[k].len);
             }
+            int connected = !strcmp(state, "COMPLETED");
             const char *word = wifi_word(on, state);
+            away = connected ? 0 : away + 1;
+            /* The network that took stock's place connected, or did not in its time: it waits. */
+            if (placed[0]) {
+                unsigned char want[32];
+                size_t wl;
+                if (connected && !conf_bytes(placed, want, &wl) && same(want, wl, ssid, slen)) placed[0] = 0;
+                else if (look - placed_look >= QUIET_LOOKS) { miss(placed, look); placed[0] = 0; }
+            }
             if (steady >= STEADY && saved && strcmp(word, "connecting")) {
-                int store_changed = 0, added = 0, enabled = 0, failed = 0;
+                int store_changed = 0, removed = 0, failed = 0;
                 if (nblocks == 0 && fresh) {
                     if (nstore) {
                         snprintf(change, sizeof(change), "forgot %d networks: the player has none saved (reset)", nstore);
                         nstore = 0; last_used = 0; store_changed = 1;
                     }
                 } else {
-                    if (!strcmp(state, "COMPLETED")) {
+                    if (connected) {
                         for (int k = 0; k < nblocks; k++) {
                             unsigned char b[32];
                             size_t bl;
@@ -468,31 +542,60 @@ int main(void) {
                             break;
                         }
                     }
-                    for (int k = 0; k < nstore; k++) {
+                    /* Stock keeps one network: kept ones beside it (an earlier version of this service
+                       added them back) go, all but the connected one or else the first, stock's. */
+                    int stay = 0;
+                    for (int k = 0; k < npresent; k++) if (present[k].current) stay = k;
+                    for (int k = 0; nblocks > 1 && k < npresent; k++) {
                         unsigned char name[32];
                         size_t nl;
-                        int at = -1;
-                        if (kept_bytes(&store[k], name, &nl)) continue;
-                        for (int m = 0; m < npresent; m++) if (same(name, nl, present[m].ssid, present[m].len)) at = m;
-                        if (at < 0) { if (add_back(&store[k])) failed++; else added++; }
-                        else if (present[at].disabled && !present[at].current) {
-                            char answer[64], id[16];
-                            snprintf(id, sizeof(id), "%d", present[at].id);
-                            if (!wpa(answer, sizeof(answer), "enable_network", id, NULL) && ok(answer)) enabled++; else failed++;
-                        }
+                        int ours = 0;
+                        for (int m = 0; m < nstore; m++) ours |= !kept_bytes(&store[m], name, &nl) && same(name, nl, present[k].ssid, present[k].len);
+                        if (k == stay || !ours) continue;
+                        char answer[64], id[16];
+                        snprintf(id, sizeof(id), "%d", present[k].id);
+                        if (!wpa(answer, sizeof(answer), "remove_network", id, NULL) && ok(answer)) removed++; else failed++;
                     }
-                    if (added || enabled) {
+                    if (removed) {
                         char answer[64];
                         if (wpa(answer, sizeof(answer), "save_config", NULL) || !ok(answer)) failed++;
-                        snprintf(change, sizeof(change), "added %d networks back, enabled %d%s", added, enabled, failed ? ", some failed" : "");
-                    } else if (failed) snprintf(change, sizeof(change), "%d networks could not be added back", failed);
+                        snprintf(change, sizeof(change), "stock keeps one network: removed %d an earlier version added", removed);
+                    } else if (!connected && nblocks <= 1 && away >= AWAY_LOOKS && look - conf_look >= QUIET_LOOKS && !placed[0]) {
+                        /* Out of reach: the strongest kept network in range, other than stock's own, takes its place. */
+                        unsigned char own[32];
+                        size_t ol = 0;
+                        if (nblocks == 1 && conf_bytes(blocks[0].ssid, own, &ol)) ol = 0;
+                        int best = -1, signal = 0;
+                        for (int k = 0; k < nstore; k++) {
+                            unsigned char name[32];
+                            size_t nl;
+                            if (kept_bytes(&store[k], name, &nl) || (nblocks == 1 && same(name, nl, own, ol)) || missed_lately(&store[k], look)) continue;
+                            for (int m = 0; m < nrange; m++)
+                                if (same(name, nl, range[m].ssid, range[m].len) && (best < 0 || range[m].signal > signal)) { best = k; signal = range[m].signal; }
+                        }
+                        if (best >= 0) {
+                            unsigned char name[32];
+                            size_t nl;
+                            char words[40];
+                            if (kept_bytes(&store[best], name, &nl)) nl = 0;
+                            ascii_name(words, sizeof(words), name, nl);
+                            if (take_place(&store[best])) { failed++; snprintf(change, sizeof(change), "could not switch to %s", words); }
+                            else snprintf(change, sizeof(change), "switched to %s: in range, stock's network out of reach", words);
+                            snprintf(placed, sizeof(placed), "%s", store[best].ssid);
+                            placed_look = look;
+                        } else if (look - scan_look >= SCAN_LOOKS) {
+                            char answer[64];
+                            wpa(answer, sizeof(answer), "scan", NULL);
+                            scan_look = look;
+                        }
+                    }
                 }
                 if (store_changed) store_save();
-                if (store_changed || added || enabled || failed) { changed = time(NULL); steady = 0; }
+                if (store_changed || removed || failed || placed_look == look) { changed = time(NULL); steady = 0; }
                 fresh = 0;
             }
-        } else { steady = 0; nbefore = -1; seen[0] = 0; fresh = 1; }
-        report(on, state, ssid, slen, present, npresent > 0 ? npresent : 0, change, changed);
+        } else { steady = 0; nbefore = -1; seen[0] = 0; fresh = 1; away = 0; }
+        report(on, state, ssid, slen, present, npresent > 0 ? npresent : 0, range, nrange, change, changed);
         if (first) { first = 0; int fd = open(ready, O_WRONLY | O_CREAT | O_CLOEXEC, 0644); if (fd >= 0) close(fd); }
         double until = mono() + interval;
         while (!stopping && mono() < until) pause_s(until - mono() < 1 ? until - mono() : 1);
