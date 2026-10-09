@@ -1378,13 +1378,18 @@ static int card_look(char *root, size_t cap, int *own) {
     char dir[PATH_MAX];
     bpath(dir, RUN_DIR "/card");
     mkdirs(dir, 0755);
+    /* Read-only first; the recovery's flags when the device is mounted already with others (a second
+       mount shares the superblock and must take its flags: the guest's card, 2026-10-09). It only reads. */
     static const char *const types[] = {"vfat", "exfat"};
-    for (size_t k = 0; k < sizeof(types) / sizeof(*types); k++)
-        if (!mount(card_source, dir, types[k], MS_RDONLY | MS_NOSUID | MS_NODEV | MS_NOEXEC, "iocharset=utf8")) {
-            *own = 1;
-            snprintf(root, cap, "%s", RUN_DIR "/card");
-            return 0;
-        }
+    static const unsigned long flags[] = {MS_RDONLY | MS_NOSUID | MS_NODEV | MS_NOEXEC, MS_NOSUID | MS_NODEV | MS_NOEXEC};
+    for (size_t f = 0; f < sizeof(flags) / sizeof(*flags); f++)
+        for (size_t k = 0; k < sizeof(types) / sizeof(*types); k++)
+            if (!mount(card_source, dir, types[k], flags[f], "iocharset=utf8")) {
+                *own = 1;
+                snprintf(root, cap, "%s", RUN_DIR "/card");
+                return 0;
+            }
+    plog("menu: the card cannot be looked at: %s", strerror(errno));
 #elif defined(DISC_BOOT_FIXTURE)
     if (getenv("DISC_BOOT_FIXTURE_MOUNTABLE")) { *own = 1; snprintf(root, cap, "%s", card); return 0; }
 #endif
