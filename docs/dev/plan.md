@@ -1525,9 +1525,25 @@ the only installer. Play at power-on stays the recovery path only.
   shows `ui.json` and `menu.json`). The installer's defaults (owner,
   2026-10-08): disc-health ticked (it only reads), disc-network offered but
   not ticked until it has run on the owner's player.
-- [ ] disc-health (owner, 2026-10-07): a read-only, offline journal of the
+- [x] disc-health (owner, 2026-10-07): a read-only, offline journal of the
   battery, temperature, uptime, crashes, card errors and free space, shown
-  by the server's diagnostics.
+  by the server's diagnostics. Done 2026-10-09 ([disc-health](health.md)):
+  `device/health`, built beside the menu; at its start and every 10 minutes
+  the fuel gauge (the first power supply with a capacity: `cw221X-bat`), the
+  thermal zones, uptime, load, memory, the free space of `/usr/data` and the
+  card, the kernel's card errors and fatal signals and stock's restarts of
+  its pair; a line of its journal (256 KiB in two files) and its report
+  (`status.json`, at most 4 KiB). A release carries
+  `disc-health-<version>.zip` (role `service`, `bootApi` 2), which the
+  catalog offers ticked. `test_health` 6 (macOS and Linux; under the boot
+  program's fixture as a service); on the guest (`health_guest.py`, the
+  MIPS build under boot `944d9c5`'s image) installed by Play, confirmed,
+  reading the emulator's gauge and the card, and a changed gauge at the next
+  start. The guest found that `/proc` and `/sys` say 0 or a page as a file's
+  size (uptime read as 0): they are read to their end; and the card comes
+  after the service's start: a reading without it is taken again once it is
+  there. The thermal zones of the player are not known yet: its first
+  reading says. snowsky-disc-server shows the report (its plan, stage 5).
 - [ ] disc-network (owner, 2026-10-08): the player keeps several Wi-Fi
   networks (home, office) and joins whichever is in range without the
   password again. Why it does not today (static analysis of V2.57's

@@ -14,6 +14,10 @@ Entries stay short; how and why it was done is in the [plan](docs/dev/plan.md).
   interface.
 - The server you installed moves to its new place at the first start by
   itself: nothing to reinstall.
+- disc-health, the first service, offered ticked by the installer: every 10
+  minutes it notes the battery, the temperatures, the free space, card errors
+  and crashes, keeps a few days of them on the player and reports the latest
+  for the server's diagnostics. It works offline and changes nothing.
 
 ## [2.57.6] — 2026-10-09
 
