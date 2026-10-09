@@ -1608,7 +1608,28 @@ the only installer. Play at power-on stays the recovery path only.
   stage 5).
 - [ ] disc-network on the owner's player: two networks joined in turn
   through stock's screen, then the player joining either by itself; then
-  the installer ticks it.
+  the installer ticks it. 2026-10-09, release 2.57.7's design (the kept
+  networks given back beside stock's): the player switched by itself, but
+  stock's UI crashed twice while a password was typed (two networks in its
+  configuration; [network](network.md#on-the-owners-player-2026-10-09)), so
+  disc-network was turned off there and left out of 2.57.7. Its next design
+  keeps one network in stock's configuration and puts a kept one in range in
+  its place (owner, 2026-10-09; `test_network` 10 on macOS and Linux);
+  `disc-network-2.57.8.zip` for the guest's `network_guest.py`, then the
+  player: two networks joined in turn, each joined again by itself, and a
+  password typed in stock's Wi-Fi screen without its UI failing.
+- [ ] Packages without the image (owner, 2026-10-09): `install.py --packages`
+  skips FiiO's update, the image and the player, checks the catalog, takes
+  the chosen packages by their digests and stages them on the card; the
+  player installs them from the menu's Packages screen or with Play. Only
+  the installer changes, not the image.
+- [ ] Updates over Wi-Fi from the server's page (owner, 2026-10-09; after
+  disc-network's check): the controller may ask boot to install a package it
+  staged on the card (`disc-boot install <folder>`, the menu's command) and
+  boot starts it at once (as the menu's installation does since 2.57.7). The
+  contract's rule for that request here; the server's side (the catalog,
+  each package by its digest, signed by our key) in snowsky-disc-server's
+  plan.
 
 - [ ] Remove everything ours (owner, 2026-10-08: before the player is sold,
   and for a clean test): in the menu, the boot layer's packages and their
