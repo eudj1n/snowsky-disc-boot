@@ -6,12 +6,12 @@
         {
             "name": "disc-menu",
             "role": "menu",
-            "version": "2.57.6",
+            "version": "2.57.7",
             "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.6/disc-menu-2.57.6.zip",
-                "sha256": "fc0521587c53dd5d552dd63f0bb0c4e5bd50043eb3ebeb5b143a5e17c01e7ddf",
-                "size": 158904
+                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.7/disc-menu-2.57.7.zip",
+                "sha256": "eb376ce0a0c5a3df25b51d3aa51b08cc4556dd0f9b128f7c1114a07d167f7c93",
+                "size": 172538
             },
             "profiles": [
                 "2.57"
@@ -21,10 +21,60 @@
             "default": true,
             "verified": {
                 "date": "2026-10-09",
-                "boot": "b5e9add",
+                "boot": "d1ad405",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "menu_guest.py 3 of 3 (FiiO first); boot_guest.py 16 of 16; release 2.57.6"
+                "acceptance": "menu_guest.py 6 of 6 (the three screens: services, packages, everything ours); boot_guest.py 16 of 16; release 2.57.7"
+            }
+        },
+        {
+            "name": "disc-health",
+            "role": "service",
+            "version": "2.57.7",
+            "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
+            "source": {
+                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.7/disc-health-2.57.7.zip",
+                "sha256": "976195488a2c6630d5e700c9de3764a3727cbc8032eca0cb1fea1d680b950a18",
+                "size": 135608
+            },
+            "profiles": [
+                "2.57"
+            ],
+            "bootApi": 2,
+            "license": "MIT",
+            "default": true,
+            "notes": "A read-only, offline journal of the player's health; its report shows in the server's diagnostics",
+            "verified": {
+                "date": "2026-10-09",
+                "boot": "d1ad405",
+                "emulator": "f1d5e33",
+                "firmware": "2.57",
+                "acceptance": "health_guest.py 3 of 3 (this binary): installed by Play, confirmed, the emulator's gauge and the card read; release 2.57.7"
+            }
+        },
+        {
+            "name": "disc-network",
+            "role": "service",
+            "version": "2.57.7",
+            "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
+            "source": {
+                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.7/disc-network-2.57.7.zip",
+                "sha256": "21a03666c85b4d1a3990d83d84fd9f4d6f794966e350831e0b15b039570f80ba",
+                "size": 128748
+            },
+            "profiles": [
+                "2.57"
+            ],
+            "bootApi": 2,
+            "license": "MIT",
+            "default": false,
+            "notes": "Several Wi-Fi networks; not ticked until it has run on the owner's player",
+            "verified": {
+                "date": "2026-10-09",
+                "boot": "d1ad405",
+                "emulator": "f1d5e33",
+                "firmware": "2.57",
+                "acceptance": "network_guest.py 4 of 4 (this binary) against a stand-in of wpa_cli: networks kept and given back, confirmed; release 2.57.7"
             }
         },
         {
