@@ -1518,6 +1518,17 @@ the only installer. Play at power-on stays the recovery path only.
   on the owner's player from a really new state: the first installation of
   the packages, a card without `.disc`.
 
+- [ ] FiiO's own interface first in the menu's list (owner, 2026-10-09): the
+  menu offers stock first, then the installed interfaces, so the project does
+  not look built around diskOS, a project of its own (today the boot program
+  lists the packages first and stock last: `ui/choices.json`). The default
+  stays the last answer; the README's picture of the menu drawn again.
+- [ ] `release.py installer` downloads into a folder it creates (2026-10-09:
+  on the tag v2.57.5 the release workflow found no folder to download the
+  server and Disc Player into, since every local build had been given them
+  with `--from`; the workflow downloads them first now, `release.bundled`
+  into its own folder). The fix in `release.py` changes the archive, so it
+  goes with the next release, with a test that downloads.
 - [ ] The player restarted from USB Boot by the installer (owner, 2026-10-09:
   FiiO's update restarts the player itself): after the writer's completion,
   in the same entry, a small RAM payload starts the watchdog as the pinned
