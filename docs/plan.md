@@ -1513,6 +1513,20 @@ the only installer. Play at power-on stays the recovery path only.
   on the owner's player from a really new state: the first installation of
   the packages, a card without `.disc`.
 
+- [ ] The player restarted from USB Boot by the installer (owner, 2026-10-09:
+  FiiO's update restarts the player itself): after the writer's completion,
+  in the same entry, a small RAM payload starts the watchdog as the pinned
+  SPL source's `_machine_restart` does (TCU `TSCR`, `WDT` `TCNT`, `TDR`,
+  `TCSR`, `TCER`), the ROM restarts the chip and, Volume Down no longer
+  held, it starts the new system from NAND with the cable still connected;
+  the installer then waits for its USB console and reads the first start's
+  check, so the user neither unplugs nor plugs the cable, only answers.
+  Its own plan, payload and journal audit as the others. On the player
+  first, without a write (a session that only restarts): that the ROM
+  boots NAND after the watchdog, and that stock starts normally and leaves
+  the port to the USB console with the cable connected at power-on. After
+  2.57.5, in its own release.
+
 ## Later
 
 - An update of the image by the running system from the card (owner,
