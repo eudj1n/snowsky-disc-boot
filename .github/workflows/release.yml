@@ -32,11 +32,8 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           python3 scripts/release.py build --version "$version" --output dist
-          # The default server and apps the installer's archive holds, downloaded by their catalog digests
-          # into a folder of their own (release.py installer alone found no folder to download into, v2.57.5).
-          mkdir -p packages
-          python3 -c "import sys; from pathlib import Path; sys.path.insert(0, 'scripts'); import release; release.bundled(sys.argv[1], Path('dist'), Path('catalog/packages.json'), [Path('dist')], Path('packages'), True)" "$version"
-          python3 scripts/release.py installer --version "$version" --dist dist --from packages
+          # The default server and apps the installer's archive holds are downloaded by their catalog digests.
+          python3 scripts/release.py installer --version "$version" --dist dist
           python3 scripts/release.py check --version "$version" --dist dist --notes notes.md
       - name: The draft release
         env:

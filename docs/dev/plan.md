@@ -1537,12 +1537,15 @@ the only installer. Play at power-on stays the recovery path only.
   2026-10-09: `write_choices` lists stock first (the contract says so),
   `test_boot` and `menu_guest.py` (rows by position) follow, the pictures
   show FiiO first and chosen. On the guest with release 2.57.6.
-- [ ] `release.py installer` downloads into a folder it creates (2026-10-09:
+- [x] `release.py installer` downloads into a folder it creates (2026-10-09:
   on the tag v2.57.5 the release workflow found no folder to download the
   server and Disc Player into, since every local build had been given them
   with `--from`; the workflow downloads them first now, `release.bundled`
   into its own folder). The fix in `release.py` changes the archive, so it
-  goes with the next release, with a test that downloads.
+  goes with the next release, with a test that downloads. Done 2026-10-09:
+  `release.bundled` makes the folder it downloads into; the workflow calls
+  `release.py installer` alone again; `test_installer` downloads the server
+  from a stand-in for GitHub.
 - [ ] The player restarted from USB Boot by the installer (owner, 2026-10-09:
   FiiO's update restarts the player itself): after the writer's completion,
   in the same entry, a small RAM payload starts the watchdog as the pinned

@@ -213,6 +213,10 @@ def bundled(version, dist, catalog_path, places, downloads, allow_download):
     catalog's default packages and the default server's default apps, each found by its digest."""
     import catalog
     dist = Path(dist)
+    # The folder the downloads go to, made here (on the tag v2.57.5 there was none: every build before had been
+    # given the server and apps with --from).
+    downloads = Path(downloads)
+    downloads.mkdir(parents=True, exist_ok=True)
     found = {name: dist/name for name in names(version)}
     entries = catalog.load(catalog_path, kind='packages')['entries']
     menu = names(version)[0]
