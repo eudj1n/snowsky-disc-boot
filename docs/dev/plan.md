@@ -1732,9 +1732,25 @@ the only installer. Play at power-on stays the recovery path only.
   build id counts only the image's programs, so the image stays `6d1a6780…`
   and `d1ad405880ec`. Again on the guest: `network_guest.py` 4 of 4,
   `health_guest.py` 3 of 3 and `install.py --guest` from the unpacked archive.
-  Next: the two packages on the owner's player (two networks joined in turn,
-  then joined by itself; the first reading's time); then the record, the
-  merge and the tag.
+  On the player with both packages (2026-10-09/10): disc-health's first
+  reading without the time, the next with it, no current; disc-network
+  switched by itself, but stock's UI crashed with two networks in its
+  configuration, so disc-network left the release (its next design keeps one;
+  see its item above). The menu's installation of the two services showed two
+  faults of boot: the menu was stopped 60 s after its start while being read,
+  and the services ran their previous version on, which then confirmed the
+  new slot. Fixed in boot (the menu's time from the owner's last use, a slot
+  installed over the running one started at once, a confirmation naming the
+  slot that ran), so the image changes: build `8eb15a998d85`, image
+  `9e6448dd…`; the installer knows the first build's image (`6d1a6780…`,
+  first blocks `eff13569…`) that the owner's player holds. On the guest with
+  these binaries: `boot_guest.py` 16 of 16, `menu_guest.py` 7 of 7 (its new
+  step: the menu used beyond 60 s, a service installed over the running one),
+  `roles_guest.py` 5 of 5, `health_guest.py` 3 of 3, and `install.py --guest`
+  from the unpacked archive with an empty home (the menu, disc-server 2.57.5,
+  disc-health; the image built on the computer `9e6448dd…`). Next: the owner's
+  player with this archive's installer, then the record, the merge and the
+  tag.
 
 ## Later
 
