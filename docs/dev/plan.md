@@ -1683,9 +1683,11 @@ the only installer. Play at power-on stays the recovery path only.
   macOS without root and in the Linux container. On the owner's player from
   the other computer with the archive only: written in the review's entry,
   the first start's check matched ([record](observations/first-write-observation.md#the-ninth-write-release-2576-the-player-restarted-by-the-installer)).
-- [ ] The run's report names the restart's outcome (`report.json`, the player
+- [x] The run's report names the restart's outcome (`report.json`, the player
   step), not only its `usb/restart/result.json`; with the next release, as
-  it changes the archive.
+  it changes the archive. Done for 2.57.7: `restart` in the player's step
+  (`outcome`: player-restarted, restart-not-observed, restart-uncertain,
+  failed or not available, and its run folder); `test_usbboot`.
 
 ## Later
 

@@ -614,6 +614,8 @@ class KnownPathTests(ReviewedTests):
         self.assertIn('keep the cable connected', screen)
         self.assertIn('the cable still connected', screen)
         self.assertNotIn('Disconnect the cable', screen)
+        player = next(s for s in installer.report['steps'] if s['step'] == 'player')
+        self.assertEqual(player['restart']['outcome'], 'player-restarted', 'the report names the restart\'s outcome')
 
     def test_without_a_restart_the_cable_is_the_way_as_before(self):
         self.fetch = self.check_matches
@@ -623,6 +625,8 @@ class KnownPathTests(ReviewedTests):
         screen = ' '.join(installer.screen.out.getvalue().split())
         self.assertIn('Disconnect the cable', screen)
         self.assertIn('connect the cable to this computer again', screen)
+        player = next(s for s in installer.report['steps'] if s['step'] == 'player')
+        self.assertEqual(player['restart']['outcome'], 'restart-not-observed')
 
     def test_an_image_the_review_does_not_know_is_not_written(self):
         code, installer, tools = self.install_known(['', 'CARD', 'CHECK'], faults=('unknown-image',))
