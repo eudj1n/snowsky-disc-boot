@@ -1698,9 +1698,22 @@ the only installer. Play at power-on stays the recovery path only.
   archive with an empty home: the image built on the computer from the
   release file (`6d1a6780…`, the tested one), the menu, disc-server 2.57.5
   (the controller), disc-health and disc-network installed by Play and
-  confirmed. Next: the owner's player with the archive, with disc-network
-  ticked (two networks joined in turn, then joined by itself); then the
-  record, the merge and the tag.
+  confirmed. The owner's player with the archive (2026-10-09): written and
+  restarted by the installer (`player-restarted`), the server of boot API 1
+  moved to `controller/`, the four packages installed by Play and confirmed.
+  There disc-network gave no network back: stock's wpa_cli took `priority -1`
+  for an option (glibc's getopt), so the service ends wpa_cli's options with
+  `--` and the stand-in parses as stock's does. disc-health's first reading of
+  each start had the time 6 h ahead (the hardware clock holds local time until
+  stock's player sets the clock) and a current of 1 or 0 (the gauge's, not
+  µA); the player has no thermal zones. A reading now has the time once the
+  clock is set, and no current. Both fixes are only in their packages: the
+  build id counts only the image's programs, so the image stays `6d1a6780…`
+  and `d1ad405880ec`. Again on the guest: `network_guest.py` 4 of 4,
+  `health_guest.py` 3 of 3 and `install.py --guest` from the unpacked archive.
+  Next: the two packages on the owner's player (two networks joined in turn,
+  then joined by itself; the first reading's time); then the record, the
+  merge and the tag.
 
 ## Later
 
