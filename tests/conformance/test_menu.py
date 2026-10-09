@@ -41,10 +41,44 @@ class MenuTests(unittest.TestCase):
         launcher.chmod(0o755)
         self.choices(['alpha', 'beta'], 'beta')
 
-    def choices(self, names, default, titles=None):
+    def choices(self, names, default, titles=None, services=(), packages=(), staged=(), path=None):
         entries = [dict(ui=n, title=(titles or {}).get(n, n), version='1', confirmed=True) for n in names]
         entries.append(dict(ui='stock', version='2.57'))
-        (self.root/'status/ui/choices.json').write_text(json.dumps(dict(schema=1, default=default, entries=entries)))
+        data = dict(schema=1, default=default, entries=entries, services=list(services), packages=list(packages), staged=list(staged))
+        (path or self.root/'status/ui/choices.json').write_text(json.dumps(data))
+
+    def program(self, after_install=None):
+        """A stand-in for the boot program's commands: each is logged and answers ok; an installation
+        is shown in install.json and leaves what boot then offers (after_install)."""
+        script = self.root/'disc-boot'
+        status = self.root/'status'
+        script.write_text(f'''#!/bin/sh
+echo "$*" >> "{self.root}/asked"
+if [ "$1" = install ]; then
+  printf '{{"schema":1,"state":"installing","done":0,"total":1,"current":"%s"}}' "$2" > "{status}/install.json"
+  sleep 0.6
+  [ -f "{self.root}/after-install.json" ] && cp "{self.root}/after-install.json" "{status}/ui/choices.json"
+  printf '{{"schema":1,"state":"done","done":1,"total":1}}' > "{status}/install.json"
+fi
+echo '{{"ok":true,"note":"done"}}'
+''')
+        script.chmod(0o755)
+        return dict(DISC_BOOT_PROGRAM=str(script))
+
+    def asked(self, expected=None, timeout=5):
+        """The commands the menu asked, once they are the expected ones (within the timeout)."""
+        path = self.root/'asked'
+        until = time.monotonic() + timeout
+        while True:
+            asked = path.read_text().splitlines() if path.exists() else []
+            if expected is None or asked == expected or time.monotonic() >= until:
+                return asked
+            time.sleep(0.05)
+
+    def keys(self, *codes, pause=0.08):
+        for code in codes:
+            self.key(code)
+            time.sleep(pause)
 
     def start(self, countdown=5000, launcher=True, **extra):
         env = dict(os.environ, DISC_BOOT_STATUS=str(self.root/'status'), DISC_BOOT_RUN=str(self.root/'run'),
@@ -95,7 +129,8 @@ class MenuTests(unittest.TestCase):
         self.key(VOLUME_DOWN)
         time.sleep(2.0)
         self.assertIsNone(menu.poll(), 'a key stops the countdown')
-        self.assertEqual(self.pixel(70, 228), SELECTED, 'stock, below beta, is selected')
+        # Services and Packages follow the interfaces: the window keeps the selection in its middle row.
+        self.assertEqual(self.pixel(70, 180), SELECTED, 'stock, below beta, is selected')
         self.key(VOLUME_UP)
         self.key(VOLUME_UP)
         self.key(PLAY)
@@ -193,6 +228,67 @@ class MenuTests(unittest.TestCase):
         menu = self.start(countdown=100)
         self.assertEqual(menu.wait(timeout=10), 1)
         self.assertIsNone(self.answer())
+
+    # The menu's screens (owner, 2026-10-09: rows at the end of the list, Back first on each)
+
+    def three_screens(self, **choices):
+        self.choices(['diskos'], 'diskos', titles={'diskos': 'diskOS'},
+                     services=[dict(name='disc-health', title='disc-health', version='2.57.7', autostart=True, removing=False),
+                               dict(name='disc-network', title='disc-network', version='2.57.7', autostart=False, removing=False)],
+                     packages=[dict(role='ui', name='diskos', title='diskOS', version='1.2.0', removing=False),
+                               dict(role='service', name='disc-health', title='disc-health', version='2.57.7', removing=False)],
+                     **choices)
+
+    def test_services_turn_their_autostart_through_boot(self):
+        self.three_screens()
+        menu = self.start(countdown=60000, **self.program())
+        time.sleep(0.2)
+        # diskOS, FiiO, Services, Packages: Services is the third row.
+        self.keys(VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN, PLAY, VOLUME_DOWN, PLAY)
+        self.assertEqual(self.asked(['autostart disc-health off', 'autostart disc-network on']),
+                         ['autostart disc-health off', 'autostart disc-network on'])
+        self.assertIsNone(menu.poll(), 'nothing is chosen on the services screen')
+        self.keys(VOLUME_UP, VOLUME_UP, PLAY, VOLUME_UP, VOLUME_UP, PLAY)   # Back, then diskOS
+        self.assertEqual(menu.wait(timeout=10), 0)
+        self.assertEqual(self.answer(), 'diskos')
+
+    def test_a_removal_takes_a_second_play_and_everything_ours_a_third(self):
+        self.three_screens()
+        menu = self.start(countdown=60000, **self.program())
+        time.sleep(0.2)
+        # Packages (the fourth row): Back, diskOS, disc-health, Remove everything ours.
+        self.keys(VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN, PLAY)
+        time.sleep(0.3)
+        self.assertEqual(self.asked(), [], 'the first Play asks')
+        self.assertEqual(self.pixel(70, 180), (0x4a, 0x2a, 0x22), 'the question in its warmer colour')
+        self.keys(PLAY)
+        self.assertEqual(self.asked(['remove ui diskos']), ['remove ui diskos'])
+        self.keys(VOLUME_DOWN, VOLUME_DOWN, PLAY, PLAY)
+        time.sleep(0.3)
+        self.assertEqual(self.asked(), ['remove ui diskos'], 'everything ours takes two questions')
+        self.keys(PLAY)
+        self.assertEqual(self.asked(['remove ui diskos', 'remove-everything']), ['remove ui diskos', 'remove-everything'])
+        self.assertEqual(menu.wait(timeout=10), 0)
+        self.assertEqual(self.answer(), 'stock', 'then FiiO\'s own interface, with nothing of ours at the next start')
+
+    def test_packages_waiting_on_the_card_hold_the_countdown_and_install_from_the_menu(self):
+        waiting = dict(folder='service/disc-network', role='service', name='disc-network', title='disc-network', version='2.57.7', refused=None)
+        refused = dict(folder='ui/broken', role='ui', name='broken', title='broken', version='1', refused='refused: bin/mq_ui has 7 bytes')
+        self.three_screens(staged=[refused])
+        menu = self.start(countdown=300)
+        self.assertEqual(menu.wait(timeout=10), 0, 'a refused package holds nothing')
+        self.three_screens(staged=[waiting, refused])
+        self.three_screens(path=self.root/'after-install.json')
+        menu = self.start(countdown=300, **self.program())
+        time.sleep(1.0)
+        self.assertIsNone(menu.poll(), 'the countdown stands while a package waits')
+        # diskOS, FiiO, "1 on the card", Services, Packages: the third row opens Packages.
+        self.keys(VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN, PLAY)
+        self.assertEqual(self.asked(['install service/disc-network']), ['install service/disc-network'])
+        time.sleep(1.5)
+        self.keys(VOLUME_UP, PLAY, PLAY)   # Back, then diskOS
+        self.assertEqual(menu.wait(timeout=10), 0)
+        self.assertEqual(self.answer(), 'diskos')
 
     def test_the_production_build_has_no_fixture_switches(self):
         data = PRODUCTION.read_bytes()

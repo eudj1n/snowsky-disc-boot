@@ -695,6 +695,90 @@ exit 0
         self.assertFalse((self.root/'tmp/sdcard/.disc/boot/rootfs-check.json').exists())
         self.assertNotIn('rootfs check', self.boot_log())
 
+    # The menu's screens: what it is offered and the boot program's commands it runs
+
+    def menu_world(self):
+        """A controller, a ui package, two services (one off), a card with one package waiting and one
+        refused at its last installation."""
+        (self.root/'proc/mounts').write_text('/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
+        self.install('controller', 'a', GOOD, confirmed=True)
+        self.install('ui', 'a', GOOD, name='alpha', confirmed=True, edit=lambda m: m.update(title='Alpha'))
+        self.install('service', 'a', GOOD, name='disc-health', confirmed=True)
+        self.install('service', 'a', GOOD, name='disc-network', confirmed=True)
+        state = self.role_state('service/disc-network')
+        (self.data/'service/disc-network/state.json').write_text(json.dumps(dict(state, autostart=False)))
+        self.package(self.staged('service/disc-extra'), GOOD, role='service', name='disc-extra', version='3')
+        self.package(self.staged('ui/broken'), GOOD, role='ui', name='broken')
+        (self.root/'tmp/sdcard/.disc/boot/result.json').write_text(json.dumps(dict(schema=1, roles=dict(
+            ui=dict(broken=dict(installed=False, note='refused: bin/mq_ui has 7 bytes'))))))
+        self.early()
+
+    def ask(self, *args):
+        result = self.boot(*args)
+        return result.returncode, json.loads(result.stdout)
+
+    def offered(self):
+        return json.loads((self.run_dir/'ui/choices.json').read_text())
+
+    def test_the_menu_is_offered_the_services_the_packages_and_what_waits(self):
+        self.menu_world()
+        self.assertEqual(self.ask('autostart', 'disc-network', 'on'), (0, dict(ok=True, note='on')))
+        offer = self.offered()
+        self.assertEqual([(s['name'], s['autostart'], s['removing']) for s in offer['services']],
+                         [('disc-health', True, False), ('disc-network', True, False)])
+        self.assertEqual(self.role_state('service/disc-network')['autostart'], True)
+        self.assertEqual([(p['role'], p['name'], p['title']) for p in offer['packages']],
+                         [('ui', 'alpha', 'Alpha'), ('service', 'disc-health', 'disc-health'), ('service', 'disc-network', 'disc-network')])
+        self.assertEqual([(w['folder'], w['role'], w['version'], w['refused']) for w in offer['staged']],
+                         [('service/disc-extra', 'service', '3', None), ('ui/broken', 'ui', '1', 'refused: bin/mq_ui has 7 bytes')])
+        self.assertEqual(self.ask('autostart', 'nothing-here', 'off'), (1, dict(ok=False, note='no such service')))
+        self.assertEqual(self.ask('autostart', 'disc-health', 'maybe')[0], 1)
+
+    def test_the_menu_removes_a_package_with_its_data_and_installs_one_from_the_card(self):
+        self.menu_world()
+        (self.data/'data/disc-health').mkdir(parents=True, exist_ok=True)
+        (self.data/'data/alpha').mkdir(parents=True, exist_ok=True)
+        self.assertEqual(self.ask('remove', 'service', 'disc-health'), (0, dict(ok=True, note='removed at the next start')))
+        self.assertEqual(self.ask('remove', 'ui', 'alpha'), (0, dict(ok=True, note='removed at the hand-over')))
+        offer = self.offered()
+        self.assertEqual([p['removing'] for p in offer['packages']], [True, True, False])
+        self.assertTrue((self.data/'service/disc-health').exists(), 'a running service goes at the next start')
+        # The next start: the removals apply before anything of ours runs.
+        self.early()
+        self.assertFalse((self.data/'service/disc-health').exists() or (self.data/'data/disc-health').exists())
+        self.assertFalse((self.data/'ui/alpha').exists() or (self.data/'data/alpha').exists())
+        self.assertIn('service/disc-health removed with its data (the menu)', self.boot_log())
+        self.assertEqual(self.ask('remove', 'ui', 'alpha'), (1, dict(ok=False, note='not installed')))
+        # One package installed from the card, as the recovery installs each.
+        code, answer = self.ask('install', 'service/disc-extra')
+        self.assertEqual((code, answer), (0, dict(ok=True, note='installed disc-extra 3')))
+        self.assertEqual(self.role_state('service/disc-extra')['current'], 'a')
+        self.assertFalse(self.staged('service/disc-extra').exists())
+        self.assertEqual(json.loads((self.root/'tmp/sdcard/.disc/boot/result.json').read_text())['roles'],
+                         dict(service={'disc-extra': dict(installed=True, note='installed disc-extra 3')}))
+        self.assertEqual(json.loads((self.run_dir/'install.json').read_text())['state'], 'done')
+        self.assertIn('disc-extra', [s['name'] for s in self.offered()['services']])
+        self.assertEqual(self.ask('install', 'service/disc-extra'), (1, dict(ok=False, note='not staged on the card')))
+
+    def test_everything_ours_goes_at_the_next_start(self):
+        self.menu_world()
+        (self.data/'data/disc-network').mkdir(parents=True, exist_ok=True)
+        (self.data/'data/disc-network/networks.json').write_text('{"keys": "here"}')
+        music = self.root/'tmp/sdcard/Music/track.flac'
+        music.parent.mkdir(parents=True)
+        music.write_text('audio')
+        apps = self.root/'tmp/sdcard/Apps/Disc Player/index.html'
+        apps.parent.mkdir(parents=True)
+        apps.write_text('page')
+        self.assertEqual(self.ask('remove-everything'), (0, dict(ok=True, note='everything ours goes at the next start')))
+        self.assertTrue((self.data/'controller').exists(), 'nothing goes while it runs')
+        boot = self.early()
+        self.assertEqual(sorted(p.name for p in self.data.iterdir()), ['.lock', 'boot.log'], 'the log of this start and its empty lock')
+        self.assertIn('removed everything of the boot layer\'s in /usr/data and the card\'s .disc', self.boot_log())
+        self.assertFalse((self.root/'tmp/sdcard/.disc').exists())
+        self.assertEqual((music.read_text(), apps.read_text()), ('audio', 'page'), 'music and apps stay')
+        self.assertEqual((boot['mode'], self.choice()['ui']), ('platform', 'stock'))
+
     # Recovery from the card
 
     def staged(self, role):

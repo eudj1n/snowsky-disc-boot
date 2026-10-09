@@ -16,11 +16,11 @@ writes the player's system memory over USB; read [the risk](docs/install.md#the-
 <p align="center">
   <img src="docs/assets/menu/choose.png" width="240" alt="The boot menu on the player's round screen: Start with FiiO 2.57 or diskOS 1.2.0, starting in 4 seconds">
   &nbsp;&nbsp;
-  <img src="docs/assets/menu/installing.png" width="240" alt="The boot menu installing disc-menu from the card, 2 of 3">
+  <img src="docs/assets/menu/packages.png" width="240" alt="The boot menu's Packages screen: diskOS Disco! waiting on the card to install, diskOS installed">
 </p>
 
 _The boot menu, drawn by its own code: choosing the interface at power-on,
-and installing packages from the card._
+and its packages, from the card or installed._
 
 ## What you get
 
@@ -28,7 +28,7 @@ and installing packages from the card._
 | --- | --- |
 | **FiiO's player, unchanged** | The image keeps FiiO's own system and adds only the boot layer; music, settings and the library stay as they are. |
 | **Packages from the card** | Interfaces, a menu and services come as packages on the memory card; a start with Play installs them, each checked before it runs. |
-| **The boot menu** | With more than one interface installed, the player asks at power-on which one to start, FiiO's own among them. |
+| **The boot menu** | At power-on the player asks which interface to start, FiiO's own among them. Its Services screen turns each service on or off; its Packages screen installs what waits on the card and removes an interface, a service or everything of ours. |
 | **[DISC server](https://github.com/eudj1n/snowsky-disc-server)** | Offered by default: the player serves [Disc Player](https://github.com/eudj1n/snowsky-disc-player) and other web apps over its Wi-Fi. |
 | **Health journal** | Offered by default: disc-health notes the battery, temperatures, free space, card errors and crashes every 10 minutes, offline, for the server's diagnostics. |
 | **Several Wi-Fi networks** | Offered, not ticked yet: disc-network keeps the networks the player joined and gives them back to it, so it joins whichever is in range without the password again. |
