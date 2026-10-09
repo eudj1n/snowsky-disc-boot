@@ -8,9 +8,9 @@ the USB console), and the tooling that builds, writes and verifies that image.
 Packages run on top of it: snowsky-disc-server (the gateway, a sibling
 repository) and third-party ones such as diskOS's UI. snowsky-disc-web is the
 frozen history of both. Read
-docs/contract.md and docs/plan.md before extending it.
+docs/dev/contract.md and docs/dev/plan.md before extending it.
 
-- The contract (docs/contract.md) is what packages build on. Change it only
+- The contract (docs/dev/contract.md) is what packages build on. Change it only
   with the owner's decision, and raise `bootApi` when packages can tell.
 - Boot never runs or installs anything from the card without the physical
   gesture, adds no network listener, and requires no signature of ours:
@@ -26,10 +26,13 @@ docs/contract.md and docs/plan.md before extending it.
   paid services without a separately authorized concrete step.
 - Commit each completed stage, including its tests and documentation. Keep
   generated runtime evidence out of commits.
-- Keep docs/plan.md as the canonical plan; mark completed checklist items
+- Keep docs/dev/plan.md as the canonical plan; mark completed checklist items
   with evidence after each stage.
-- README.md is for end users. Put build, test and architecture instructions
-  in docs/development.md and related developer docs.
+- Documentation for users: README.md, CHANGELOG.md and the pages in docs/
+  (the installation guide, the way back), which the installer's archive
+  carries. For developers: docs/dev/ (development.md first, the contract, the
+  plan, reviews and procedures) and docs/dev/observations/ (the records of
+  sessions on players). Put build, test and architecture instructions there.
 - Keep on-device identifiers (paths, hook and marker names) stable across
   images unless a stage explicitly renames them; installation evidence pins
   them.

@@ -1,12 +1,12 @@
 # Corrected-controller installation package — 2026-09-24
 
-The [physical boot report](boot-report-observation.md) identified the sole USB
+The [physical boot report](observations/boot-report-observation.md) identified the sole USB
 controller as `13500000.otg_new`. The installed engineering image still requests
 `13500000.otg`, which fails the exact-name readiness guard. This offline package
 applies the corrected, selected USB profile. Physical write admission stays closed;
 preparation does not authorize installation or qualify USB enumeration.
 The owner subsequently authorized the exact write and full readback, which
-[passed](udc-installation-observation.md), followed by owner-confirmed normal
+[passed](observations/udc-installation-observation.md), followed by owner-confirmed normal
 stock UI operation. Admission is closed again; physical diagnostic acceptance
 remains outstanding.
 

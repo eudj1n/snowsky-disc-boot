@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The catalogs the installer offers from (docs/contract.md, "Catalogs").
+"""The catalogs the installer offers from (docs/dev/contract.md, "Catalogs").
 
 Two levels in one format: this repository's catalog/packages.json names the boot
 layer's packages (the server, the boot menu, a ui package such as diskOS), and a

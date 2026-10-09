@@ -5,7 +5,7 @@ The collector implements the live transport needed by the independent
 separately authorized **full 96 MiB collection** have completed. All official
 rootfs bytes match; the full image differs in its FF tail versus the prepared
 restore image's zero padding, so strict full-image equality is rejected.
-[Full observation and stock boot confirmation](rootfs-full-observation.md).
+[Full observation and stock boot confirmation](observations/rootfs-full-observation.md).
 Repeated-read OOB differences fall within internal ECC parity; their cause
 remains unresolved. Write and installation acceptance remain open.
 
@@ -152,7 +152,7 @@ The separate full-mode plan is `work/rootfs-full-plan-001.json`, hash
 `bf0d6e2877d36529ef49ecc2f1a0c3040814ce2343c6db64213d72ab25325894`.
 It is an offline artifact, not a proposal to run the full collection before
 qualifying the probe. The probe subsequently executed as recorded below, followed
-by the separately authorized [full observation](rootfs-full-observation.md).
+by the separately authorized [full observation](observations/rootfs-full-observation.md).
 
 ## Proposed full read after OOB review
 
@@ -183,7 +183,7 @@ Successful collection must be followed by the independent full-image verifier
 against the reviewed stock restore image. A successful USB session alone does
 not satisfy that check. Raw parity qualification, active boot selection and
 installation/recovery remain separate. This was the proposal before execution.
-The owner subsequently authorized one session; [its full evidence](rootfs-full-observation.md)
+The owner subsequently authorized one session; [its full evidence](observations/rootfs-full-observation.md)
 records successful collection and the rejected exact stock-image comparison.
 It does not authorize another session or physical write.
 

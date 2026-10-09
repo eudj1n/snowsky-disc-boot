@@ -7,7 +7,7 @@ authorized RAM staging is executable until the prepared admission profile is
 authorized and activated. A closed write acquisition is rejected before output
 creation, library loading or USB discovery. Initial
 implementation validation was offline; the later separately authorized
-[complete-image RAM experiment passed](writer-staging-observation.md).
+[complete-image RAM experiment passed](observations/writer-staging-observation.md).
 
 The bounded staging sequence passed on the owner's unit. The subsequent
 [captured SPL review](bootloader-review.md) establishes static primary-pair
@@ -231,7 +231,7 @@ touching memory.
 All 13 tests passed on macOS and Linux. The complete host suite passed with
 217 Python tests, eight JavaScript tests and the native C tests. These initial
 checks did not access hardware; no hosted CI run is claimed. The subsequent
-[physical observation](writer-staging-observation.md) is recorded separately.
+[physical observation](observations/writer-staging-observation.md) is recorded separately.
 
 Offline stage/write plans for both targets passed against the unchanged local
 metadata build and engineering artifacts. The exact 96 MiB images remain:

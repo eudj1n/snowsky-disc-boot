@@ -437,7 +437,7 @@ first and the process name only when the pattern is nowhere in `argv[0]`:
 a program started by its path (`/usr/bin/mq_ui`) is not found, and the
 loop restarts the pair every few seconds, with stock's player killed before
 it handles a key (the owner's player, 2026-10-04 and 05, both images:
-`docs/first-write-observation.md`). So whatever runs as the UI or the player
+`docs/dev/observations/first-write-observation.md`). So whatever runs as the UI or the player
 is started from a file of that name (the kernel takes the process name from
 the path executed) with `argv[0]` `mq_ui` or `mq_player`:
 

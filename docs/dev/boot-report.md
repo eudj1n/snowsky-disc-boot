@@ -11,7 +11,7 @@ A subsequent read-only stock USB-storage observation established a partitioned
 exFAT card and an exact regular `DISC_WEB_USB_DEBUG` marker (28 bytes). This
 eliminates a mistyped marker and establishes USB data transfer in stock mode;
 it does not establish the Linux mount source, active root or native startup.
-The subsequent [physical report](boot-report-observation.md) identified an exact
+The subsequent [physical report](observations/boot-report-observation.md) identified an exact
 controller-name mismatch; a [corrected image](udc-update.md) is prepared.
 
 ## Implementation and boundaries
@@ -73,7 +73,7 @@ rotation, overwrite, automatic retry or persistent logger.
 
 Checks do not make card ownership atomic against the independent stock USB
 worker. Boot with the cable disconnected and wait for reporting to finish before
-enabling USB storage. The first [physical export](boot-report-observation.md)
+enabling USB storage. The first [physical export](observations/boot-report-observation.md)
 passed this sequence; concurrent stock USB ownership remains unqualified. Absence of a report
 is not proof that the native service failed: the hook, card gate or export can fail.
 
@@ -180,15 +180,15 @@ verification is claimed.
 
 A local 27-byte marker is prepared at
 `work/usb-diagnostic-activation-001/DISC_WEB_BOOT_REPORT`. It was subsequently
-[provisioned on the verified physical card](boot-report-observation.md) after
+[provisioned on the verified physical card](observations/boot-report-observation.md) after
 explicit owner authorization, byte verification and safe ejection. The original
 physical installation/captures and approval
 are preserved unchanged. A fresh [installation review](boot-report-installation.md)
 accounts for that installed candidate. The subsequent separately authorized
-[write and exact full readback](boot-report-installation-observation.md) passed.
+[write and exact full readback](observations/boot-report-installation-observation.md) passed.
 Physical write admission is closed again. Native health/protocol acceptance
 remains outstanding. The first
-[physical report](boot-report-observation.md) has since confirmed native process,
+[physical report](observations/boot-report-observation.md) has since confirmed native process,
 loopback listener and primary-root observations and exposed a USB controller-name
 mismatch. The corrected profile requires a new image; this page's recorded
 artifact hashes continue to describe the image actually installed.

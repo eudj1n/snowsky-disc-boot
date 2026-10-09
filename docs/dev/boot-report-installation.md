@@ -2,10 +2,10 @@
 
 This page records offline package preparation. The owner subsequently authorized
 one new candidate write and full readback, which passed; see the
-[physical observation](boot-report-installation-observation.md), including the
+[physical observation](observations/boot-report-installation-observation.md), including the
 first reader's DDR stop and the successful read after a manual power cycle.
 **Physical admission is closed again.** The subsequent separately authorized
-[SD report](boot-report-observation.md) confirmed native startup and primary-root
+[SD report](observations/boot-report-observation.md) confirmed native startup and primary-root
 boot data and identified a USB controller-name mismatch. A
 [corrected-controller package](udc-update.md) is prepared; the artifact hashes
 below describe the earlier image actually installed.

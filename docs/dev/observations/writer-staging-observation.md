@@ -10,7 +10,7 @@ long-term RAM stability.
 ## Scope and result
 
 The owner authorized checking device availability and starting the concrete
-[stage-only plan](writer-transport.md#stage-only-sequence). Before opening USB,
+[stage-only plan](../writer-transport.md#stage-only-sequence). Before opening USB,
 the regenerated plan matched the previously reviewed plan byte for byte,
 all input/source pins passed and the reviewed libusb digest matched. The host
 had more than 1 GiB of free disk. One matching ROM device was opened; there was

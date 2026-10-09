@@ -3,7 +3,7 @@
 
 Ported from snowsky-disc-web's companion builder (at faaf502), reduced to the
 boot layer: stock plus the boot layer's own objects, and no package inside
-(docs/contract.md). Run inside the pinned Linux tooling container with the
+(docs/dev/contract.md). Run inside the pinned Linux tooling container with the
 reference on PYTHONPATH, or on the user's computer without root (plan, stage 6):
 squashfs-tools 4.6 or later and openssl there, the reference's update reader
 given as a file (--reader). Without root, stock's owners, mode bits and times
@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from firmware_profile import load_profile, load_writer, load_usb_profile, fingerprint, artifact_names
 
 VARIANT = 'boot'
-# The boot layer's objects (docs/contract.md). Stage 1 renamed the console and the
+# The boot layer's objects (docs/dev/contract.md). Stage 1 renamed the console and the
 # report from /opt/disc-web to /opt/disc-boot; the console's hook and marker stay.
 BOOT = 'opt/disc-boot/disc-boot'
 LAUNCHER = 'opt/disc-boot/mq_ui'  # a link to disc-boot, which acts as the launcher by this name
@@ -348,7 +348,7 @@ def boot_report_script(profile):
 def early_hook(profile, usb):
     # Fields come from the reviewed profiles; disc-boot validates them again.
     return f'''#!/bin/sh
-# The boot layer's decision for this boot: keys, mode and the boot-loop count (docs/contract.md).
+# The boot layer's decision for this boot: keys, mode and the boot-loop count (docs/dev/contract.md).
 # Each boot opens a section of the persistent boot log (/usr/data survives a reset, /run does
 # not): the boot's id and uptime, then the decision's output, its exit status and boot.json.
 case "${{1:-}}" in
@@ -382,7 +382,7 @@ exit 0
 
 
 def card_guard(usb):
-    """The card guard with the profile's mount point (docs/contract.md, "The card guard")."""
+    """The card guard with the profile's mount point (docs/dev/contract.md, "The card guard")."""
     if not re.fullmatch('(/[a-zA-Z0-9_-]+)+', usb['sd_mount']):
         raise ValueError('The card guard needs a plain absolute mount point')
     source = Path(__file__).resolve().parents[2]/'device/scripts/card-guard.sh'
@@ -429,7 +429,7 @@ def log_line(name):
 
 def ui_wrapper():
     return '''#!/bin/sh
-# Stock's UI unless the boot layer chose a ui package for this boot (docs/contract.md).
+# Stock's UI unless the boot layer chose a ui package for this boot (docs/dev/contract.md).
 # Without that choice (stock mode, Volume Up, no package, a failure of the boot program)
 # stock's own program starts and the boot program stays out of its way. Either way the
 # card guard comes first in its PATH. Nothing here may end the script before stock's UI starts.
@@ -439,7 +439,7 @@ def ui_wrapper():
 
 def player_wrapper():
     return '''#!/bin/sh
-# Stock's player with the card guard first in its PATH (docs/contract.md, "The card guard"):
+# Stock's player with the card guard first in its PATH (docs/dev/contract.md, "The card guard"):
 # stock removes the card's mount point with rm -rf after an unmount it never checks, which
 # empties a card that is still mounted. While a ui package runs or the boot menu chooses
 # (not after a fallback to stock's UI) the boot program starts the player: the launcher the

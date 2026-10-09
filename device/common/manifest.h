@@ -1,4 +1,4 @@
-/* A package's package.json and the files it lists (docs/contract.md, "Packages"). */
+/* A package's package.json and the files it lists (docs/dev/contract.md, "Packages"). */
 #ifndef DISC_BOOT_MANIFEST_H
 #define DISC_BOOT_MANIFEST_H
 #include <stddef.h>

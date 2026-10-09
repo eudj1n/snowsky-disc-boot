@@ -468,7 +468,7 @@ the image's wrappers started stock's UI and player by their paths, and
 BusyBox's `pgrep -x`, with which stock's watch loop looks for them, matches
 `argv[0]` first; the loop never found them and restarted the pair every few
 seconds. The guest hid it: under qemu-user `pgrep` falls back to the process
-name ([observation](first-write-observation.md)).
+name ([observation](observations/first-write-observation.md)).
 
 - [x] Reconstructed and reproduced on the guest (2026-10-04): no stock
   player, stock's watch loop restarting the UI every 7–8 s, the power key
@@ -506,7 +506,7 @@ name ([observation](first-write-observation.md)).
   write, release 2.57.2: image `0da9a217…`, write `6df65b78` exact, readback
   matching in all 50,816 records, both journals audited): the first start
   without Play kept stock's pair steady and the power key working; the boot
-  log recorded it ([observation](first-write-observation.md#the-third-write-release-2572)).
+  log recorded it ([observation](observations/first-write-observation.md#the-third-write-release-2572)).
 - [ ] The packages with Play, the second step: two of the first three starts
   of the menu after the installation broke after a key chose stock (stock's
   UI hung on its logo; stock's UI died at every start of the pair until a
@@ -1262,7 +1262,7 @@ layer and the emulator's checkout to build the image.
   Play, the menu answered, the service confirmed. Known by its first blocks
   (`firmware/images`), as the owner's player will hold it after the user
   path's test. The player (2026-10-08, the seventh write,
-  [record](first-write-observation.md#the-seventh-write-the-users-path-without-a-history)):
+  [record](observations/first-write-observation.md#the-seventh-write-the-users-path-without-a-history)):
   written, and its first start found `4f8d68b6…` on its root device.
 - [x] The installer's Docker build of the image goes (the condition above is
   met): squashfs-tools 4.6 or later and openssl only; the emulator stays for
@@ -1360,7 +1360,7 @@ layer and the emulator's checkout to build the image.
     ([development](development.md)). `test_usbboot` (`KnownPathTests`).
   - [x] On the owner's player after FiiO's Local upgrade back to stock (the
     owner's step, on its own go-ahead). Done 2026-10-08, the seventh write
-    ([record](first-write-observation.md#the-seventh-write-the-users-path-without-a-history)):
+    ([record](observations/first-write-observation.md#the-seventh-write-the-users-path-without-a-history)):
     the Local upgrade took our image back to stock (no version gate, about 2
     minutes); `install.py` with no history found stock, wrote the image in
     the same entry and its first start proved it, about 13 minutes in all.
@@ -1426,7 +1426,7 @@ layer and the emulator's checkout to build the image.
   computer with the archive only (Python 3.14, libusb found, no Docker): the
   player's image known by its first blocks (2.57.4's `4f8d68b6`), written in
   the same entry, the first start's check matched, no history
-  ([record](first-write-observation.md#the-eighth-write-release-2575-from-a-clean-computer)).
+  ([record](observations/first-write-observation.md#the-eighth-write-release-2575-from-a-clean-computer)).
 
 ## Stage 7 — the menu's three screens and services beside the server (owner, 2026-10-07/08)
 
@@ -1453,11 +1453,16 @@ the only installer. Play at power-on stays the recovery path only.
   the ABI a player ran stays. Their build manifests name the new paths, so
   until 2.57.6 carries payloads built so, the repository's installer builds
   them itself (`--boot-build`); an archive keeps its own tree.
-- [ ] The documentation split, after the layout's move (owner, 2026-10-09):
+- [x] The documentation split, after the layout's move (owner, 2026-10-09):
   for users (the README, the installation guide, what is installed and its
   risks, the way back to stock, the CHANGELOG) and for developers
   (development, architecture, contract, reviews, observations, this plan),
-  each in its own place, with the links between them kept.
+  each in its own place, with the links between them kept. Done
+  2026-10-09: for users the README (what you get, the quick start, the keys),
+  `docs/install.md` (what you need, the steps, what is installed, the risk)
+  and `docs/way-back.md`, carried by the installer's archive; for developers
+  `docs/dev/` and the records in `docs/dev/observations/`; every relative
+  link rewritten and checked, snowsky-disc-web's own paths left as they are.
 - [ ] The menu's three screens: the interface (today's), the services'
   autostart, installing and removing (the card's staged packages shown
   there; never automatic). A specimen page and numbered decisions first;

@@ -34,7 +34,7 @@ Persistent failures abort rather than inventing a different logical mapping.
 The later kernel review confirms that its sequential good-block translation
 agrees with this marker location and mapping rule. The actual metadata observation
 places the writer range inside primary rootfs. The subsequent
-[full physical collection](rootfs-full-observation.md) establishes the observed
+[full physical collection](observations/rootfs-full-observation.md) establishes the observed
 block map (383 and 716 skipped) and exact official rootfs content. Active boot
 selection still needs evidence; the strict padded-image comparison failed
 because the player returns FF after the official rootfs rather than zeros.

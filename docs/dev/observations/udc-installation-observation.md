@@ -1,7 +1,7 @@
 # Corrected-controller installation observation — 2026-09-24
 
 The owner authorized discovery, one write of the [reviewed corrected-controller
-image](udc-update.md), and complete independent readback, confirming the same
+image](../udc-update.md), and complete independent readback, confirming the same
 player and unchanged firmware. macOS reported the profiled Ingenic USB Boot
 target. Regenerated write and collector plans exactly matched the reviewed
 package before acquisition. No automatic reconnect, retry, reset or restore was
