@@ -59,6 +59,15 @@ class KnownImagesTests(unittest.TestCase):
         with self.assertRaises(known_images.KnownImagesError):
             known_images.match(known, bytes(10))
 
+    def test_one_image_recorded_twice_is_one_image(self):
+        """A release whose programs did not change builds the same image (2.57.5 after 2.57.4's rootless build)."""
+        self.write_list(entry(1, name='stock.bin'), [entry(2, release='2.57.4', name='old.bin')])
+        (self.root/'releases/2.57.5.json').write_text(json.dumps(dict(
+            version='2.57.5', firmware='2.57', image=entry(2, name='same.bin', first_blocks_bytes=BLOCKS))))
+        known = self.load()
+        self.assertEqual([i['release'] for i in known['images']], ['2.57.4'])
+        self.assertEqual(known_images.match(known, bytes([2]) * BLOCKS)[1]['release'], '2.57.4')
+
     def test_images_the_probe_could_not_tell_apart_are_refused(self):
         self.write_list(entry(1, name='stock.bin'), [entry(1, release='2.57.4', name='same.bin')])
         with self.assertRaisesRegex(known_images.KnownImagesError, 'tell them apart'):
