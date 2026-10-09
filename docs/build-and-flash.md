@@ -76,7 +76,7 @@ firmware/profile; inspect it rather than repointing it.
 ```sh
 export DISC_CONTAINER="$(python3 -c 'import json; print(json.load(open("../snowsky-disc-web/work/emulator.json"))["id"] + "-emu")')"
 docker exec "$DISC_CONTAINER" sh -c 'rm -rf /work/boot-src && mkdir -p /work/boot-src/build/mips'
-tar cf - scripts device/deployment firmware tests/integration | docker exec -i "$DISC_CONTAINER" tar xf - -C /work/boot-src
+tar cf - scripts device/scripts firmware tests/integration | docker exec -i "$DISC_CONTAINER" tar xf - -C /work/boot-src
 docker cp build/mips/disc-usb-console "$DISC_CONTAINER:/work/boot-src/build/mips/disc-usb-console"
 docker cp build/mips/disc-boot "$DISC_CONTAINER:/work/boot-src/build/mips/disc-boot"
 docker exec -e PYTHONPATH=/repo "$DISC_CONTAINER" \

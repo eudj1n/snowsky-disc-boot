@@ -6,18 +6,19 @@
 | --- | --- |
 | `docs/contract.md` | The boot layer's contract with packages |
 | `docs/plan.md` | The canonical plan |
-| `device/src/boot.c` | `disc-boot`: modes, the service's supervisor, requests, recovery, the `mq_ui` launcher |
-| `device/src/manifest.c`, `boot_util.c`, `sha256.c` | Package manifests and verification, files, JSON and state, SHA-256 |
+| `device/boot/boot.c` | `disc-boot`: modes, the service's supervisor, requests, recovery, the `mq_ui` launcher |
+| `device/common/` | What the programs share: package manifests and verification (`manifest.c`), files, JSON and state (`boot_util.c`), SHA-256 (`sha256.c`) |
 | `device/vendor/jsmn/` | The JSON tokenizer (MIT, pinned) |
 | `device/menu/` | `disc-menu`, the boot menu package: the screen (`draw.c`), the list, keys and touch, the hand-over (`menu.c`) and its font (`font.h`, generated) |
 | `scripts/menu_font.py` | Rasterises Inter into `device/menu/font.h` (the toolchain has no font rasteriser) |
 | `console.py` | The player's USB console: commands, a shell, a file to `/tmp`, a read-only summary |
 | `install.py`, `scripts/installer/` | The guided installer: the terminal look in the menu's colours (`tui.py`), the card (`card.py`), the steps (`flow.py`) |
 | `catalog/packages.json`, `scripts/catalog.py` | The packages the installer offers, and their checks and fetching |
-| `device/src/usb_console.c` | The USB ACM engineering console |
-| `device/acquisition/` | The NAND reader and SFC identity payloads for USB Boot sessions |
-| `device/deployment/boot-report.sh` | The boot report written to the card |
-| `device/deployment/card-guard.sh` | The card guard, `rm` first in the `PATH` of stock's player and UI |
+| `device/console/usb_console.c` | `disc-usb-console`, the USB ACM engineering console |
+| `device/usbboot/` | The programs the installer runs from the player's RAM in USB Boot: the NAND reader, the SFC identity, the batches, the read by digest, the staging check |
+| `device/scripts/boot-report.sh` | The boot report written to the card (in the image) |
+| `device/scripts/card-guard.sh` | The card guard, `rm` first in the `PATH` of stock's player and UI (in the image) |
+| `device/tests/`, `device/Makefile`, `device/Dockerfile.toolchain` | The C tests, the build and the cross toolchain's recipe |
 | `scripts/package.py` | Packages: describe a folder, check it as `disc-boot` does, zip it, stage it on a card |
 | `scripts/deployment/build_candidate.py` | The image builder (variant `boot`): stock plus the boot layer, verified offline |
 | `scripts/deployment/` | Reviews, transports, readback and audits of a USB Boot installation |
@@ -42,8 +43,8 @@ bash scripts/build.sh reader   # the NAND reader's MIPS tests and freestanding c
 
 `DISC_TOOLCHAIN_IMAGE=<image>` selects a reviewed copy of the toolchain image. Its recipe
 pins the Debian base by digest and the musl.cc compiler by SHA-256, and `disc-boot` carries
-as its build id the last commit that changed its sources (`device/src`, `device/menu`,
-`device/vendor`, `device/Makefile`), so the same sources give the same bytes in any later
+as its build id the last commit that changed its sources (`device/boot`, `device/console`,
+`device/common`, `device/menu`, `device/vendor`, `device/Makefile`), so the same sources give the same bytes in any later
 commit and on GitHub's runners.
 
 The host build also makes `disc-boot-fixture` (`-DDISC_BOOT_FIXTURE`): it

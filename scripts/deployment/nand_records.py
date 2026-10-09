@@ -7,7 +7,7 @@ import zlib
 
 REQUEST_MAGIC, RESULT_MAGIC, DONE = 0x3151524e, 0x3153524e, 0x454e4f44
 DATA_MAX = 4352
-# A page read by digest (plan, stage 4b; device/acquisition/digest.h): the full result's words,
+# A page read by digest (plan, stage 4b; device/usbboot/digest.h): the full result's words,
 # the first OOB bytes and the SHA-256 of the main bytes, in 128 bytes.
 DIGEST_MAGIC, DIGEST_BYTES = 0x3144524e, 128
 

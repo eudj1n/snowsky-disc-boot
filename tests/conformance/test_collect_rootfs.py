@@ -85,7 +85,7 @@ class BatchRom(Rom):
                 if self.fault == 'counters': words[18] = 11
                 if self.fault == 'page': words[10] += 1
                 if self.scope.get('mode') == 'rootfs-digest':
-                    # The digest payload (device/acquisition/digest.c): the same words, the OOB head, the SHA-256.
+                    # The digest payload (device/usbboot/digest.c): the same words, the OOB head, the SHA-256.
                     words[0] = 0x3144524e
                     main_sha = hashlib.sha256(data[:2048]).digest()
                     if self.fault == 'digest-flip' and page == 5200: main_sha = bytes([main_sha[0] ^ 1]) + main_sha[1:]

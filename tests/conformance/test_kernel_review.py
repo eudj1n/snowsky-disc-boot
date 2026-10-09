@@ -245,7 +245,7 @@ class KernelReviewTests(unittest.TestCase):
                 pins(nodes)
 
     def test_review_mirrors_disc_boot_key_read(self):
-        source = (Path(__file__).resolve().parents[2]/'device/src/boot.c').read_text()
+        source = (Path(__file__).resolve().parents[2]/'device/boot/boot.c').read_text()
         body = source[source.index('static int read_keys('):]
         body = body[:body.index('\n}\n')]
         base = int(re.search(r'MAP_SHARED, fd, (0x[0-9a-f]+)\)', body)[1], 16)

@@ -18,7 +18,7 @@ from firmware_profile import PROFILES, fingerprint, load_profile, load_writer, r
 from deployment.chip_review import load_chip
 from deployment.review import regular
 
-# disc-boot's key read at power-on (device/src/boot.c, read_keys): port B's PxPIN, active low.
+# disc-boot's key read at power-on (device/boot/boot.c, read_keys): port B's PxPIN, active low.
 BOOT_KEY_PORT = 0x10010100
 BOOT_KEYS = {'vol-up-key': 13, 'play-key': 15}
 KEY_NAMES = {'vol-up-key': 'volume_up', 'vol-down-key': 'volume_down', 'play-key': 'play'}

@@ -21,7 +21,7 @@ def digest(path):
 
 
 def source_paths():
-    return sorted(str(x.relative_to(ROOT)) for x in (ROOT/'device/acquisition').glob('*.[chS]')) + [
+    return sorted(str(x.relative_to(ROOT)) for x in (ROOT/'device/usbboot').glob('*.[chS]')) + [
         'scripts/deployment/build_identity.py', 'scripts/deployment/link_identity.sh', 'scripts/firmware_profile.py',
         'scripts/deployment/metadata_policy.py', 'scripts/deployment/kernel_review.py',
         'scripts/deployment/chip_review.py', 'scripts/deployment/review.py',

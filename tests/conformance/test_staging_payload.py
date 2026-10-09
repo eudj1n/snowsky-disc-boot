@@ -1,4 +1,4 @@
-"""The staging check's logic (device/acquisition/staging.c, plan, stage 4c), compiled for this
+"""The staging check's logic (device/usbboot/staging.c, plan, stage 4c), compiled for this
 computer with the request's DRAM addresses mapped into a buffer of the test's own."""
 import hashlib
 import os
@@ -47,7 +47,7 @@ class StagingPayloadTests(unittest.TestCase):
         folder = Path(cls.temp.name)
         (folder/'harness.c').write_text(HARNESS)
         cls.binary = folder/'harness'
-        subprocess.run(['cc', '-std=c11', '-O1', '-Wall', '-Wextra', '-Werror', '-I', str(ROOT/'device/acquisition'),
+        subprocess.run(['cc', '-std=c11', '-O1', '-Wall', '-Wextra', '-Werror', '-I', str(ROOT/'device/usbboot'),
                         str(folder/'harness.c'), '-o', str(cls.binary)], check=True)
 
     @classmethod

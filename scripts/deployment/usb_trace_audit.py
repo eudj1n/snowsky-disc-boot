@@ -12,7 +12,7 @@ import struct
 import zlib
 
 LIBUSB_ERROR_TIMEOUT = -7
-# The batch ABI (device/acquisition): a 16-byte header, then 48 bytes a request and 4428 a result.
+# The batch ABI (device/usbboot): a 16-byte header, then 48 bytes a request and 4428 a result.
 BATCH_PAGES, REQUEST, RESULT = 64, 48, 4428
 REQUEST_BYTES, RESULT_BYTES = 16+REQUEST*BATCH_PAGES, 16+RESULT*BATCH_PAGES
 RECORD = REQUEST+RESULT

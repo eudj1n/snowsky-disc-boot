@@ -171,7 +171,7 @@ class InstallerTests(unittest.TestCase):
         top = unpacked/'disc-installer-2.57.9'
         self.assertEqual(json.loads((top/'catalog/packages.json').read_text()), catalog)
         self.assertFalse([n for n in names if '/tests/' in n or '/docs/' in n or n.endswith(('/AGENTS.md', '/scripts/test.sh'))])
-        self.assertIn('disc-installer-2.57.9/device/acquisition/staging.c', names, 'the payloads are checked by their sources')
+        self.assertIn('disc-installer-2.57.9/device/usbboot/staging.c', names, 'the payloads are checked by their sources')
         # Its own release is installer.json: the boot programs the image takes are this release's.
         found = subprocess.run([sys.executable, '-c', 'import sys; sys.path.insert(0, "scripts"); import release; '
                                 'print(release.boot_release("2.57")["version"])'], cwd=top, capture_output=True, text=True)

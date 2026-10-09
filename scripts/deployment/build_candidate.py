@@ -334,7 +334,7 @@ exit 0
 
 
 def boot_report_script(profile):
-    source = Path(__file__).resolve().parents[2]/'device/deployment/boot-report.sh'
+    source = Path(__file__).resolve().parents[2]/'device/scripts/boot-report.sh'
     text = source.read_text()
     report = profile['boot_report']
     for token, value in {'SD':profile['sd_mount'], 'SOURCE':profile['sd_source'],
@@ -385,7 +385,7 @@ def card_guard(usb):
     """The card guard with the profile's mount point (docs/contract.md, "The card guard")."""
     if not re.fullmatch('(/[a-zA-Z0-9_-]+)+', usb['sd_mount']):
         raise ValueError('The card guard needs a plain absolute mount point')
-    source = Path(__file__).resolve().parents[2]/'device/deployment/card-guard.sh'
+    source = Path(__file__).resolve().parents[2]/'device/scripts/card-guard.sh'
     return source.read_text().replace('@SD@', usb['sd_mount'])
 
 
