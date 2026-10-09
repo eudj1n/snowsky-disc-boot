@@ -108,6 +108,24 @@ class HealthTests(unittest.TestCase):
         self.assertTrue(all(json.loads(line)['battery']['percent'] == 87 for line in lines))
         self.assertEqual(report['journalBytes'], (self.data/'journal.jsonl').stat().st_size)
 
+    def test_attributes_are_read_to_their_end_and_the_card_once_mounted(self):
+        """sysfs and proc give a page or 0 as a file's size, not its text's (seen on the guest, 2026-10-09:
+        uptime read as 0). The card, absent at the first reading (stock mounts it later), is read as soon
+        as the mount table has it."""
+        self.player()
+        # A page as its size, as sysfs says of every attribute: the text is the first line only.
+        (self.root/'sys/class/power_supply/cw221X-bat/capacity').write_bytes(b'64\n'.ljust(4096, b'\0'))
+        mounts = self.root/'proc/mounts'
+        mounts.write_text('/dev/root / squashfs ro 0 0\n')
+        self.env['DISC_HEALTH_INTERVAL'] = '600'
+        self.start()
+        first = self.report()
+        self.assertEqual((first['latest']['battery']['percent'], first['latest']['uptime']), (64, 3600))
+        self.assertIsNone(first['latest']['space']['card'])
+        mounts.write_text('/dev/root / squashfs ro 0 0\n/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
+        second = self.report(lambda r: r['samples'] == 2, timeout=15)
+        self.assertGreater(second['latest']['space']['card']['totalKB'], 0, 'read again once the card is there, not in 10 minutes')
+
     def test_the_journal_stays_within_256_kib(self):
         self.player()
         (self.data/'journal.1.jsonl').write_text('the oldest\n')

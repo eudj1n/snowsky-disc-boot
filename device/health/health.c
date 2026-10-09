@@ -32,6 +32,8 @@
 #define MAX_ZONES 4
 /* A clock before this (2023-11-14) was never set: the reading has no time. */
 #define CLOCK_SET 1700000000L
+/* How often a reading without the card looks for it, in seconds. */
+#define CARD_LOOK 5
 /* The folders boot names: well under PATH_MAX, so a file in them always fits. */
 #define FOLDER 1024
 
@@ -56,9 +58,21 @@ static void put(char *out, size_t cap, size_t *o, const char *fmt, ...) {
     *o = n < 0 ? cap : *o + (size_t)n;
 }
 
+/* A short text of /proc or /sys, read to its end: their files say 0 or a page as their size, never
+   the text's (the guest's emulated gauge is a plain file, the player's is not). */
 static int read_text(const char *abs, char *buf, size_t cap) {
-    size_t len;
-    if (read_small(abs, buf, cap, &len)) return -1;
+    int fd = open(abs, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return -1;
+    size_t len = 0;
+    while (len + 1 < cap) {
+        ssize_t n = read(fd, buf + len, cap - 1 - len);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) break;
+        len += (size_t)n;
+    }
+    close(fd);
+    buf[len] = 0;
+    len = strlen(buf);
     while (len && (buf[len - 1] == '\n' || buf[len - 1] == ' ')) buf[--len] = 0;
     return 0;
 }
@@ -316,11 +330,17 @@ int main(void) {
     char line[LINE_BYTES], ready[PATH_MAX];
     snprintf(ready, sizeof(ready), "%s/ready", run_dir);
     while (!stopping) {
+        int card_seen = card_mounted();
         size_t len = reading(line, sizeof(line));
         if (len) { samples++; journal(line, len); report(line, len); }
         if (samples == 1 && !exists(ready)) { int fd = open(ready, O_WRONLY | O_CREAT | O_CLOEXEC, 0644); if (fd >= 0) close(fd); }
-        double until = mono() + interval;
-        while (!stopping && mono() < until) pause_s(until - mono() < 1 ? until - mono() : 1);
+        /* At a start the card comes later (stock mounts it once its player runs): a reading without it
+           is taken again as soon as it is there. */
+        double until = mono() + interval, look = mono() + CARD_LOOK;
+        while (!stopping && mono() < until) {
+            pause_s(until - mono() < 1 ? until - mono() : 1);
+            if (!card_seen && card[0] && mono() >= look) { if (card_mounted()) break; look = mono() + CARD_LOOK; }
+        }
     }
     return 0;
 }

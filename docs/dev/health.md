@@ -22,7 +22,11 @@ At its start and then every 10 minutes:
 | Card errors, crashes | the kernel's ring since the last line read: lines of `mmc`/`mmcblk` naming an error, a timeout or a failure; the fatal signals boot has the kernel print in platform mode | `kernel`: `cardErrors`, `fatalSignals` (new in this reading) |
 | Stock's restarts | `Restarting` lines in `/usr/data/fiio/log/process_failed.txt`, which stock's watch loop writes | `pairRestarts` (the file's count) |
 
-A source the player does not have is null (or `[]`), never a guess. The
+A source the player does not have is null (or `[]`), never a guess. Files of
+`/proc` and `/sys` are read to their end: they say 0 or a page as their size,
+never their text's (the guest's first reading, 2026-10-09, took nothing by the
+size). At a start the card comes later (stock mounts it once its player runs),
+so a reading without it is taken again as soon as the mount table has it. The
 battery's attributes are those of a V2.57 player as snowsky-disc-qemu's
 `device` profile models them; the thermal zones are not known yet on the
 player (the first reading there says).
