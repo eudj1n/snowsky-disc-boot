@@ -14,9 +14,9 @@ At its start and then every 10 minutes:
 
 | Part | Where | In the reading |
 | --- | --- | --- |
-| Battery | the first power supply with a `capacity`, by name (`cw221X-bat` on the player: `capacity` %, `voltage_now` µV, `current_now` µA, `temp` 0.1 °C, `cycle_count`) | `battery`: `name`, `percent`, `mV`, `mA`, `celsius`, `cycles`; null without one |
+| Battery | the first power supply with a `capacity`, by name (`cw221X-bat` on the player: `capacity` %, `voltage_now` µV, `temp` 0.1 °C, `cycle_count`) | `battery`: `name`, `percent`, `mV`, `celsius`, `cycles`; null without one |
 | Temperatures | `/sys/class/thermal/thermal_zone<N>/temp` (m°C) and `type`, at most four | `thermal`: `[{zone, celsius}]` |
-| Time | the clock (null before it was set), `/proc/sys/kernel/random/boot_id`, `/proc/uptime`, `/proc/loadavg` | `t`, `boot` (its first 8 characters), `uptime` (s), `load` (1, 5, 15 min) |
+| Time | the clock (null until it is set, below), `/proc/sys/kernel/random/boot_id`, `/proc/uptime`, `/proc/loadavg` | `t`, `boot` (its first 8 characters), `uptime` (s), `load` (1, 5, 15 min) |
 | Memory | `/proc/meminfo` | `memory`: `totalKB`, `availableKB` |
 | Free space | `statvfs` of `/usr/data`, and of the card where boot says it is (`DISC_BOOT_CARD`) when the mount table has it there | `space`: `data`, `card`: `{freeKB, totalKB}` or null |
 | Card errors, crashes | the kernel's ring since the last line read: lines of `mmc`/`mmcblk` naming an error, a timeout or a failure; the fatal signals boot has the kernel print in platform mode | `kernel`: `cardErrors`, `fatalSignals` (new in this reading) |
@@ -26,10 +26,24 @@ A source the player does not have is null (or `[]`), never a guess. Files of
 `/proc` and `/sys` are read to their end: they say 0 or a page as their size,
 never their text's (the guest's first reading, 2026-10-09, took nothing by the
 size). At a start the card comes later (stock mounts it once its player runs),
-so a reading without it is taken again as soon as the mount table has it. The
-battery's attributes are those of a V2.57 player as snowsky-disc-qemu's
-`device` profile models them; the thermal zones are not known yet on the
-player (the first reading there says).
+so a reading without it is taken again as soon as the mount table has it.
+
+The clock. The player keeps its hardware clock in local time, which the kernel
+takes for UTC at its start; stock's player sets the system clock at its own
+start (the owner's player, 2026-10-09: the first seconds of each boot ran 6 h
+ahead, the zone's offset, and stock's log shows the step right after it
+mounted the card). So a reading has the time only once the clock moved by
+more than a minute since the service started, or the kernel has run five
+minutes (a player whose hardware clock is in UTC never steps); the step itself
+takes a reading at once. The report's `started` is the start's time on the
+clock as it is now.
+
+What the owner's player has (2026-10-09): the gauge `cw221X-bat` with
+`capacity`, `voltage_now`, `temp` and `cycle_count` as snowsky-disc-qemu's
+`device` profile models them; its `current_now` says 1 or 0 (while charging
+and not), not microamperes as modelled, so it is not read. There is no
+`/sys/class/thermal` (and no hwmon): `thermal` is `[]` there, and the battery's
+is the only temperature (37–46 °C while charging over USB, 2026-10-09).
 
 ## The journal and the report
 
