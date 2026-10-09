@@ -1558,7 +1558,11 @@ the only installer. Play at power-on stays the recovery path only.
   first, without a write (a session that only restarts): that the ROM
   boots NAND after the watchdog, and that stock starts normally and leaves
   the port to the USB console with the cable connected at power-on. After
-  2.57.5, in its own release.
+  2.57.5, in its own release. 2026-10-09: the payload (`device/usbboot/restart.c`,
+  `--mode restart`, 344 bytes; the other payloads unchanged), the session
+  (`restart_player.py`) and its audit (`audit_usb_restart.py`), with the three
+  outcomes on a fake ROM ([restart](restart.md)); next the session alone on the
+  owner's player, then the installer.
 
 ## Later
 

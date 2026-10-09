@@ -12,6 +12,11 @@ if grep -q '^#define STAGING_CHECK' identity_layout.h; then
     names="identity_main identity_entry staging"
     objects="identity_entry.o identity_main.o staging.o"
 fi
+# The player's restart (plan, stage 7): the watchdog's registers only.
+if grep -q '^#define RESTART' identity_layout.h; then
+    names="identity_main identity_entry restart"
+    objects="identity_entry.o identity_main.o restart.o"
+fi
 for name in $names; do
     suffix=c
     if [ "$name" = identity_entry ]; then suffix=S; fi

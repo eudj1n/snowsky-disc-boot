@@ -36,7 +36,10 @@ $(OUT)/nand-reader-test: tests/nand_reader_test.c usbboot/nand_reader.c usbboot/
 	$(CC) $(CFLAGS) -Iusbboot tests/nand_reader_test.c usbboot/nand_reader.c $(LDFLAGS) -o $@
 $(OUT)/sfc-identity-test: tests/sfc_identity_test.c usbboot/sfc_x2000.c usbboot/sfc_x2000.h usbboot/nand_reader.c usbboot/nand_reader.h usbboot/identity.c usbboot/identity.h usbboot/batch.c usbboot/batch.h usbboot/digest.c usbboot/digest.h common/sha256.c common/sha256.h | $(OUT)
 	$(CC) $(CFLAGS) -Iusbboot -Icommon tests/sfc_identity_test.c usbboot/sfc_x2000.c usbboot/nand_reader.c usbboot/identity.c usbboot/batch.c usbboot/digest.c common/sha256.c $(LDFLAGS) -o $@
-test: $(OUT)/usb-console-fixture $(OUT)/disc-boot-fixture $(OUT)/disc-menu-fixture $(OUT)/sha256-test $(OUT)/nand-reader-test $(OUT)/sfc-identity-test
+$(OUT)/restart-test: tests/restart_test.c usbboot/restart.c usbboot/restart.h | $(OUT)
+	$(CC) $(CFLAGS) -Iusbboot tests/restart_test.c usbboot/restart.c $(LDFLAGS) -o $@
+test: $(OUT)/usb-console-fixture $(OUT)/disc-boot-fixture $(OUT)/disc-menu-fixture $(OUT)/sha256-test $(OUT)/nand-reader-test $(OUT)/sfc-identity-test $(OUT)/restart-test
 	$(OUT)/sha256-test
 	$(OUT)/nand-reader-test
 	$(OUT)/sfc-identity-test
+	$(OUT)/restart-test
