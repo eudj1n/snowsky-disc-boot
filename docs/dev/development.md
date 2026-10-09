@@ -4,8 +4,11 @@
 
 | Path | What |
 | --- | --- |
-| `docs/contract.md` | The boot layer's contract with packages |
-| `docs/plan.md` | The canonical plan |
+| `README.md`, `CHANGELOG.md`, `docs/install.md`, `docs/way-back.md` | For users (the installer's archive carries them, with `docs/assets/`) |
+| `docs/dev/contract.md` | The boot layer's contract with packages |
+| `docs/dev/plan.md` | The canonical plan |
+| `docs/dev/` | For developers: this page, the contract, the plan, reviews, transports and procedures |
+| `docs/dev/observations/` | The records of sessions on players (writes, readbacks, boot evidence) |
 | `device/boot/boot.c` | `disc-boot`: modes, the service's supervisor, requests, recovery, the `mq_ui` launcher |
 | `device/common/` | What the programs share: package manifests and verification (`manifest.c`), files, JSON and state (`boot_util.c`), SHA-256 (`sha256.c`) |
 | `device/vendor/jsmn/` | The JSON tokenizer (MIT, pinned) |
@@ -102,11 +105,11 @@ scripts/menu_screens.py` after `scripts/build.sh host` writes them into `docs/as
 
 | Choose | Reading the card | Installing | Starting | Switching off |
 | --- | --- | --- | --- | --- |
-| ![](assets/menu/choose.png) | ![](assets/menu/reading-the-card.png) | ![](assets/menu/installing.png) | ![](assets/menu/starting.png) | ![](assets/menu/switching-off.png) |
+| ![](../assets/menu/choose.png) | ![](../assets/menu/reading-the-card.png) | ![](../assets/menu/installing.png) | ![](../assets/menu/starting.png) | ![](../assets/menu/switching-off.png) |
 
 The font header is generated, not edited: `python3 scripts/menu_font.py --font
 <Inter[opsz,wght].ttf> --output device/menu/font.h` (Pillow with FreeType; the source font's
-SHA-256 and the versions used are written into the header, docs/provenance.md).
+SHA-256 and the versions used are written into the header, docs/dev/provenance.md).
 
 ## The installer
 
@@ -328,7 +331,7 @@ The server's package comes from snowsky-disc-server (`scripts/build_package.py
 A release is named after the FiiO firmware it is for and our number for it (owner, 2026-10-03):
 `2.57.2`, tagged `v2.57.2`, is the first for FiiO's 2.57. `2.57.1` was recorded but never
 tagged: the image its files went into looped on the owner's player
-(`docs/first-write-observation.md`), and a recorded number is never used again. A tag goes on
+(`docs/dev/observations/first-write-observation.md`), and a recorded number is never used again. A tag goes on
 only after the release files ran on the player in a system that stayed up (owner, 2026-10-05).
 Its files are built from
 `build/mips` by `scripts/release.py`: the boot menu's package `disc-menu-<version>.zip`,

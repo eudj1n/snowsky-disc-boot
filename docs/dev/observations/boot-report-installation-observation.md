@@ -1,7 +1,7 @@
 # Boot-report candidate installation observation — 2026-09-24
 
 The owner authorized discovery, one new candidate write and full readback, and
-confirmed the same player/firmware. The exact [prepared update package](boot-report-installation.md)
+confirmed the same player/firmware. The exact [prepared update package](../boot-report-installation.md)
 was activated after the player appeared as the profiled Ingenic USB Boot target.
 The regenerated writer and collector plans matched their approved fingerprints.
 The one write completed; its first readback session stopped at the DDR guard.

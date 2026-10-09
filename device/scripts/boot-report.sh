@@ -51,7 +51,7 @@ snapshot() {
     printf '\n[root_and_card_mounts]\n'
     "$BB" awk -v target="$SD" '$2 == "/" || $2 == target' "$PROC/mounts" | "$BB" head -c 1024
     section partitions "$PROC/mtd" 2048
-    # The boot layer's decision and its roles (docs/contract.md, "Status").
+    # The boot layer's decision and its roles (docs/dev/contract.md, "Status").
     section boot_decision "$RUN/disc-boot/boot.json" 1024
     section boot_service "$RUN/disc-boot/service.json" 1024
     section boot_ui "$RUN/disc-boot/ui.json" 1024

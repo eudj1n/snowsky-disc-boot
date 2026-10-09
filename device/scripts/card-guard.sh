@@ -1,5 +1,5 @@
 #!/bin/sh
-# The boot layer's card guard (docs/contract.md, "The card guard"), installed as rm first
+# The boot layer's card guard (docs/dev/contract.md, "The card guard"), installed as rm first
 # in the PATH of stock's player and UI. Stock's player prepares the card with
 # "umount <mount point>" and then "rm -rf <mount point>" without checking the unmount:
 # while the card is busy that deletes the mounted card. An rm that names the card's mount

@@ -1,4 +1,4 @@
-/* disc-boot: the boot layer's program (docs/contract.md). No network, no card code. */
+/* disc-boot: the boot layer's program (docs/dev/contract.md). No network, no card code. */
 #define _XOPEN_SOURCE 700
 #define _DARWIN_C_SOURCE
 #include "boot_util.h"
@@ -387,7 +387,7 @@ static void ui_request(const char *domain, const bjson *j, const char *action) {
     snprintf(last_request, sizeof(last_request), "%s %s", !strcmp(action, "ui-default") ? "default ui" : "next boot's ui", wanted);
 }
 
-/* A package's request, applied after it exited (docs/contract.md, "Requests from a package").
+/* A package's request, applied after it exited (docs/dev/contract.md, "Requests from a package").
    Returns 1 when one was there (even refused), 0 otherwise. */
 static int handle_request(const char *domain, const char *current_name) {
     char p[PATH_MAX], buf[SMALL_FILE];
@@ -570,7 +570,7 @@ static void add_env(char **envp, int *n, const char *key, const char *value) {
     envp[(*n)++] = e;
 }
 
-/* The package's environment (docs/contract.md, "Environment of a package"). */
+/* The package's environment (docs/dev/contract.md, "Environment of a package"). */
 static char **package_env(const char *domain, const manifest *m, char slot, int inherit) {
     const char *role = role_of(domain);
     char slotdir[PATH_MAX], inactive[PATH_MAX], request[PATH_MAX], data[PATH_MAX], run[PATH_MAX], status[PATH_MAX], cardp[PATH_MAX], libs[PATH_MAX * 2];

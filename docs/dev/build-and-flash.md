@@ -15,7 +15,7 @@ workstation. Select a new release through reviewed profiles and repeat
 [compatibility acceptance](firmware-compatibility.md); do not substitute a new
 OTA into an old package or plan. Set a fresh run name for each preparation.
 The current installed image and completed physical history are recorded in
-[UDC installation](udc-installation-observation.md). The combined ACM/webroot
+[UDC installation](observations/udc-installation-observation.md). The combined ACM/webroot
 offline candidate and package (snowsky-disc-web `docs/combined-update.md`) are prepared but have no
 physical approval.
 
@@ -384,7 +384,7 @@ that differs from the approved candidate. They reproduced every original
 field of the last successful write/readback audits except the auditor's own
 script hash. Synthetic journal mutations run in GitHub Actions. Inspect both
 reports and the separate exact-image review before physical acceptance. The
-completed [UDC write/read audits](udc-installation-observation.md) show the
+completed [UDC write/read audits](observations/udc-installation-observation.md) show the
 historical evidence expected. Do not mark physical acceptance on
 `readback.py` or transport success alone.
 

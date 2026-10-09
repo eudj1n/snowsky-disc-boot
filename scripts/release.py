@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The boot layer's release files (docs/development.md, "Releases").
+"""The boot layer's release files (docs/dev/development.md, "Releases").
 
 A release is named after the FiiO firmware it is for and our number for it (owner,
 2026-10-03): 2.57.1 is the first for FiiO's 2.57, tagged v2.57.1; the firmware must be a
@@ -187,9 +187,10 @@ def installer_name(version):
 
 # What install.py reads when it runs (plan, stage 6: the installer for users, one archive, nothing to clone): the
 # scripts and the reviewed profiles, the catalogs, the earlier releases' records (their images are known), the
-# payloads' sources their builds are checked by, and the files the image takes from here.
-INSTALLER_TREE = ('install.py', 'console.py', 'LICENSE', 'README.md', 'scripts', 'firmware', 'catalog', 'releases',
-                  'device/usbboot', 'device/scripts')
+# payloads' sources their builds are checked by, the files the image takes from here, and the users' guide (the
+# README and docs/, never docs/dev).
+INSTALLER_TREE = ('install.py', 'console.py', 'LICENSE', 'README.md', 'docs/install.md', 'docs/way-back.md', 'docs/assets',
+                  'scripts', 'firmware', 'catalog', 'releases', 'device/usbboot', 'device/scripts')
 INSTALLER_SKIP = ('scripts/build.sh', 'scripts/test.sh', 'scripts/menu_font.py', 'scripts/menu_screens.py')
 
 

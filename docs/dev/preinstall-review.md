@@ -10,7 +10,7 @@ writer execution, image modification or hardware authorization is involved.
 | Candidate after writing | Every byte of the exact approved padded candidate | `readback.py` |
 | Stock after restoration | Every byte of the exact approved padded restore image | `readback.py` |
 
-The [earlier full-image rejection](rootfs-full-observation.md) remains valid.
+The [earlier full-image rejection](observations/rootfs-full-observation.md) remains valid.
 This new stock check is not a retrospective pass of that test. The writer will
 program a padded image, so subsequent readback must include its padding even
 if the stock device previously had FF.
@@ -98,7 +98,7 @@ is not an admitted physical flashing procedure yet.
 
 The target remains primary rootfs; kernel, recovery rootfs, userdata and
 calibration are excluded. Blocks 383/716 are observed evidence, never hard-coded
-skips. The subsequent bounded [complete-image staging experiment](writer-staging-observation.md)
+skips. The subsequent bounded [complete-image staging experiment](observations/writer-staging-observation.md)
 passed, with owner-confirmed stock reboot. The subsequent
 [captured SPL review](bootloader-review.md) establishes static primary-pair
 selection for the observed `ota:backup`. Live-root observation, physical

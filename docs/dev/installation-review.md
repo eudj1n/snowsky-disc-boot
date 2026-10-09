@@ -3,7 +3,7 @@
 This page records preparation before authorization. The owner subsequently
 authorized the exact activation, one candidate write and conditional independent
 readback. Current physical results and remaining acceptance are recorded in the
-[candidate installation observation](candidate-installation-observation.md).
+[candidate installation observation](observations/candidate-installation-observation.md).
 The later [boot-report image](boot-report.md) changes code/profile/image inputs;
 this historical package is not current for it, and admission is closed again.
 The replacement [boot-report installation package](boot-report-installation.md)

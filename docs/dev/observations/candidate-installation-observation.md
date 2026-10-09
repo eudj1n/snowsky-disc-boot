@@ -15,7 +15,7 @@ SD diagnostic-marker provisioning or a diagnostic console connection.
 The prepared profile was applied byte for byte; its only change is
 `physical_write_admitted: false -> true`. The pinned installation review and
 all other fields remain unchanged. Candidate write, full collection and exact
-comparison plans reproduced the [approved package](installation-review.md)
+comparison plans reproduced the [approved package](../installation-review.md)
 exactly before USB access. The reviewed libusb matched and 50.5 GiB was free.
 Admission is an engineering configuration; it does not authorize future writes.
 

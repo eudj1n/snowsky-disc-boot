@@ -1,4 +1,4 @@
-/* Files, JSON and state of the boot layer (docs/contract.md). */
+/* Files, JSON and state of the boot layer (docs/dev/contract.md). */
 #ifndef DISC_BOOT_UTIL_H
 #define DISC_BOOT_UTIL_H
 #include <limits.h>

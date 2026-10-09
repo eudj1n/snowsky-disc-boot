@@ -2,8 +2,8 @@
 
 This page records the initial offline preparation. The subsequent engineering
 candidate passed an authorized physical write, exact full readback and
-owner-confirmed normal reboot; see the [physical observation](candidate-installation-observation.md).
-The later [physical boot report](boot-report-observation.md) confirms native
+owner-confirmed normal reboot; see the [physical observation](observations/candidate-installation-observation.md).
+The later [physical boot report](observations/boot-report-observation.md) confirms native
 process presence, a loopback listener and primary-root boot data. Native health,
 stock protocol round trips and diagnostic USB acceptance remain outstanding.
 

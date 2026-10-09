@@ -9,7 +9,7 @@ successful installation, or permission/readiness to write NAND.
 
 ## Inputs and method
 
-The [authorized capture](boot-evidence-observation.md) supplies the complete
+The [authorized capture](observations/boot-evidence-observation.md) supplies the complete
 2,097,152-byte boot image, metadata and all eight OTA first pages, with an
 independently reconstructed USB trace. The owner confirmed normal stock boot
 and operation afterward. All boot blocks 0–15 have good first-page markers;
