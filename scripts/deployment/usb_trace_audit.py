@@ -37,6 +37,13 @@ def require(condition, message):
         raise ValueError(message)
 
 
+def ask(limit_ms, outcome, answer=None):
+    """One CPU-info request held for at most limit_ms with a known outcome (the restart, plan, stage 7):
+    'answer' (the ROM's, as a saved read), 'gone' (an error other than a timeout: the device left the
+    bus) or 'timeout'."""
+    return ('ask', limit_ms, outcome, answer)
+
+
 def ready(limit_ms, answer, tolerant=False):
     """The expected ask after an execution (plan, stage 4c): one CPU-info request, its timeout at most
     the whole wait, answered. tolerant (the writer's wait): one that failed at once may be followed,
@@ -77,6 +84,20 @@ def compare(rows, expected, run: Path, transport, call_limit, executions, connec
         counts['read_bytes'] += len(actual)
 
     for item in expected:
+        if item[0] == 'ask':
+            _, limit, outcome, answer = item
+            calls, attempt, reply = take('control')
+            require(attempt.get('request') == 0 and attempt.get('parameter') == 0 and attempt.get('poll') is True
+                    and 0 < attempt.get('timeout_ms', 0) <= limit, f'Held ask {calls} differs')
+            code = reply.get('code', 0)
+            if outcome == 'answer':
+                require(code == len(answer), f'Held ask {calls} answer differs')
+                saved_read(calls, reply, answer)
+            else:
+                require((code == LIBUSB_ERROR_TIMEOUT) if outcome == 'timeout' else (code < 0 and code != LIBUSB_ERROR_TIMEOUT),
+                        f'Held ask {calls} outcome differs')
+                require('file' not in reply, f'Unsolicited read file at call {calls}')
+            continue
         if item[0] == 'ready':
             _, limit, answer, tolerant = item
             for turn in range(2 if tolerant else 1):

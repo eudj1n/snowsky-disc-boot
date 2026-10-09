@@ -154,8 +154,9 @@ offline) knows what the player holds by its first blocks, stock or one of ours (
 and the releases' images), or stops before anything is written and names FiiO's Local upgrade as
 the way back; `decision.json` says what it found. The write (`WRITE`) takes the admission the
 review computed for the run (`--installer-profile`, the tracked profile untouched) and runs only
-in that entry; its first start's check proves it as below, the readback following only when the
-check does not come back. The user answers yes or no about the start, without the words a
+in that entry, then restarts the player from USB Boot itself ([restart](restart.md)), so the
+cable stays connected; its first start's check proves it as below, the readback following only when
+the check does not come back. The user answers yes or no about the start, without the words a
 history keeps for the developers. A no takes the player back to stock with the evidence of a new entry
 (`usb-back/`, where the review knows this run's own image); `--restore` writes stock's rootfs the
 same way. Without a terminal (`--yes`) the card is staged and the player is not written.
@@ -338,7 +339,8 @@ Its files are built from
 `disc-boot-<version>-mips.tar.gz` (`disc-boot` and `disc-usb-console` for the image
 `install.py` builds from FiiO's update), from 2.57.5 `disc-usb-payloads-<version>.tar.gz` (the
 programs the installer runs from the player's RAM in USB Boot: the metadata read, the readback, the
-read by digest, the staging check, the identity probe and the boot evidence's two, each with its
+read by digest, the staging check, the identity probe, the restart (from 2.57.6) and the boot
+evidence's two, each with its
 `build.json`, built with the boot layer's own toolchain, `disc-native-toolchain`, whose compiler gives
 diskOS's toolchain's payloads byte for byte; `build.json` names the compiler, not the image's id, so a
 build is the same on any computer; diskOS's pinned files are fetched for it unless `--diskos` names

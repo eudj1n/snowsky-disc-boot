@@ -499,7 +499,8 @@ def run(output):
     menu = guest_json('/run/disc-boot/menu.json')
     assert menu['state'] == 'answered', menu
     offered = guest_json(f'/usr/data/disc-boot/data/{MENU_NAME}/choices.json')
-    assert (offered['default'], [e['ui'] for e in offered['entries']]) == (UI_NAME, [TWO, UI_NAME, 'stock']), offered
+    # FiiO's own first, then the installed UIs (owner, 2026-10-09).
+    assert (offered['default'], [e['ui'] for e in offered['entries']]) == (UI_NAME, ['stock', TWO, UI_NAME]), offered
     player = wait(lambda: guest_json('/run/disc-boot/ui/player.json'), lambda p: p['launch'] == 'package' and p['name'] == TWO,
                   'the chosen ui package launches the player', 120)
     step('a second ui and the menu with play', choice=choice, menu=menu, offered=offered, ui=ui, player=player)

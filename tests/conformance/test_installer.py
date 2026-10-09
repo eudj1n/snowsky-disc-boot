@@ -191,6 +191,48 @@ class InstallerTests(unittest.TestCase):
         self.assertTrue((card/'.disc/boot/install/service/package.json').is_file() and (card/'Apps/Disc Player/app.json').is_file())
         self.assertFalse((top/'work').exists(), 'nothing of the run in the archive')
 
+    def test_the_archive_downloads_what_it_was_not_given(self):
+        """The tag v2.57.5 (2026-10-09): the release workflow builds the archive with no local server, so it is
+        downloaded by its catalog digest; there was no folder to download into. The download here comes from a
+        stand-in for GitHub, the whole path otherwise as in the workflow."""
+        import io
+        import release
+        from unittest import mock
+        mips = self.root/'mips'
+        mips.mkdir()
+        for name in ('disc-boot', 'disc-usb-console', 'disc-menu'):
+            (mips/name).write_bytes(b'\x7fELF' + name.encode() * 100)
+        (mips/'build-id').write_text('b43034ba1e27\n')
+
+        def payloads(firmware, diskos, output):
+            for name, source in release.payload_members(output):
+                source.parent.mkdir(parents=True, exist_ok=True)
+                source.write_bytes(f'{firmware} {name}'.encode())
+        dist = self.root/'dist'
+        release.build('2.57.9', dist, mips, diskos=self.root/'diskos', payloads=payloads)
+        menu = dist/'disc-menu-2.57.9.zip'
+        catalog = json.loads(self.catalog.read_text())
+        server_url = 'https://github.com/eudj1n/snowsky-disc-server/releases/download/v9/disc-server-9.zip'
+        for entry in catalog['entries']:
+            if entry['name'] == 'disc-menu':
+                entry.update(version='2.57.9', source=dict(url=release.url('2.57.9', menu.name), sha256=digest(menu),
+                                                           size=menu.stat().st_size))
+            else:
+                entry['source']['url'] = server_url
+        offered = self.root/'release-catalog.json'
+        offered.write_text(json.dumps(catalog))
+        published = {server_url: (self.local/'disc-server.zip').read_bytes()}
+        fetched = []
+
+        def urlopen(url, timeout=None, context=None):
+            fetched.append(url)
+            return io.BytesIO(published[url])
+        with mock.patch('catalog.urllib.request.urlopen', side_effect=urlopen):
+            built = release.installer('2.57.9', dist, [self.app_zip], True, catalog_path=offered, committed=False)
+        self.assertEqual(fetched, [server_url])
+        self.assertIn('disc-server-9.zip', built['packages'])
+        self.assertEqual(built['packages']['disc-server-9.zip']['sha256'], digest(self.local/'disc-server.zip'))
+
     def test_the_image_is_built_here_without_docker(self):
         """Plan, stage 6: the guest and the player ran the image built on the computer (2026-10-08), so the
         build in the emulator's Docker image went: without squashfs-tools and openssl the check says what to

@@ -127,12 +127,13 @@ def run(menu, output):
     status = asking()
     first = frame('after-play')
     choices = bg.guest_json('/run/disc-boot/ui/choices.json')
-    assert [e['ui'] for e in choices['entries']] == [ONE, TWO, 'stock'] and choices['default'] == ONE, choices
-    assert pixel(first, 70, 132) == (0x3a, 0x35, 0x30), 'the default, in the first row, in the pill'
+    # FiiO's own first (owner, 2026-10-09), then the UIs; the default is the first UI installed.
+    assert [e['ui'] for e in choices['entries']] == ['stock', ONE, TWO] and choices['default'] == ONE, choices
+    assert pixel(first, 70, 180) == (0x3a, 0x35, 0x30), 'the default, in the second row, in the pill'
     buttons.pulse(0xfc)
     time.sleep(1.5)
     moved = frame('volume-down')
-    assert pixel(moved, 70, 180) == (0x3a, 0x35, 0x30) and pixel(moved, 70, 132) != (0x3a, 0x35, 0x30), 'the pill moved down'
+    assert pixel(moved, 70, 228) == (0x3a, 0x35, 0x30) and pixel(moved, 70, 180) != (0x3a, 0x35, 0x30), 'the pill moved down'
     # After a start with Play the menu takes no Play gesture in its first 2 s (the recovery's own
     # release, reported when the key is let go): this Play comes after them.
     time.sleep(1.0)
@@ -154,7 +155,7 @@ def run(menu, output):
     assert choices['default'] == TWO, choices
     counting = frame('countdown')
     assert pixel(counting, 352, 180) == (0xff, 0x79, 0x5a), 'the ring runs down from the right'
-    assert pixel(counting, 70, 180) == (0x3a, 0x35, 0x30), 'the last answer, in the second row, in the pill'
+    assert pixel(counting, 70, 228) == (0x3a, 0x35, 0x30), 'the last answer, in the third row, in the pill'
     # The player starts 2 s after the menu and waits for its choice.
     waited = soon(lambda: run_json('ui/player.json'), lambda p: p['launch'] in ('waiting', 'package'), 'the player starts', 10)
     assert waited['launch'] == 'waiting', waited
@@ -165,11 +166,11 @@ def run(menu, output):
     player = bg.wait(lambda: bg.guest_json('/run/disc-boot/ui/player.json'), lambda p: p['launch'] == 'package', 'the player after the choice', 120)
     assert bg.pair_restarts() == restarts, ('stock restarted the pair', restarts, bg.pair_restarts())
     bg.step('the countdown starts the last answer', choices=choices, choice=choice, player=player, ui=ui)
-    # 3. A touch on the first row picks it, away from the default.
+    # 3. A touch on the first UI's row (the second, under FiiO's) picks it, away from the default.
     bg.power('off')
     booted = power_on()
     asking()
-    touch.tap(150, 132)
+    touch.tap(150, 180)
     booted()
     ui = bg.ui_runs(ONE)
     choice = bg.guest_json('/run/disc-boot/ui/choice.json')

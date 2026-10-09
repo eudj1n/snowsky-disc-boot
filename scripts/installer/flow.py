@@ -569,14 +569,26 @@ class Installer:
                   'holding Play (press the power key briefly and let Play go once the logo shows); the menu shows '
                   'Installing.')
 
-    def start_answer(self, title, what, then=None, words=True):
+    def restart(self, reviewed, title):
+        """The player restarted by the installer after the write (plan, stage 7), so the cable stays connected:
+        True when it left the bus. Otherwise (a release without the restart payload, no restart observed, an
+        error) the cable is the way, as before; the write is done either way."""
+        if not reviewed.can_restart():
+            return False
+        try:
+            return reviewed.restart() == 'player-restarted'
+        except usbboot.ReviewedError:
+            return False
+
+    def start_answer(self, title, what, then=None, words=True, restarted=False):
         """The owner's look at a new system's first start: (started normally, words, time UTC), or None. words:
         a few words of what was seen, the developers' evidence for the next review with a history; a user
         without one answers yes or no only (owner, 2026-10-08)."""
         if not self.interactive:
             return None
-        self.say(title, [f'Written. Disconnect the cable: leaving USB Boot, the player restarts into {what} by itself. '
-                         'Let it start without holding a key: is the interface steady, do the volume and playback work, '
+        leaving = (f'Written, and the player is restarting into {what} by itself: keep the cable connected. ' if restarted else
+                   f'Written. Disconnect the cable: leaving USB Boot, the player restarts into {what} by itself. ')
+        self.say(title, [leaving + 'Let it start without holding a key: is the interface steady, do the volume and playback work, '
                          'does the power key switch it off?'] + ([then] if then else []) +
                  ['Did it start normally? Type yes or no.'])
         word = self.input().strip().lower()
@@ -589,14 +601,15 @@ class Installer:
         self.say(title, ['Describe what you saw, in a few words.'])
         return word == 'yes', self.input().strip() or word, reported
 
-    def first_start_check(self, reviewed, title, written, answer):
+    def first_start_check(self, reviewed, title, written, answer, connected=False):
         """The new system's own check of what was written (plan, stage 4c): the outcome its boot layer
         left on the card, read over the USB console while it runs. The folder of that proof, or None
         when it does not come back or differs (the readback through USB Boot follows)."""
         if not self.expected:
             return None
-        self.say(title, ['Connect the cable to this computer again while the new system runs: its boot layer checks the written '
-                         'image (a minute or two after its start) and the installer reads that over the USB console.'])
+        self.say(title, ['The new system\'s boot layer checks the written image a minute or two after its start, and the installer '
+                         'reads that over the USB console' + (', the cable still connected.' if connected else
+                         ': connect the cable to this computer again while the new system runs.')])
         raw = self.fetch_check(self.expected['sha256'], load_usb_profile(load_profile())['sd_mount'])
         if raw is None:
             self.say(title, ['The check did not come back over the cable: the readback through USB Boot follows.'])
@@ -634,7 +647,7 @@ class Installer:
         stock = reviewed.artifacts/load_json_safe(reviewed.package/'restore-write-plan.json')['plan']['image_name']
         self.confirm(title, [self.ENTER, self.STUCK, 'Next: stock\'s rootfs, written once.'], 'RESTORE')
         written = reviewed.write('restore')
-        answer = self.start_answer(title, 'stock')
+        answer = self.start_answer(title, 'stock', restarted=self.restart(reviewed, title))
         self.confirm(title, [self.ENTER, 'Next: read stock back in a fresh session and compare every byte.'], 'READ')
         read = reviewed.readback('restore')
         audits = reviewed.audit('restore')
@@ -681,7 +694,8 @@ class Installer:
                              'Next, in the same entry (stay connected): the image with the boot layer, written once. '
                              'Its outcome is never retried.'], 'WRITE')
         written = reviewed.write('candidate')
-        answer = self.start_answer(title, 'the new system', self.PLAY_AFTER, words=not known)
+        restarted = self.restart(reviewed, title)
+        answer = self.start_answer(title, 'the new system', self.PLAY_AFTER, words=not known, restarted=restarted)
         if answer is not None and not answer[0]:
             # Straight back to stock (owner, 2026-10-05): the player holds this run's own image,
             # known from the writer's completion; reading it back would only cost time.
@@ -689,7 +703,7 @@ class Installer:
             if known:
                 return self.known_back(image, dict(backup=backup, write=written, candidateAnswer=answer[1]))
             return self.stock_back(reviewed, title, dict(backup=backup, write=written, candidateAnswer=answer[1]))
-        proof = self.first_start_check(reviewed, title, written, answer) if answer else None
+        proof = self.first_start_check(reviewed, title, written, answer, connected=restarted) if answer else None
         if proof:
             audits = reviewed.audit('candidate', read=False)
             history = None if known else reviewed.next_history(image, proof=proof)
@@ -768,7 +782,7 @@ class Installer:
         self.confirm(title, [f'The player holds {self.holds(decision)}.', 'Next, in the same entry (stay connected): stock\'s '
                              'rootfs, written once. Its outcome is never retried.'], 'RESTORE')
         written = reviewed.write('restore')
-        answer = self.start_answer(title, 'stock', words=False)
+        answer = self.start_answer(title, 'stock', words=False, restarted=self.restart(reviewed, title))
         audits = reviewed.audit('restore', read=False)
         self.say(title, ['Stock\'s rootfs is written: the writer finished, after the image was checked in the player\'s RAM; '
                          'the USB journal of the write audited.'] + ([] if answer and answer[0] else

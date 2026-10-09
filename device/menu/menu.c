@@ -76,7 +76,7 @@ static const char *env(const char *name, const char *fallback) {
     return v && v[0] ? v : fallback;
 }
 
-/* What boot offers (ui/choices.json): each installed ui package, then stock's UI shown as FiiO. */
+/* What boot offers (ui/choices.json): stock's UI first, shown as FiiO, then each installed ui package. */
 static int load_choices(const char *status) {
     char p[PATH_MAX], buf[SMALL_FILE], deflt[33] = "";
     size_t len;

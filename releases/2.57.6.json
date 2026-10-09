@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "version": "2.57.6",
+  "firmware": "2.57",
+  "tag": "v2.57.6",
+  "buildId": "b5e9adddde88",
+  "files": {
+    "disc-menu-2.57.6.zip": {
+      "bytes": 158904,
+      "sha256": "fc0521587c53dd5d552dd63f0bb0c4e5bd50043eb3ebeb5b143a5e17c01e7ddf"
+    },
+    "disc-boot-2.57.6-mips.tar.gz": {
+      "bytes": 319392,
+      "sha256": "d94c9330b2d09236814322770fee146d2b09a7361df391918292caf6dc9bd0c9"
+    },
+    "disc-usb-payloads-2.57.6.tar.gz": {
+      "bytes": 61077,
+      "sha256": "fa251246133e04c0a2df3170dbbe4f9dde721b4aba0cd81b74e88afb64e31db6"
+    },
+    "disc-installer-2.57.6.tar.gz": {
+      "bytes": 2069856,
+      "sha256": "27efe1014ab5de4f7898209fb6467cde8018380389653dff9e50b8e86b3fabcf"
+    }
+  },
+  "accepted": "on the emulator's guest at f1d5e33 with FiiO 2.57, 2026-10-09: an image from release-2.57.6 (device sources of b5e9add, build b5e9adddde88) holding this disc-boot and disc-usb-console, boot_guest.py 16 of 16, two_packages.py 6 of 6, boot_report.py and boot_layer.py on the packed tree (the image c46ad1f1 built the same on macOS without root and in the Linux container); this disc-menu package, menu_guest.py 3 of 3 with FiiO's own interface first; the installer's archive unpacked outside the repository with an empty home, install.py --guest: the image built on the computer, the archive's own packages (this menu, disc-server 2.57.5, Disc Player 1.0.0), installed by Play, the menu answered, the service confirmed. The restart payload alone on the owner's player (player-restarted, the system started with the cable connected). On the owner's player from a clean computer with the archive only, 2026-10-09: 2.57.4's image known by its first blocks, this image written in the same USB Boot entry, the first start's check matched c46ad1f1, no history",
+  "urls": {
+    "disc-menu-2.57.6.zip": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.6/disc-menu-2.57.6.zip",
+    "disc-boot-2.57.6-mips.tar.gz": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.6/disc-boot-2.57.6-mips.tar.gz",
+    "disc-usb-payloads-2.57.6.tar.gz": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.6/disc-usb-payloads-2.57.6.tar.gz",
+    "disc-installer-2.57.6.tar.gz": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.6/disc-installer-2.57.6.tar.gz"
+  },
+  "image": {
+    "name": "disc-boot-v257-review-only.bin",
+    "bytes": 100663296,
+    "sha256": "c46ad1f12837d13552bbb2a1534e09d1fbfdf31d9fe9d298c93e73b8f17d37c3",
+    "first_blocks_bytes": 262144,
+    "first_blocks_sha256": "57ee67e62b24733b31bc3bf4bf37203ce17539d0f099362326c86659e62f853d"
+  }
+}

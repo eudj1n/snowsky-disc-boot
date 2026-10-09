@@ -509,9 +509,10 @@ menu's `stock` entry is stock's UI with the `service` package running.
 
 - In `platform` mode, with a menu installed and no choice by `next`, the
   `mq_ui` launcher starts the menu first. `/run/disc-boot/ui/choices.json`
-  lists every installed `ui` package (`ui`, `title` or else its name,
-  `version`, `confirmed`), then `{"ui": "stock", "version": "<firmware
-  profile>"}`, and the `default` of this boot.
+  lists `{"ui": "stock", "version": "<firmware profile>"}` first (owner,
+  2026-10-09: FiiO's own interface leads), then every installed `ui` package
+  (`ui`, `title` or else its name, `version`, `confirmed`), and the
+  `default` of this boot.
 - The menu writes `$DISC_BOOT_RUN/choice` (`{"ui": "<name>"|"stock"}`)
   atomically and hands over (owner, 2026-10-03): it execs
   `$DISC_BOOT_LAUNCHER`, the UI launcher, in its own process, which checks

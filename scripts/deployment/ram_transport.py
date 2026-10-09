@@ -100,8 +100,9 @@ def prepare_inputs(base, cpu, reader, transport, build, diskos, mode='identity')
           and m.get('reader_profile') == reader, 'Build profile mismatch')
     page_policy = load_metadata_policy(base, reader) if mode in ('metadata', 'rootfs-probe', 'rootfs', 'rootfs-digest') else None
     collector = load_collector_policy(base, reader, mode) if mode.startswith('rootfs') else None
-    # The staging check (plan, stage 4c) is memory only: no page policy, no collector, no NAND opcode.
-    staging = mode == 'staging-check'
+    # The staging check (plan, stage 4c) and the restart (plan, stage 7) are memory only: no page policy, no
+    # collector, no NAND opcode.
+    staging = mode in ('staging-check', 'restart')
     check(m.get('collector_policy') == collector, 'Build collector policy mismatch')
     check(m.get('purpose', 'identity') == (mode if page_policy or staging else 'identity')
           and m.get('page_policy') == page_policy, 'Build purpose/page policy mismatch')

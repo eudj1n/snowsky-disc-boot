@@ -891,7 +891,7 @@ exit 0
         self.assertEqual(self.runs(), ['menu'])
         offered = json.loads((self.root/'out/choices.json').read_text())
         self.assertEqual(offered['default'], 'alpha')
-        self.assertEqual([e['ui'] for e in offered['entries']], ['alpha', 'beta', 'stock'])
+        self.assertEqual([e['ui'] for e in offered['entries']], ['stock', 'alpha', 'beta'], 'FiiO\'s own first')
         # A player already ran in this boot (it runs the watchdog): stock's player starts beside the
         # menu at once, never a package's launcher while the choice is open.
         (self.run_dir/'player-ran').write_text('\n')
@@ -942,9 +942,9 @@ exit 0
         self.assertEqual(self.runs(), ['menu', 'beta'], self.boot_log())
         # The offer: each package's title (else its name) and version, stock's UI with the firmware's.
         offered = json.loads((self.root/'out/choices.json').read_text())['entries']
-        self.assertEqual(offered, [dict(ui='alpha', title='Alpha UI', version='1', confirmed=True),
-                                   dict(ui='beta', title='beta', version='1', confirmed=True),
-                                   dict(ui='stock', version=PROFILE)])
+        self.assertEqual(offered, [dict(ui='stock', version=PROFILE),
+                                   dict(ui='alpha', title='Alpha UI', version='1', confirmed=True),
+                                   dict(ui='beta', title='beta', version='1', confirmed=True)])
         player.wait(timeout=30)
         self.assertEqual(self.players(), ['launcher ui', f'stock ui {self.root}/opt/disc-boot/guard'])
         self.assertEqual({k: self.player_status()[k] for k in ('launch', 'name')}, {'launch': 'package', 'name': 'beta'})

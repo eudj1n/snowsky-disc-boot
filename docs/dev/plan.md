@@ -1529,18 +1529,24 @@ the only installer. Play at power-on stays the recovery path only.
   on the owner's player from a really new state: the first installation of
   the packages, a card without `.disc`.
 
-- [ ] FiiO's own interface first in the menu's list (owner, 2026-10-09): the
+- [x] FiiO's own interface first in the menu's list (owner, 2026-10-09): the
   menu offers stock first, then the installed interfaces, so the project does
   not look built around diskOS, a project of its own (today the boot program
   lists the packages first and stock last: `ui/choices.json`). The default
-  stays the last answer; the README's picture of the menu drawn again.
-- [ ] `release.py installer` downloads into a folder it creates (2026-10-09:
+  stays the last answer; the README's picture of the menu drawn again. Done
+  2026-10-09: `write_choices` lists stock first (the contract says so),
+  `test_boot` and `menu_guest.py` (rows by position) follow, the pictures
+  show FiiO first and chosen. On the guest with release 2.57.6.
+- [x] `release.py installer` downloads into a folder it creates (2026-10-09:
   on the tag v2.57.5 the release workflow found no folder to download the
   server and Disc Player into, since every local build had been given them
   with `--from`; the workflow downloads them first now, `release.bundled`
   into its own folder). The fix in `release.py` changes the archive, so it
-  goes with the next release, with a test that downloads.
-- [ ] The player restarted from USB Boot by the installer (owner, 2026-10-09:
+  goes with the next release, with a test that downloads. Done 2026-10-09:
+  `release.bundled` makes the folder it downloads into; the workflow calls
+  `release.py installer` alone again; `test_installer` downloads the server
+  from a stand-in for GitHub.
+- [x] The player restarted from USB Boot by the installer (owner, 2026-10-09:
   FiiO's update restarts the player itself): after the writer's completion,
   in the same entry, a small RAM payload starts the watchdog as the pinned
   SPL source's `_machine_restart` does (TCU `TSCR`, `WDT` `TCNT`, `TDR`,
@@ -1552,7 +1558,41 @@ the only installer. Play at power-on stays the recovery path only.
   first, without a write (a session that only restarts): that the ROM
   boots NAND after the watchdog, and that stock starts normally and leaves
   the port to the USB console with the cable connected at power-on. After
-  2.57.5, in its own release.
+  2.57.5, in its own release. 2026-10-09: the payload (`device/usbboot/restart.c`,
+  `--mode restart`, 344 bytes; the other payloads unchanged), the session
+  (`restart_player.py`) and its audit (`audit_usb_restart.py`), with the three
+  outcomes on a fake ROM ([restart](restart.md)); next the session alone on the
+  owner's player, then the installer. On the player the same day, alone and
+  without a write (the owner, from another computer): `player-restarted`, the
+  menu then stock with the cable connected, its audit matching. The installer
+  restarts the player after every write in its entry, the cable the way only
+  when that fails; the payload goes into the release's payloads.
+
+- [ ] The card over the cable, no card reader (owner, 2026-10-09): USB Boot
+  cannot reach the card (the ROM writes and reads RAM and runs code; an SD
+  driver and an exFAT writer run from RAM would risk the music on it), but
+  after the restart the system runs with the cable connected, and stock's
+  `mq_player` offers the card as a USB drive (`storage_demo`, its USB mode
+  loop, [diagnostics](usb-diagnostics.md)). The installer would then write
+  the packages, apps and console marker there, and read the first start's
+  check from the card, after the write instead of before it. To settle on
+  the player first: how stock enters that mode (by itself on a cable, a
+  setting, a prompt), that it and the USB console share the port in turn,
+  and a first start's check without an expected digest on the card (the
+  installer compares it).
+
+- [x] Release 2.57.6 (2026-10-09): FiiO's own interface first, the player
+  restarted by the installer after the write, the archive's downloads into a
+  folder of their own. On the guest: `boot_guest.py` 16 of 16 (its offer's
+  order fixed in the test), `menu_guest.py` 3 of 3, `two_packages.py` 6 of 6,
+  `boot_report.py` and `boot_layer.py`, `install.py --guest` from the
+  unpacked archive with an empty home; the image `c46ad1f1…` the same on
+  macOS without root and in the Linux container. On the owner's player from
+  the other computer with the archive only: written in the review's entry,
+  the first start's check matched ([record](observations/first-write-observation.md#the-ninth-write-release-2576-the-player-restarted-by-the-installer)).
+- [ ] The run's report names the restart's outcome (`report.json`, the player
+  step), not only its `usb/restart/result.json`; with the next release, as
+  it changes the archive.
 
 ## Later
 

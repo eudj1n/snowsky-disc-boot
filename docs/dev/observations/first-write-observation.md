@@ -394,3 +394,18 @@ its journal audited), and the new system's first start found `4f8d68b6…` on it
 owner answered yes, and no history was written. The image is the same bytes as before (2.57.5's
 programs are 2.57.4's), so this run proves the archive's path, not a change on the player.
 
+## The ninth write (release 2.57.6, the player restarted by the installer)
+
+On 2026-10-09 the owner installed release 2.57.6 from its archive (`27efe101…`) on the other
+computer (Python 3.14, libusb found, no Docker): the menu 2.57.6, the server 2.57.5 and Disc Player
+1.0.0 from the archive's packages, the image built there (`c46ad1f1…`, build `b5e9adddde88`). In one
+USB Boot entry the review found the image the eighth write left (`4f8d68b6…`, known as 2.57.4's by
+its first blocks), the write followed (session `9d9495f1`, its journal audited), the installer then
+ran the restart payload in that entry, and the new system's first start found `c46ad1f1…` on its
+root device; the owner answered yes, all went well, no history. The installer restarted the player
+itself after the write, the cable left connected (the owner: "the installer restarted the device
+itself, all as planned"). The restart payload had run alone on
+the player the same day first (`player-restarted`, the menu then stock, the cable connected;
+[restart](../restart.md)). The run's `report.json` does not name the restart's outcome (its
+`usb/restart/result.json` does); it will from the next release.
+

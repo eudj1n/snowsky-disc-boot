@@ -28,5 +28,6 @@ card's `.disc` folder stay; FiiO's software does not use them.
 USB Boot is the player's own, below any system, so it works even when the
 installed system does not start: switch the player off (if it cannot be
 switched off, let its battery run down), hold **Volume Down** and connect the
-cable to the computer. Leaving USB Boot (the cable disconnected), the player
-restarts into the system it holds.
+cable to the computer. After a write the installer restarts the player into
+the system it holds; otherwise, the cable disconnected, the player leaves USB
+Boot and restarts into it by itself.
