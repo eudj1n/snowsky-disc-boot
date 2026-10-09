@@ -85,7 +85,7 @@ STAGING_RESULT_BYTES = 80
 
 
 def staging_seed(nonce):
-    """The image region's pattern on the player (device/acquisition/staging.c): xorshift32 from a
+    """The image region's pattern on the player (device/usbboot/staging.c): xorshift32 from a
     seed of the session's nonce, never zero."""
     return struct.unpack('<I', hashlib.shake_256(nonce+b'staging-pattern').digest(4))[0] or 1
 

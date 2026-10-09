@@ -51,7 +51,7 @@ acquisition. A changed input requires a fresh plan and scope review.
    **all** chunks, then repeat with their complement. This detects aliases
    that an immediate write/read of each chunk could miss.
 4. Check the image region on the player (plan, stage 4c): upload the staging
-   check (`device/acquisition/staging.c`, built as the `staging-check` payload
+   check (`device/usbboot/staging.c`, built as the `staging-check` payload
    with no NAND opcodes) into the code region and compare it, then run it once
    for the region. It writes xorshift32 words from a seed of the session's nonce
    to the whole region before reading any back, then their complement, and

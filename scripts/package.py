@@ -24,7 +24,7 @@ import zipfile
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from firmware_profile import load_profile  # noqa: E402
 
-# disc-boot's bounds (device/src/manifest.h).
+# disc-boot's bounds (device/common/manifest.h).
 BOOT_API = 1
 ARCH = 'mips32el-linux-static'
 MAX_FILES = 256

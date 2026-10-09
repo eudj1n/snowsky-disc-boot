@@ -214,7 +214,7 @@ int main(void) {
         batch_result.results[i].sequence==i+1 && batch_result.results[i].data[2175]==(uint8_t)(2175+11));
     {   /* The same batch read by digest (plan, stage 4b): each record carries the full result's
            counters and status, the first OOB bytes and the SHA-256 of the main bytes, checked
-           against the boot program's own SHA-256 (src/sha256.c). */
+           against the boot program's own SHA-256 (common/sha256.c). */
         static struct batch_digest_result digests;
         s=setup(&f);s.limit=64;f.page_mode=1;f.id=0x120b;
         batch_digest_run(&s,&page_policy,&batch,&digests,11,13);

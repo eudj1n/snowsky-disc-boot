@@ -189,7 +189,7 @@ def installer_name(version):
 # scripts and the reviewed profiles, the catalogs, the earlier releases' records (their images are known), the
 # payloads' sources their builds are checked by, and the files the image takes from here.
 INSTALLER_TREE = ('install.py', 'console.py', 'LICENSE', 'README.md', 'scripts', 'firmware', 'catalog', 'releases',
-                  'device/acquisition', 'device/deployment')
+                  'device/usbboot', 'device/scripts')
 INSTALLER_SKIP = ('scripts/build.sh', 'scripts/test.sh', 'scripts/menu_font.py', 'scripts/menu_screens.py')
 
 

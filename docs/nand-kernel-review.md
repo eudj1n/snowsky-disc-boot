@@ -198,7 +198,7 @@ checkout, network, USB library or player are required.
 
 The key check added two (2026-10-03): the pins `disc-boot` reads from a
 synthetic key node, moved, broken, disabled, duplicated and missing nodes,
-and the review's constants against `read_keys` in `device/src/boot.c`.
+and the review's constants against `read_keys` in `device/boot/boot.c`.
 
 The full host suite passed: 157 Python tests, eight JavaScript tests and native
 C assertions (`work/nand-re/conformance.log`). Existing GitHub Actions discovery

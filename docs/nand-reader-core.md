@@ -9,7 +9,7 @@ request, RAM execution or NAND access was performed while developing it.
 
 ## Scope and ownership
 
-`device/acquisition/nand_reader.{c,h}` is separate from the companion and USB
+`device/usbboot/nand_reader.{c,h}` is separate from the companion and USB
 console. It is not linked into either image variant. It accepts a trusted chip
 policy, a request and a receive-only controller adapter. There is no MMIO, USB,
 OS call, heap allocation or storage output in this core. The separate SFC adapter

@@ -18,8 +18,8 @@ for name in $names; do
     "${CROSS}gcc" -std=c11 -Os -Wall -Wextra -Werror -march=mips32 -msoft-float \
       -ffreestanding -fno-builtin -fno-pic -fno-pie -mno-abicalls -G0 \
       -fno-stack-protector -fno-asynchronous-unwind-tables -fstack-usage \
-      -ffunction-sections -fdata-sections -I/out -I/src/device/acquisition \
-      -c "/src/device/acquisition/$name.$suffix" -o "$name.o"
+      -ffunction-sections -fdata-sections -I/out -I/src/device/usbboot \
+      -c "/src/device/usbboot/$name.$suffix" -o "$name.o"
 done
 "${CROSS}gcc" -nostdlib -static -no-pie -march=mips32 -msoft-float -mno-abicalls -G0 \
   -Wl,-T,identity.ld,--build-id=none,--gc-sections,-Map,identity.map \

@@ -15,8 +15,8 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   published.
 - [x] Ported from snowsky-disc-web at `faaf502`, unchanged unless noted: the
   NAND and USB Boot tooling (`scripts/deployment/` without the image builder,
-  `device/acquisition/`), the USB console (`device/src/usb_console.c`), the
-  boot report (`device/deployment/boot-report.sh`), the firmware profiles
+  `device/usbboot/`), the USB console (`device/console/usb_console.c`), the
+  boot report (`device/scripts/boot-report.sh`), the firmware profiles
   the tooling reads (`firmware/` without the gateway's catalogs and the OS
   profile), their conformance tests and the documents of the installation
   and its evidence. Links to documents that stayed behind name
@@ -43,7 +43,7 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
 
 ## Stage 1 — the boot program (host)
 
-- [x] `disc-boot` (`device/src/boot.c`, `manifest.c`, `boot_util.c`,
+- [x] `disc-boot` (`device/boot/boot.c`, `device/common/` `manifest.c`, `boot_util.c`,
   `sha256.c`, jsmn): `early` reads the keys from the GPIO pin level behind one
   function and decides the mode (the default, Volume Up for the other one,
   Play for recovery, the boot-loop guard after 3 unconfirmed boots); `start`
@@ -407,7 +407,7 @@ boot menu").
       before its first physical use: the backup's metadata page (the boot
       capture's), the diskOS checkout at `646212d`. The reviewed readers
       collect the primary rootfs only: a whole-NAND backup needs the reader
-      payload (`device/acquisition/`) to read every block.
+      payload (`device/usbboot/`) to read every block.
     - [x] `--guest`: the emulator's guest as the player (2026-10-03,
       `scripts/installer/guest.py` over `scripts/guest.py`'s new `put` and
       `read`): the card staged in the run folder and copied over the
@@ -664,7 +664,7 @@ name ([observation](first-write-observation.md)).
   plan's `writer_wait_ms` by the clock; while staging, the calls so far tell
   the staging's length and the wait is added (about 11 + 15 minutes).
 - [x] The read by digest, device and host (2026-10-05): the payload
-  `rootfs-digest` (`device/acquisition/digest.c`, its own SHA-256 without
+  `rootfs-digest` (`device/usbboot/digest.c`, its own SHA-256 without
   libc, 8,024 bytes then, stack about 13 of 32 KiB) answers the full read's
   batch with 128 bytes a page (the full result's words, the first OOB bytes,
   the SHA-256 of the main bytes); the full read's payload stays byte for
@@ -762,7 +762,7 @@ name ([observation](first-write-observation.md)).
     comparison (about 2 min), then the writer's fixed 15 min, while
     programming 768 blocks takes about 1–1.5 min by the chip's timings.
   - [x] The RAM check on the player (2026-10-07, owner: "возражений нет"):
-    the staging check (`device/acquisition/staging.c`, the `staging-check`
+    the staging check (`device/usbboot/staging.c`, the `staging-check`
     payload, 2,032 bytes, no NAND opcodes) runs from the code region before
     the writer goes there, writes xorshift32 words from a nonce seed over the
     whole image region before reading any back, then their complement, and
@@ -798,7 +798,7 @@ name ([observation](first-write-observation.md)).
 - [ ] With the next write of the boot layer (owner, 2026-10-05): the exact
   check by digest (stage "Later", the faster exact check), a SHA-256 of
   every logical block computed on the player by the reviewed reader
-  (`device/acquisition/`, `device/src/sha256.c`), diskOS's `my_write6`
+  (`device/usbboot/`, `device/common/sha256.c`), diskOS's `my_write6`
   read beside it. Its first run goes beside the full read, before and
   after the write, and both must agree; only then it replaces the full read.
   It keeps the reads' batches (owner, 2026-10-05): each batch returns its
@@ -1435,7 +1435,7 @@ own web apps and its updates; the boot packages (menus, interfaces,
 services) are installed and removed in the menu on the player, boot staying
 the only installer. Play at power-on stays the recovery path only.
 
-- [ ] First, the repository's layout (owner, 2026-10-08): one folder for each
+- [x] First, the repository's layout (owner, 2026-10-08): one folder for each
   component under `device/`, named as its package without `disc-`:
   `boot/` (today's `device/src`), `console/` (disc-usb-console), `menu/`,
   `health/`, `network/`, `common/` (SHA-256, manifests and the like),
@@ -1446,7 +1446,13 @@ the only installer. Play at power-on stays the recovery path only.
   (C, built for MIPS) and what runs on the computer (the installer, Python).
   A move alone first, in its own PR: the same programs, only the paths in
   the build, CI, `release.py` and the documents change (the build id
-  changes with them).
+  changes with them). Done 2026-10-09: `device/boot`, `device/console`,
+  `device/common`, `device/menu`, `device/usbboot`, `device/scripts`
+  (`health/` and `network/` come with their code); the payloads built from
+  the new paths are 2.57.5's byte for byte (all seven `identity.bin`), so
+  the ABI a player ran stays. Their build manifests name the new paths, so
+  until 2.57.6 carries payloads built so, the repository's installer builds
+  them itself (`--boot-build`); an archive keeps its own tree.
 - [ ] The documentation split, after the layout's move (owner, 2026-10-09):
   for users (the README, the installation guide, what is installed and its
   risks, the way back to stock, the CHANGELOG) and for developers

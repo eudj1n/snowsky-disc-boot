@@ -48,7 +48,7 @@ class WriterRom(Rom):
         return bytes(region[offset:offset+length])
 
     def staging(self):
-        """The staging check (device/acquisition/staging.c) as the fake runs it: the pattern written in
+        """The staging check (device/usbboot/staging.c) as the fake runs it: the pattern written in
         full and read back through the region's own mapping (so an alias shows), or the region hashed."""
         magic, version, op, address, length, seed, nonce = struct.unpack_from('<6I16s', self.get(self.reader['request_address'], 48))
         code, checked, digest = 0, 0, bytes(32)
