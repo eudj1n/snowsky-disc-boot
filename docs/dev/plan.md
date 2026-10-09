@@ -1568,6 +1568,19 @@ the only installer. Play at power-on stays the recovery path only.
   restarts the player after every write in its entry, the cable the way only
   when that fails; the payload goes into the release's payloads.
 
+- [ ] The card over the cable, no card reader (owner, 2026-10-09): USB Boot
+  cannot reach the card (the ROM writes and reads RAM and runs code; an SD
+  driver and an exFAT writer run from RAM would risk the music on it), but
+  after the restart the system runs with the cable connected, and stock's
+  `mq_player` offers the card as a USB drive (`storage_demo`, its USB mode
+  loop, [diagnostics](usb-diagnostics.md)). The installer would then write
+  the packages, apps and console marker there, and read the first start's
+  check from the card, after the write instead of before it. To settle on
+  the player first: how stock enters that mode (by itself on a cable, a
+  setting, a prompt), that it and the USB console share the port in turn,
+  and a first start's check without an expected digest on the card (the
+  installer compares it).
+
 ## Later
 
 - An update of the image by the running system from the card (owner,
