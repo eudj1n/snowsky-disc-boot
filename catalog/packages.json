@@ -59,8 +59,8 @@
             "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
             "source": {
                 "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.7/disc-network-2.57.7.zip",
-                "sha256": "21a03666c85b4d1a3990d83d84fd9f4d6f794966e350831e0b15b039570f80ba",
-                "size": 128748
+                "sha256": "2ef8532e987067a12f397a3c535cb807d7f22ec51a29ec9a9cb18795763b9d86",
+                "size": 128785
             },
             "profiles": [
                 "2.57"
@@ -74,7 +74,7 @@
                 "boot": "d1ad405",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "network_guest.py 4 of 4 (this binary) against a stand-in of wpa_cli: networks kept and given back, confirmed; release 2.57.7"
+                "acceptance": "network_guest.py 4 of 4 (this binary) against a stand-in of wpa_cli that parses options as stock's: networks kept and given back with \"--\" before each command, confirmed; release 2.57.7"
             }
         },
         {
