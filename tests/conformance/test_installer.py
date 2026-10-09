@@ -137,6 +137,21 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(installer.run(), 1)
         self.assertIn('disc-menu 9: no local file with sha256', installer.report['status'])
 
+    def release_catalog(self, dist):
+        """The test's catalog as a release names its own packages: this release's menu and disc-health, by default."""
+        import release
+        catalog = json.loads(self.catalog.read_text())
+        for entry in catalog['entries']:
+            if entry['name'] == 'disc-menu':
+                menu = dist/'disc-menu-2.57.9.zip'
+                entry.update(version='2.57.9', source=dict(url=release.url('2.57.9', menu.name), sha256=digest(menu), size=menu.stat().st_size))
+        health = dist/'disc-health-2.57.9.zip'
+        catalog['entries'].append(dict(name='disc-health', role='service', version='2.57.9', profiles=[PROFILE], bootApi=2, license='MIT',
+                                       default=True, source=dict(url=release.url('2.57.9', health.name), sha256=digest(health),
+                                                                 size=health.stat().st_size),
+                                       verified=dict(date='2026-10-09', acceptance='test')))
+        return catalog
+
     def test_the_installers_archive_runs_without_the_repository(self):
         """Plan, stage 6: the installer for users is one archive (release.py installer): install.py with what
         it reads, this release's files and the default server and apps; run from where it was unpacked, its
@@ -144,7 +159,7 @@ class InstallerTests(unittest.TestCase):
         import release
         mips = self.root/'mips'
         mips.mkdir()
-        for name in ('disc-boot', 'disc-usb-console', 'disc-menu'):
+        for name in ('disc-boot', 'disc-usb-console', 'disc-menu', 'disc-health'):
             (mips/name).write_bytes(b'\x7fELF' + name.encode() * 100)
         (mips/'build-id').write_text('b43034ba1e27\n')
 
@@ -154,17 +169,12 @@ class InstallerTests(unittest.TestCase):
                 source.write_bytes(f'{firmware} {name}'.encode())
         dist = self.root/'dist'
         release.build('2.57.9', dist, mips, diskos=self.root/'diskos', payloads=payloads)
-        menu = dist/'disc-menu-2.57.9.zip'
-        catalog = json.loads(self.catalog.read_text())
-        for entry in catalog['entries']:
-            if entry['name'] == 'disc-menu':
-                entry.update(version='2.57.9', source=dict(url=release.url('2.57.9', menu.name), sha256=digest(menu),
-                                                           size=menu.stat().st_size))
+        catalog = self.release_catalog(dist)
         offered = self.root/'release-catalog.json'
         offered.write_text(json.dumps(catalog))
         built = release.installer('2.57.9', dist, [self.local], False, catalog_path=offered, committed=False)
-        self.assertEqual(sorted(built['packages']), ['Disc Player-p1.zip', 'disc-boot-2.57.9-mips.tar.gz', 'disc-menu-2.57.9.zip',
-                                                     'disc-server-9.zip', 'disc-usb-payloads-2.57.9.tar.gz'])
+        self.assertEqual(sorted(built['packages']), ['Disc Player-p1.zip', 'disc-boot-2.57.9-mips.tar.gz', 'disc-health-2.57.9.zip',
+                                                     'disc-menu-2.57.9.zip', 'disc-server-9.zip', 'disc-usb-payloads-2.57.9.tar.gz'])
         unpacked = self.root/'unpacked'
         with tarfile.open(dist/'disc-installer-2.57.9.tar.gz') as tar:
             names = tar.getnames()
@@ -190,6 +200,7 @@ class InstallerTests(unittest.TestCase):
         card = report.parent/'card'
         self.assertEqual(json.loads((card/'.disc/boot/install/menu/package.json').read_text())['version'], '2.57.9')
         self.assertTrue((card/'.disc/boot/install/controller/package.json').is_file() and (card/'Apps/Disc Player/app.json').is_file())
+        self.assertEqual(json.loads((card/'.disc/boot/install/service/disc-health/package.json').read_text())['bootApi'], 2)
         self.assertFalse((top/'work').exists(), 'nothing of the run in the archive')
 
     def test_the_archive_downloads_what_it_was_not_given(self):
@@ -201,7 +212,7 @@ class InstallerTests(unittest.TestCase):
         from unittest import mock
         mips = self.root/'mips'
         mips.mkdir()
-        for name in ('disc-boot', 'disc-usb-console', 'disc-menu'):
+        for name in ('disc-boot', 'disc-usb-console', 'disc-menu', 'disc-health'):
             (mips/name).write_bytes(b'\x7fELF' + name.encode() * 100)
         (mips/'build-id').write_text('b43034ba1e27\n')
 
@@ -211,14 +222,10 @@ class InstallerTests(unittest.TestCase):
                 source.write_bytes(f'{firmware} {name}'.encode())
         dist = self.root/'dist'
         release.build('2.57.9', dist, mips, diskos=self.root/'diskos', payloads=payloads)
-        menu = dist/'disc-menu-2.57.9.zip'
-        catalog = json.loads(self.catalog.read_text())
+        catalog = self.release_catalog(dist)
         server_url = 'https://github.com/eudj1n/snowsky-disc-server/releases/download/v9/disc-server-9.zip'
         for entry in catalog['entries']:
-            if entry['name'] == 'disc-menu':
-                entry.update(version='2.57.9', source=dict(url=release.url('2.57.9', menu.name), sha256=digest(menu),
-                                                           size=menu.stat().st_size))
-            else:
+            if entry['name'] == 'disc-server':
                 entry['source']['url'] = server_url
         offered = self.root/'release-catalog.json'
         offered.write_text(json.dumps(catalog))

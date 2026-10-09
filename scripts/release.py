@@ -7,6 +7,7 @@ reviewed profile. Its files come from build/mips, the MIPS build of sources with
 changes (scripts/build.sh mips):
 
   disc-menu-<version>.zip           the boot menu's package (role menu), for the card
+  disc-health-<version>.zip         the health journal's package (a service), for the card
   disc-boot-<version>-mips.tar.gz   disc-boot and disc-usb-console, which install.py puts into
                                     the image it builds from FiiO's update on the user's computer
   disc-usb-payloads-<version>.tar.gz  the programs install.py runs from the player's RAM in USB Boot
@@ -75,7 +76,13 @@ def digest(path):
 
 
 def names(version):
-    return f'disc-menu-{version}.zip', f'disc-boot-{version}-mips.tar.gz', f'disc-usb-payloads-{version}.tar.gz'
+    return (f'disc-menu-{version}.zip', f'disc-boot-{version}-mips.tar.gz', f'disc-usb-payloads-{version}.tar.gz',
+            f'disc-health-{version}.zip')
+
+
+def own_packages(version):
+    """The packages a release carries itself (the menu, disc-health): the catalog offers each by default."""
+    return [name for name in names(version) if name.endswith('.zip')]
 
 
 # The programs the installer runs from the player's RAM in USB Boot (plan, stage 6: built once here, with the boot
@@ -138,7 +145,7 @@ def build(version, output, mips=ROOT/'build/mips', release=True, diskos=None, pa
     if output.exists() and any(output.iterdir()):
         raise ReleaseError(f'{output} is not empty')
     output.mkdir(parents=True, exist_ok=True)
-    menu_zip, kit_name, _ = names(version)
+    menu_zip, kit_name, _, health_zip = names(version)
     with tempfile.TemporaryDirectory() as temp:
         folder = Path(temp)/'disc-menu'
         (folder/'bin').mkdir(parents=True)
@@ -149,6 +156,14 @@ def build(version, output, mips=ROOT/'build/mips', release=True, diskos=None, pa
         shutil.copyfile(ROOT/'device/licenses/Inter.OFL', folder/'licenses/Inter.OFL')
         package.describe(folder, 'disc-menu', version, 'menu', 'bin/mq_ui', profiles=[firmware], homepage=REPOSITORY)
         package.zip_package(folder, output/menu_zip)
+        # disc-health, a service of boot API 2 (its bounds are the boot layer's defaults).
+        folder = Path(temp)/'disc-health'
+        (folder/'bin').mkdir(parents=True)
+        shutil.copyfile(mips/'disc-health', folder/'bin/disc-health')
+        (folder/'bin/disc-health').chmod(0o755)
+        shutil.copyfile(ROOT/'LICENSE', folder/'LICENSE')
+        package.describe(folder, 'disc-health', version, 'service', 'bin/disc-health', profiles=[firmware], homepage=REPOSITORY)
+        package.zip_package(folder, output/health_zip)
     kit(version, mips, output/kit_name)
     payload_name = names(version)[2]
     if diskos is None:
@@ -219,16 +234,17 @@ def bundled(version, dist, catalog_path, places, downloads, allow_download):
     downloads.mkdir(parents=True, exist_ok=True)
     found = {name: dist/name for name in names(version)}
     entries = catalog.load(catalog_path, kind='packages')['entries']
-    menu = names(version)[0]
-    if not any(e['source'].get('url') == url(version, menu) and e['source'].get('sha256') == digest(dist/menu) and e.get('default')
-               for e in entries):
-        raise ReleaseError(f'the catalog does not offer {menu} by default: update catalog/packages.json first')
+    own = {url(version, name) for name in own_packages(version)}
+    for name in own_packages(version):
+        if not any(e['source'].get('url') == url(version, name) and e['source'].get('sha256') == digest(dist/name) and e.get('default')
+                   for e in entries):
+            raise ReleaseError(f'the catalog does not offer {name} by default: update catalog/packages.json first')
     def file_name(entry):
         return Path(entry['source']['url']).name if entry['source'].get('url') else f'{entry["name"]}-{entry["version"]}.zip'
     with tempfile.TemporaryDirectory() as temp:
         for entry in entries:
             source = entry['source']
-            if not entry.get('default') or source.get('url') == url(version, menu):
+            if not entry.get('default') or source.get('url') in own:
                 continue
             path = catalog.obtain(source, places, downloads, allow_download)
             if path is None:
@@ -443,7 +459,7 @@ def main():
     r.add_argument('--dist', type=Path, required=True)
     r.add_argument('--accepted', required=True, help='What the guest accepted, with which emulator and image')
     r.add_argument('--image', type=Path, help="The image's build folder (build_candidate.py's output) the guest ran")
-    i = sub.add_parser('installer', help="The installer's archive beside the release files, once the catalog offers this menu")
+    i = sub.add_parser('installer', help="The installer's archive beside the release files, once the catalog offers its packages")
     i.add_argument('--version', required=True)
     i.add_argument('--dist', type=Path, required=True)
     i.add_argument('--from', dest='places', type=Path, action='append', default=[],

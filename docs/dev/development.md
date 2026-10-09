@@ -90,6 +90,14 @@ each service and ui package; the server of boot API 1, role `service` with
 keeps no modes), then swaps it in; a refused package stages nothing and
 leaves what was staged.
 
+## The health journal
+
+`scripts/build.sh host` and `mips` build `disc-health` beside the menu (a service of boot API 2;
+[disc-health](health.md)); the host build also makes `disc-health-fixture`, whose player is a
+folder (`DISC_BOOT_FIXTURE_ROOT`, the kernel's ring as `fixture/kmsg`, `DISC_HEALTH_INTERVAL`),
+checked by `tests/conformance/test_health.py`. A release builds its package
+(`disc-health-<version>.zip`, `release.py build`), which the catalog offers by default.
+
 ## The boot menu
 
 `scripts/build.sh host` and `mips` build `disc-menu` beside `disc-boot` (soft-float, no FPU
