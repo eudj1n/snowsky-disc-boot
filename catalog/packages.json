@@ -6,12 +6,12 @@
         {
             "name": "disc-menu",
             "role": "menu",
-            "version": "2.57.5",
+            "version": "2.57.6",
             "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.5/disc-menu-2.57.5.zip",
-                "sha256": "b5ec12ef930a16acdea36878fdd27b08e5c66aa1608af04264b8f80de6408471",
-                "size": 158909
+                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.6/disc-menu-2.57.6.zip",
+                "sha256": "fc0521587c53dd5d552dd63f0bb0c4e5bd50043eb3ebeb5b143a5e17c01e7ddf",
+                "size": 158904
             },
             "profiles": [
                 "2.57"
@@ -21,10 +21,10 @@
             "default": true,
             "verified": {
                 "date": "2026-10-09",
-                "boot": "b419666",
+                "boot": "b5e9add",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "menu_guest.py 3 of 3; release 2.57.5 (the menu of build b41966605383, as 2.57.4)"
+                "acceptance": "menu_guest.py 3 of 3 (FiiO first); boot_guest.py 16 of 16; release 2.57.6"
             }
         },
         {
