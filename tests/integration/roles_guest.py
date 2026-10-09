@@ -23,9 +23,12 @@ qemu-user ignores a guest's RLIMIT_AS (linux-user's setrlimit), so the memory bo
 recorded here (the process's limits as the container sees them); it takes effect on the player.
 """
 import argparse
+from contextlib import contextmanager
 import json
+import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -34,6 +37,26 @@ import boot_guest as bg  # noqa: E402
 
 HEALTH, FAILING = 'probe-health', 'probe-failing'
 DATA = '/usr/data/disc-boot'
+
+
+@contextmanager
+def userdata():
+    """/usr/data (the guest's own ext4 image, as the player's partition), written here while the
+    guest is off: where it is mounted already, else mounted from its node for the change."""
+    if bg.machine().get('state') not in ('off', None):
+        raise AssertionError(f'/usr/data is written only with the guest off: {bg.machine()}')
+    target = bg.ROOTFS/'usr/data'
+    mounted = subprocess.run(['mountpoint', '-q', str(target)]).returncode == 0
+    if not mounted:
+        target = Path('/mnt/roles-guest-userdata')
+        target.mkdir(parents=True, exist_ok=True)
+        subprocess.run(['mount', '-t', 'ext4', str(bg.ROOTFS/'dev/ubi1_0'), str(target)], check=True)
+    try:
+        yield target
+    finally:
+        os.sync()
+        if not mounted:
+            subprocess.run(['umount', str(target)], check=True)
 
 
 def service(name, predicate, label, timeout=300):
@@ -65,10 +88,11 @@ def run(output):
             shutil.rmtree(root/left, ignore_errors=True)
     # 1. The server as boot API 1 left it: service/ with its slot a, confirmed.
     legacy = bg.probe(work/'v1', '1', role='service', boot_api=1, name=bg.NAME)
-    data = bg.ROOTFS/DATA.lstrip('/')
-    shutil.rmtree(data, ignore_errors=True)
-    shutil.copytree(legacy, data/'service/a')
-    (data/'service/state.json').write_text(json.dumps(dict(schema=1, current='a', confirmed=True, previous=None, previousManifest=None)))
+    with userdata() as root:
+        data = root/'disc-boot'
+        shutil.rmtree(data, ignore_errors=True)
+        shutil.copytree(legacy, data/'service/a')
+        (data/'service/state.json').write_text(json.dumps(dict(schema=1, current='a', confirmed=True, previous=None, previousManifest=None)))
     bg.power('on')
     boot = bg.boot_status()
     status = bg.controller(lambda s: s['state'] in ('ready', 'confirmed') and s['version'] == '1', 'the server of boot API 1 runs')
@@ -112,6 +136,7 @@ def run(output):
     assert state['unconfirmed'] == 0, ('a failing service never keeps the count', state)
     status = json.loads(bg.guest('/opt/disc-boot/disc-boot status'))
     assert sorted(status['services']) == [FAILING, HEALTH], status['services']
+    runs = bg.count(f'{DATA}/data/{HEALTH}/probe.log', 'start')
     bg.power('off')
     with bg.card() as root:
         result = json.loads((root/'.disc/boot/result.json').read_text())
@@ -119,9 +144,9 @@ def run(output):
     bg.step('services with play', result=result, health=health, failing=failing, controller=controller, bounds=nice,
             memory='recorded only: qemu-user ignores RLIMIT_AS', state=state)
     # 4. Autostart off: the service does not start.
-    runs = bg.count(f'{DATA}/data/{HEALTH}/probe.log', 'start')
-    path = data/f'service/{HEALTH}/state.json'
-    path.write_text(json.dumps(dict(json.loads(path.read_text()), autostart=False)))
+    with userdata() as root:
+        path = root/f'disc-boot/service/{HEALTH}/state.json'
+        path.write_text(json.dumps(dict(json.loads(path.read_text()), autostart=False)))
     bg.power('on')
     off = service(HEALTH, lambda s: s['state'] == 'disabled', 'autostart off')
     bg.controller(lambda s: s['state'] in ('ready', 'confirmed'), 'the controller runs')

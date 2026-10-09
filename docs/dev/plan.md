@@ -1468,7 +1468,7 @@ the only installer. Play at power-on stays the recovery path only.
   there; never automatic). A specimen page and numbered decisions first;
   no screen before it works. The manager's "Player software" becomes
   read-only with a hint.
-- [ ] The roles, laid out before other players run the boot layer (owner,
+- [x] The roles, laid out before other players run the boot layer (owner,
   2026-10-08): `controller`, at most one, the server (it owns the player's
   protocol, listens on the network and updates itself through its
   manager); `service`, any number with distinct names, background jobs
@@ -1485,6 +1485,36 @@ the only installer. Play at power-on stays the recovery path only.
   `controller` with boot API 2. The server finds every other path in its
   environment (`$DISC_BOOT_INACTIVE`, `$DISC_BOOT_REQUEST`, …), so its
   binary does not change for the move.
+  Done 2026-10-09 (boot API 2; [contract](contract.md#roles)), with the
+  owner's decisions of that day: services take no part in the boot-loop
+  guard (a failing one stops alone, with its reason); each starts after the
+  controller is ready or settled, at nice +10 with its address space bounded
+  by its manifest's `memory` (16 MiB unless it names 1-64; the controller
+  keeps nice +5 and no bound); `autostart` lives in its state (on unless
+  false; the menu's services screen will change it); a service asks only for
+  `activate`, `rollback` and `remove`; listening on no port is a rule of the
+  catalog's acceptance. The move: the first boot renames `service/` to
+  `controller/` once and logs it; a service package of boot API 1 is the
+  controller (told the role it names), its status also in `service.json`;
+  `verify service` takes a controller's package for that server's own
+  updates; the card's old `install/service/` is the controller. The tools
+  stage by role (`install/controller/`, `install/service/<name>/`), the
+  installer offers a server and services and removes the old folder, the
+  boot report has each service. `test_boot` 62 (macOS and Linux, where
+  `RLIMIT_AS` applies) and the tools' tests. The image of `944d9c5`
+  (`3c3c141a…`, the same bytes built on macOS and in the container):
+  `boot_report.py`, and `boot_layer.py` on the packed tree (API 1's
+  `service/` moved, the controller and a service confirmed after 181 s). On
+  the guest (emulator `f1d5e33`, FiiO 2.57): `roles_guest.py` 5 of 5 (the
+  move, the old server's update to a controller, two services with Play, one
+  failing while the count cleared, autostart off, stock mode; nice 5 and 10;
+  qemu-user ignores `RLIMIT_AS`, so the bound takes effect on the player
+  only), `boot_guest.py` 16 of 16, and `install_guest.py` with the published
+  disc-server 2.57.5 (a package of API 1, staged in `install/controller/`):
+  installed by Play, confirmed, serving Disc Player 1.0.0, its manager
+  taking updates (`service.json` read). snowsky-disc-server reads `controller.json`, else `service.json`,
+  and its manager lists the services (its plan, stage 5); its package keeps
+  API 1's service role until this boot layer is released.
 - [ ] disc-health and disc-network are built here, as the menu is (owner,
   2026-10-08): native code beside `device/menu`, the same toolchain, released
   with the boot layer's numbers (`disc-health-<v>.zip`,
