@@ -243,8 +243,8 @@ def screens(buttons, work):
     # The menu takes keys again once boot's installation has ended (its program exited after "done").
     soon(lambda: run_json('install.json'), lambda i: i['state'] == 'done', 'the installation done', 60)
     time.sleep(3.0)
-    press(buttons, VOLUME_UP, PLAY)                                         # Back: FiiO, Two, Three, Services, Packages
-    press(buttons, VOLUME_DOWN, VOLUME_DOWN, PLAY, pause=0.2)               # Three
+    press(buttons, VOLUME_UP, PLAY)                                         # Back: FiiO, Three, Two (by name), Services, Packages
+    press(buttons, VOLUME_DOWN, PLAY, pause=0.2)                            # Three
     keys_taken()
     booted()
     ui = bg.ui_runs(THREE)
@@ -254,8 +254,8 @@ def screens(buttons, work):
     bg.power('off')
     booted = power_on()
     asking()
-    press(buttons, VOLUME_DOWN, VOLUME_DOWN, PLAY)                          # FiiO, Two, Three (the last answer), Services, Packages
-    press(buttons, *([VOLUME_DOWN] * 4), PLAY, PLAY)                        # Back, Two, Three, the service, everything: asked twice
+    press(buttons, VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY)             # FiiO, Three (the last answer), Two, Services, Packages
+    press(buttons, *([VOLUME_DOWN] * 4), PLAY, PLAY)                        # Back, Three, Two, the service, everything: asked twice
     press(buttons, PLAY, pause=0.2)
     keys_taken()
     soon(lambda: bg.guest('ls /usr/data/disc-boot/remove-everything 2>/dev/null').strip() or None, bool, 'everything marked', 30)
