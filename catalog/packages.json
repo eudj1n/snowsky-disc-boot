@@ -34,8 +34,8 @@
             "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
             "source": {
                 "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.7/disc-health-2.57.7.zip",
-                "sha256": "976195488a2c6630d5e700c9de3764a3727cbc8032eca0cb1fea1d680b950a18",
-                "size": 135608
+                "sha256": "d7bd884ebcf9d4f076fd3a8ad05c52bbbd6b70a4ddf8c1e81c8a6e3275ac0d31",
+                "size": 136406
             },
             "profiles": [
                 "2.57"
@@ -49,7 +49,7 @@
                 "boot": "d1ad405",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "health_guest.py 3 of 3 (this binary): installed by Play, confirmed, the emulator's gauge and the card read; release 2.57.7"
+                "acceptance": "health_guest.py 3 of 3 (this binary): installed by Play, confirmed, the emulator's gauge and the card read, no time before the clock is believed; release 2.57.7"
             }
         },
         {
