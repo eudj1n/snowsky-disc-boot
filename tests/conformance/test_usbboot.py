@@ -35,6 +35,8 @@ class Tools:
         out, stdout = Path(self.value(command, '--output')) if '--output' in command else None, ''
         if tool == 'build_identity.py':
             out.mkdir(parents=True)
+            if self.value(command, '--mode') == 'restart' and 'restart' in self.faults:
+                (out/'identity.bin').write_bytes(b'restart payload')
         elif tool == 'installation_review.py' and '--allow-unknown' in command and 'unknown-image' in self.faults:
             out.mkdir(parents=True)
             for name in ('installation-review.json', 'proposed-installer-profile.json', 'postwrite-collection-plan.json'):
@@ -74,6 +76,13 @@ class Tools:
             out.mkdir(parents=True)
             (out/'result.json').write_text(json.dumps(dict(status='nand-metadata-observed', session_id='metadata-session')))
             (out/'metadata-main.bin').write_bytes(b'page')
+        elif tool == 'restart_player.py' and args[0] == 'plan':
+            stdout = json.dumps(dict(plan=dict(protocol_call_limit=30), plan_sha256='restart-plan'))
+        elif tool == 'restart_player.py':
+            # The player restarted after the write (plan, stage 7): it leaves the bus, unless a test says otherwise.
+            out.mkdir(parents=True)
+            status = 'restart-not-observed' if 'no-restart' in self.faults else 'player-restarted'
+            (out/'result.json').write_text(json.dumps(dict(status=status, session_id='restart-session')))
         elif tool == 'boot_evidence.py' and args[0] == 'build':
             out.mkdir(parents=True)
         elif tool == 'boot_evidence.py' and args[0] == 'plan':
@@ -167,7 +176,7 @@ class ReviewedTests(unittest.TestCase):
     def test_the_releases_payloads_are_taken_rather_than_built(self):
         """Plan, stage 6: with the release's prebuilt payloads nothing is compiled on the computer."""
         payloads = self.root/'payloads'
-        for mode in ('metadata', 'rootfs', 'rootfs-digest', 'staging-check', 'rootfs-probe'):
+        for mode in ('metadata', 'rootfs', 'rootfs-digest', 'staging-check', 'rootfs-probe', 'restart'):
             (payloads/mode).mkdir(parents=True)
             (payloads/mode/'identity.bin').write_bytes(mode.encode())
         tools = Tools(self, ())
@@ -187,7 +196,7 @@ class ReviewedTests(unittest.TestCase):
         reviewed.audit()
         # Five payloads: the metadata read, the readback, the read by digest, the staging check and the
         # identity check's probe (plan, stage 4c); the probe read in place of a backup.
-        self.assertEqual(tools.calls, ['build_identity.py']*5 + ['installation_review.py',
+        self.assertEqual(tools.calls, ['build_identity.py']*6 + ['installation_review.py',
                                        'collect_rootfs.py plan', 'collect_rootfs.py acquire',
                                        'writer_transport.py plan', 'writer_transport.py acquire',
                                        'collect_rootfs.py acquire', 'readback.py plan', 'readback.py verify',
@@ -525,7 +534,7 @@ class KnownPathTests(ReviewedTests):
         decision = reviewed.review_known()
         reviewed.write()
         reviewed.audit(read=False)
-        self.assertEqual(tools.calls, ['build_identity.py']*5 + ['boot_evidence.py build',
+        self.assertEqual(tools.calls, ['build_identity.py']*6 + ['boot_evidence.py build',
                          'ram_transport.py plan', 'ram_transport.py acquire',
                          'boot_evidence.py plan', 'boot_evidence.py acquire', 'audit_usb_boot.py',
                          'collect_rootfs.py plan', 'collect_rootfs.py acquire', 'audit_usb_probe.py',
@@ -591,6 +600,29 @@ class KnownPathTests(ReviewedTests):
         acquired = [c for c in tools.calls if c.endswith('acquire')]
         self.assertEqual(acquired, ['ram_transport.py acquire', 'boot_evidence.py acquire', 'collect_rootfs.py acquire',
                                     'writer_transport.py acquire'], 'one entry: three reads and the write; no readback')
+
+    def test_the_player_restarts_after_the_write_and_the_cable_stays(self):
+        """Plan, stage 7: after the write, in its entry, the installer restarts the player itself; the user only
+        answers, and the first start's check comes over the cable that stayed connected."""
+        self.fetch = self.check_matches
+        code, installer, tools = self.install_known(['', 'CARD', 'CHECK', 'WRITE', 'yes'], faults=('restart',))
+        self.assertEqual((code, installer.report['status']), (0, 'prepared'))
+        acquired = [c for c in tools.calls if c.endswith('acquire')]
+        self.assertEqual(acquired[-2:], ['writer_transport.py acquire', 'restart_player.py acquire'])
+        self.assertIn('audit_usb_restart.py', tools.calls)
+        screen = ' '.join(installer.screen.out.getvalue().split())
+        self.assertIn('keep the cable connected', screen)
+        self.assertIn('the cable still connected', screen)
+        self.assertNotIn('Disconnect the cable', screen)
+
+    def test_without_a_restart_the_cable_is_the_way_as_before(self):
+        self.fetch = self.check_matches
+        code, installer, tools = self.install_known(['', 'CARD', 'CHECK', 'WRITE', 'yes'], faults=('restart', 'no-restart'))
+        self.assertEqual((code, installer.report['status']), (0, 'prepared'), 'the write stands; no restart is no stop')
+        self.assertIn('restart_player.py acquire', tools.calls)
+        screen = ' '.join(installer.screen.out.getvalue().split())
+        self.assertIn('Disconnect the cable', screen)
+        self.assertIn('connect the cable to this computer again', screen)
 
     def test_an_image_the_review_does_not_know_is_not_written(self):
         code, installer, tools = self.install_known(['', 'CARD', 'CHECK'], faults=('unknown-image',))

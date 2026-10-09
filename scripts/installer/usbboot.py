@@ -188,6 +188,8 @@ class Reviewed:
         self.staging_build = self.work/'build-staging'
         # Without a history (plan, stage 6): the boot evidence's payloads; the review knows the image.
         self.boot_build = self.work/'build-boot-evidence'
+        # The player restarted after the write (plan, stage 7): the watchdog started from RAM.
+        self.restart_build = self.work/'build-restart'
         self.known = False
         self.log = self.work/'commands.log'
         # progress(label, fraction, seconds) while a USB session runs (the installer's screen).
@@ -265,7 +267,7 @@ class Reviewed:
         and sources), else built here. evidence: the boot evidence's too, for an installation without a history."""
         # The digest payload (plan, stage 4b) is built beside the reviewed ones; it runs only beside a full read.
         for mode, out in (('metadata', self.meta), ('rootfs', self.readback_build), ('rootfs-digest', self.digest_build),
-                          ('staging-check', self.staging_build), ('rootfs-probe', self.probe_build)):
+                          ('staging-check', self.staging_build), ('rootfs-probe', self.probe_build), ('restart', self.restart_build)):
             if self.payloads:
                 shutil.copytree(self.payloads/mode, out)
                 continue
@@ -361,6 +363,28 @@ class Reviewed:
                 raise ReviewedError(f'the installation package lacks {target}-write-plan.json')
         self.known = True
         return decision
+
+    # After the write: the player restarted by the installer (plan, stage 7)
+
+    def can_restart(self):
+        return (self.restart_build/'identity.bin').is_file()
+
+    def restart(self):
+        """The player restarted from USB Boot after the write, in its entry: the restart payload run from RAM
+        (restart_player.py) and its journal audited. Its outcome: 'player-restarted' (it left the bus),
+        'restart-not-observed', 'restart-uncertain' or 'failed'. Never retried and never a reason to stop: the
+        write is done, and the cable is the way out as before."""
+        out = self.work/'restart'
+        args = ['--version', self.version, '--build', self.restart_build, '--diskos', self.diskos]
+        plan, approved = self.planned('restart_player.py', *args, save=self.work/'restart-plan.json', what='the restart')
+        self.session('restart_player.py', 'acquire', *args, '--libusb', self.libusb, '--approved-plan-sha256', approved,
+                     '--output', out, output=out, calls=expected_calls(plan), label='Restarting the player')
+        status = load_json(out/'result.json').get('status', 'failed') if (out/'result.json').is_file() else 'failed'
+        if status in ('player-restarted', 'restart-not-observed', 'restart-uncertain'):
+            self.need(self.tool('audit_usb_restart.py', '--run', out, '--plan', self.work/'restart-plan.json', '--build',
+                                self.restart_build, '--diskos', self.diskos, '--output', out/'offline-review.json'),
+                      'the audit of the restart')
+        return status
 
     # 2, 4. A collection of the primary rootfs, compared with an image
 

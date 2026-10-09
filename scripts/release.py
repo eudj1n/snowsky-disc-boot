@@ -80,7 +80,7 @@ def names(version):
 
 # The programs the installer runs from the player's RAM in USB Boot (plan, stage 6: built once here, with the boot
 # layer's toolchain, and taken from the release by their digest, so a user's computer compiles nothing).
-PAYLOAD_MODES = ('metadata', 'rootfs', 'rootfs-digest', 'rootfs-probe', 'staging-check')
+PAYLOAD_MODES = ('metadata', 'rootfs', 'rootfs-digest', 'rootfs-probe', 'staging-check', 'restart')
 PAYLOAD_FILES = ('build.json', 'identity.elf', 'identity.bin', 'identity_layout.h', 'identity.ld')
 EVIDENCE_SCOPES = ('uboot', 'ota')
 

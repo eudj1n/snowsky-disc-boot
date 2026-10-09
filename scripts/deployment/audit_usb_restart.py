@@ -9,6 +9,7 @@ its execution, and the one request held after it, with the outcome the result na
 session."""
 import json
 from pathlib import Path
+import struct
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -52,7 +53,9 @@ def audit(run, plan_file, build, diskos, root=ROOT):
             bytes=len(spl), diagnostic=t['diagnostic_address'], once_an_entry=True), 'SPL differs')
     entry = bytes.fromhex(r['entry_diagnostic'])
     skipped = entry == CLEAN
-    require(r['spl_skipped'] == skipped and r['spl_execution_attempted'] == (not skipped), 'DDR bring-up differs')
+    require(r['spl_skipped'] == skipped and r['spl_execution_attempted'] == (not skipped)
+            and r.get('ddr_diagnostic', list(struct.unpack('<5I', CLEAN))) == list(struct.unpack('<5I', CLEAN)),
+            'DDR bring-up differs')
     answer = (run/'read-001.bin').read_bytes()
     require(answer.hex() in f['probe']['accepted_reply_hex'], 'Unreviewed CPU answer')
     calls = Calls(answer)

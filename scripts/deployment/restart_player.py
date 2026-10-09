@@ -21,6 +21,7 @@ import ctypes as C
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import struct
 import sys
 import time
 import uuid
@@ -52,7 +53,7 @@ def run(session, inputs, record):
     def upload(address, data):
         session.write(address, data)
         check(session.read(address, len(data)) == data, 'SPL SRAM readback mismatch')
-    ram.bring_up(session, inputs['spl'], record, upload)
+    record['ddr_diagnostic'] = list(struct.unpack('<5I', ram.bring_up(session, inputs['spl'], record, upload)))
     entry, payload = record['plan']['payload_entry'], inputs['payload']
     session.write(entry, payload)
     check(session.read(entry, len(payload)) == payload, 'Restart payload readback mismatch')

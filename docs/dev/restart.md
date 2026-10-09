@@ -46,7 +46,21 @@ failure; the system's start and its USB console are the proof), the ROM answerin
 call, the held request's outcome included (`usb_trace_audit.ask`). `test_restart_player`
 runs the three outcomes on a fake ROM.
 
-On the player: not yet. First a session without a write (the player in USB Boot,
-then this session alone): that the ROM restarts the chip into NAND after the watchdog,
-and that stock starts normally with the cable connected and leaves the port to the
-USB console. Only then the installer runs it after the write.
+## On the player
+
+2026-10-09, the session alone, without a write, by the owner from another computer
+(the branch's clone, the payload's build sent to it, plan `c5937231…` computed there
+the same): a fresh entry, so the SPL once; the payload compared in RAM and executed;
+the held request ended with an I/O error, the ROM gone from the bus
+(`player-restarted`, 23 calls, 2.1 s, its audit matching there and here). The player
+started its system by itself with the cable connected: the menu, then stock.
+
+## In the installer
+
+After every write (the candidate's and both ways back to stock) the installer runs the
+session in the write's entry (`usbboot.Reviewed.restart`, the payload from the release
+or built with the others) and audits it. When the player left the bus it says so and
+the cable stays connected: the user answers about the start, and the first start's
+check is read over that cable. Any other outcome, or a release without the payload, is
+the cable as before (unplug, then plug while the new system runs); the write stands
+either way and nothing is retried (`test_usbboot`).

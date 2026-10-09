@@ -1546,7 +1546,7 @@ the only installer. Play at power-on stays the recovery path only.
   `release.bundled` makes the folder it downloads into; the workflow calls
   `release.py installer` alone again; `test_installer` downloads the server
   from a stand-in for GitHub.
-- [ ] The player restarted from USB Boot by the installer (owner, 2026-10-09:
+- [x] The player restarted from USB Boot by the installer (owner, 2026-10-09:
   FiiO's update restarts the player itself): after the writer's completion,
   in the same entry, a small RAM payload starts the watchdog as the pinned
   SPL source's `_machine_restart` does (TCU `TSCR`, `WDT` `TCNT`, `TDR`,
@@ -1562,7 +1562,11 @@ the only installer. Play at power-on stays the recovery path only.
   `--mode restart`, 344 bytes; the other payloads unchanged), the session
   (`restart_player.py`) and its audit (`audit_usb_restart.py`), with the three
   outcomes on a fake ROM ([restart](restart.md)); next the session alone on the
-  owner's player, then the installer.
+  owner's player, then the installer. On the player the same day, alone and
+  without a write (the owner, from another computer): `player-restarted`, the
+  menu then stock with the cable connected, its audit matching. The installer
+  restarts the player after every write in its entry, the cable the way only
+  when that fails; the payload goes into the release's payloads.
 
 ## Later
 
