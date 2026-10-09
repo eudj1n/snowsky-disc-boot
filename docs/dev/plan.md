@@ -1527,7 +1527,10 @@ the only installer. Play at power-on stays the recovery path only.
   upgrade leaves a stock player. Neither the Local upgrade nor stock's
   "Reset all" removes `/usr/data/disc-boot`. After it, the user path's test
   on the owner's player from a really new state: the first installation of
-  the packages, a card without `.disc`.
+  the packages, a card without `.disc`. diskOS reinstalled then too (owner,
+  2026-10-09): the player holds a diskOS 1.2.0 package assembled before
+  packages named their project page and title, so the manager shows it as
+  `diskos` without a link; the installer's assembly now gives both.
 
 - [x] FiiO's own interface first in the menu's list (owner, 2026-10-09): the
   menu offers stock first, then the installed interfaces, so the project does
