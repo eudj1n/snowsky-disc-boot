@@ -342,20 +342,25 @@ class Reviewed:
         # The boot evidence read the page again and found it unchanged (its metadata-main.bin): the plans bind it.
         return self.metadata_page()
 
-    def review_known(self):
+    def review_known(self, allow_unknown=False):
         """The review of this entry's evidence, offline in seconds: what the player holds (decision.json), or a
-        refusal (an image it does not know, another bootloader) before anything is written."""
-        self.need(self.tool('installation_review.py', '--known', '--version', self.version, '--diskos', self.diskos,
+        refusal (an image it does not know, another bootloader) before anything is written. allow_unknown: the way
+        back to stock from any state, where an image it does not know admits the restore only."""
+        self.need(self.tool('installation_review.py', '--known', *(['--allow-unknown'] if allow_unknown else []),
+                            '--version', self.version, '--diskos', self.diskos,
                             '--artifacts', self.artifacts, '--build', self.meta, '--staging-build', self.staging_build,
                             '--readback-build', self.readback_build, '--boot-build', self.boot_build, '--probe-build', self.probe_build,
                             '--boot-capture', self.work/'boot', '--probe-capture', self.work/'identity', '--libusb', self.libusb,
                             '--output', self.package), 'the review')
-        for name in ('installation-review.json', 'proposed-installer-profile.json', 'decision.json', 'candidate-write-plan.json',
-                     'restore-write-plan.json', 'postwrite-collection-plan.json'):
+        for name in ('installation-review.json', 'proposed-installer-profile.json', 'decision.json', 'postwrite-collection-plan.json'):
             if not (self.package/name).is_file():
                 raise ReviewedError(f'the installation package lacks {name}')
+        decision = load_json(self.package/'decision.json')
+        for target in decision.get('targets', []):
+            if not (self.package/f'{target}-write-plan.json').is_file():
+                raise ReviewedError(f'the installation package lacks {target}-write-plan.json')
         self.known = True
-        return load_json(self.package/'decision.json')
+        return decision
 
     # 2, 4. A collection of the primary rootfs, compared with an image
 

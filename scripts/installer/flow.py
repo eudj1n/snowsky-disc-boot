@@ -719,7 +719,8 @@ class Installer:
         """What the review found on the player, in words."""
         found = decision.get('found', {})
         return {'stock': 'FiiO\'s own system (stock, as FiiO\'s update installs it)',
-                'release': f'the boot layer {found.get("release")}', 'candidate': 'this run\'s own image'}.get(found.get('kind'), 'an image')
+                'release': f'the boot layer {found.get("release")}', 'candidate': 'this run\'s own image',
+                'unknown': 'a system this installer does not know'}.get(found.get('kind'), 'an image')
 
     def player_known(self, image, restore, work=None):
         """In one entry into USB Boot: the player's partition table, bootloader and first rootfs blocks read and
@@ -744,7 +745,8 @@ class Installer:
                                  'first rootfs blocks are read (about three minutes), each read checked here; nothing is written '
                                  'yet.'], 'CHECK')
             reviewed.entry()
-            decision = reviewed.review_known()
+            # Back to stock from any state (owner, 2026-10-05/09): an image it does not know admits the restore only.
+            decision = reviewed.review_known(allow_unknown=restore)
             if restore:
                 return self.known_restore(reviewed, title, image, decision)
             self.write_and_read(reviewed, title, image, dict(capture=str(reviewed.work/'identity'), found=decision.get('found')),
@@ -758,6 +760,11 @@ class Installer:
         """Stock's rootfs, written in the entry of the evidence that knows what the player holds; the owner's look
         at stock's start (stock has no boot layer to check itself)."""
         stock = reviewed.artifacts/load_json_safe(reviewed.package/'restore-write-plan.json')['plan']['image_name']
+        if decision.get('found', {}).get('kind') == 'unknown':
+            self.confirm(title, ['The player holds a system this installer does not know: a write cut short, or another '
+                                 'FiiO version. The player\'s bootloader was checked; its kernel is not read. FiiO\'s 2.57 '
+                                 'system written over a player of another FiiO version would not start with its kernel: '
+                                 'on such a player, FiiO\'s own update is the way back.'], 'STOCK')
         self.confirm(title, [f'The player holds {self.holds(decision)}.', 'Next, in the same entry (stay connected): stock\'s '
                              'rootfs, written once. Its outcome is never retried.'], 'RESTORE')
         written = reviewed.write('restore')

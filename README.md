@@ -114,8 +114,10 @@ modification of your player: use it at your own risk.
   python3 install.py --restore
   ```
 
-  It reads what the player holds as for an installation, and writes FiiO's
-  own system partition when it knows the image there.
+  It reads what the player holds as for an installation and writes FiiO's
+  own system partition. Over a system it does not know (a write cut short) it
+  asks you to type `STOCK` first: it does not read the player's kernel, so on
+  a player with another FiiO version use FiiO's own update instead.
 
 Either way, the packages' files in the player's data partition and the
 card's `.disc` folder stay; FiiO's software does not use them.

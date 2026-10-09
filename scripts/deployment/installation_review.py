@@ -66,8 +66,10 @@ def validate_binding(bundle,base,cpu,reader,transport,layout,inputs):
         # No history (plan, stage 6): what the player holds, known by its first blocks read in the
         # entry of the write, which must follow in that entry.
         found=state.get('found',{})
-        check(state.get('same_entry_required') is True and state.get('new_image_staged') is False
-              and found.get('kind') in ('stock','release','candidate') and sha(found.get('sha256'))
+        known=found.get('kind') in ('stock','release','candidate') and sha(found.get('sha256'))
+        # An image it does not know only on the way back to stock, from any state (owner, 2026-10-05/09).
+        unknown=found.get('kind')=='unknown' and 'sha256' not in found and inputs['target']=='restore'
+        check(state.get('same_entry_required') is True and state.get('new_image_staged') is False and (known or unknown)
               and sha(found.get('first_blocks_sha256')) and state.get('first_blocks_sha256')==found['first_blocks_sha256'],
               'Invalid known-image source state')
     if state['kind']=='installed-candidate':
@@ -212,13 +214,15 @@ def same_entry(boot,probe):
           'The boot evidence and the identity probe are not of one USB Boot entry')
 
 
-def assemble_known(base,cpu,reader,transport,layout,inputs,captures,plans,libusb,known):
+def assemble_known(base,cpu,reader,transport,layout,inputs,captures,plans,libusb,known,allow_unknown=False):
     """The installation without a history (plan, stage 6): its evidence read in the entry of the
     write. The boot evidence (the bootloader selects the primary rootfs) and the identity probe (the
     first rootfs blocks: an image known by their digest, stock or one of ours, so the player runs the
     reviewed FiiO version) are this player's, each audited; the write's ABI is the one a player ran
     (known['exercised']), in place of a staging capture of this player. plans: the boot evidence's and
-    the probe's plans computed now from the reviewed builds, which the sessions must have carried out."""
+    the probe's plans computed now from the reviewed builds, which the sessions must have carried out.
+    allow_unknown: the way back to stock from any state (owner, 2026-10-05/09): an image it does not know is
+    named so (found 'unknown'), and the bundle then admits only the restore (validate_binding)."""
     results={};pins={}
     for kind in ('boot','probe'):
         results[kind],pins[kind]=evidence(captures[kind],kind)
@@ -246,8 +250,11 @@ def assemble_known(base,cpu,reader,transport,layout,inputs,captures,plans,libusb
     if kind is None and ram.sha(current['image'][:known['first_blocks_bytes']])==first['image_sha256']:
         # This package's own image, written before (a run whose new system did not start, on its way back to stock).
         kind,found='candidate',dict(images['candidate'],first_blocks_sha256=first['image_sha256'])
+    if kind is None and allow_unknown:
+        kind,found='unknown',dict(first_blocks_sha256=first['image_sha256'])
     check(kind is not None,'The player holds a rootfs this installer does not know (another FiiO version or a '
-          'changed image): nothing is written; FiiO\'s own update (Local upgrade) returns it to stock')
+          'changed image): nothing is written; FiiO\'s own update (Local upgrade) returns it to stock, or '
+          'install.py --restore through USB Boot')
     check(images['restore']['sha256']==known['stock']['sha256'] and images['restore']['bytes']==known['stock']['bytes'],
           'The way back is not the reviewed stock image')
     from deployment.writer_transport import validate_layout
@@ -265,11 +272,12 @@ def assemble_known(base,cpu,reader,transport,layout,inputs,captures,plans,libusb
     check(context(base,cpu,reader,transport,layout,current)==
           context(base,cpu,reader,transport,layout,inputs['restore']),'Candidate/restore contexts differ')
     found=dict(kind=kind,**{k:found[k] for k in ('name','bytes','sha256','first_blocks_sha256','release') if k in found})
+    images_admitted=['restore'] if kind=='unknown' else sorted(images)
     source_state=dict(kind='known-image',found=found,first_blocks_sha256=first['image_sha256'],
                       first_blocks=dict(bytes=first['image_bytes'],bad_blocks=first['bad_blocks'],
                                         logical_to_physical=first['logical_to_physical']),
                       known_images_sha256=fingerprint(known),same_entry_required=True,new_image_staged=False,
-                      freshness_verified=False)
+                      targets=images_admitted,freshness_verified=False)
     return dict(schema_version=1,status='installation-inputs-reviewed',
         context=context(base,cpu,reader,transport,layout,current),images=images,source_pins=source_pins(),
         libusb_sha256=library['sha256'],evidence=pins,boot=boot,source_state=source_state,exercised=exercised,
@@ -290,13 +298,15 @@ def main():
                    'probe of this USB Boot entry, the image known by its first blocks')
     for n in ('probe-capture','boot-build','probe-build'):
         p.add_argument('--'+n,type=Path)
+    p.add_argument('--allow-unknown',action='store_true',help='With --known, the way back to stock from any state: '
+                   'an image it does not know admits the restore only')
     a=p.parse_args()
     installed=(a.previous_review,a.previous_image,a.write_capture,a.readback_capture)
     fresh=(a.probe_capture,a.boot_build,a.probe_build)
     if a.known:
         if not all(fresh) or any(installed) or a.stage_capture or a.stock_capture:
             p.error('known-image review takes the probe capture and both builds, and no history, stock or stage capture')
-    elif any(fresh) or not a.stock_capture:
+    elif any(fresh) or not a.stock_capture or a.allow_unknown:
         p.error('a review with a history takes the stock capture, and no probe capture or its builds')
     elif any(installed):
         if not all(installed) or a.stage_capture:
@@ -324,7 +334,7 @@ def main():
             plans=dict(boot=boot_evidence.make_plan(base,cpu,reader,transport,bp,bi),
                        probe=collect_rootfs.make_plan(base,cpu,reader,transport,pi,metadata))
             bundle=assemble_known(base,cpu,reader,transport,layout,inputs,dict(boot=a.boot_capture,probe=a.probe_capture),
-                                  plans,a.libusb,known_images.load(base['version']))
+                                  plans,a.libusb,known_images.load(base['version']),a.allow_unknown)
         else:
             bundle=assemble(base,cpu,reader,transport,layout,inputs,a.artifacts/inputs['restore']['image_name'],
                             dict(boot=a.boot_capture,stock=a.stock_capture,stage=a.stage_capture),a.libusb,
@@ -335,11 +345,15 @@ def main():
             state=bundle['source_state']
             ram.save_json(a.output/'decision.json',dict(status='known-image',found=state['found'],
                 first_blocks_sha256=state['first_blocks_sha256'],selected_rootfs=bundle['boot']['selected_rootfs'],
-                targets=sorted(bundle['images']),same_entry_required=True,physical_device_accessed=False))
+                targets=state['targets'],same_entry_required=True,physical_device_accessed=False))
         # These are review proposals, not a mutation of the tracked admission profile.
         proposed=dict(layout,physical_write_admitted=True,installation_review_sha256=fingerprint(bundle))
         ram.save_json(a.output/'proposed-installer-profile.json',proposed)
+        # Only the writes the review admits (an image it does not know: the restore only).
+        admitted=bundle['source_state'].get('targets',list(inputs))
         for target,value in inputs.items():
+            if target not in admitted:
+                continue
             value['installation_review']=bundle
             wp=writer.make_plan(base,cpu,reader,transport,proposed,value,'write')
             ram.save_json(a.output/(target+'-write-plan.json'),dict(plan=wp,plan_sha256=fingerprint(wp)))

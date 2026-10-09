@@ -1367,6 +1367,14 @@ layer and the emulator's checkout to build the image.
     `/usr/data/disc-boot` stayed through the Local upgrade, so the first
     installation of a new user's packages is tested in stage 7, after a
     removal of everything ours.
+- [x] Back to stock from any state without a history (owner, 2026-10-09,
+  after the seventh write: a write cut short leaves first blocks the review
+  does not know, and FiiO's Local upgrade needs a system that starts):
+  `installation_review.py --known --allow-unknown` names such an image
+  `unknown` and admits the restore only; `install.py --restore` asks for
+  `STOCK` first, naming the kernel's risk (not read). A candidate is never
+  written over an image the review does not know. `test_known_review`,
+  `test_usbboot`.
 - [x] The installer for users as one archive in the boot release
   (`disc-installer-<v>.tar.gz`, owner, 2026-10-08): `install.py` with the
   scripts, profiles, catalogs and source pins it needs, this release's files
