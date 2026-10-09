@@ -53,31 +53,6 @@
             }
         },
         {
-            "name": "disc-network",
-            "role": "service",
-            "version": "2.57.7",
-            "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
-            "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.7/disc-network-2.57.7.zip",
-                "sha256": "2ef8532e987067a12f397a3c535cb807d7f22ec51a29ec9a9cb18795763b9d86",
-                "size": 128785
-            },
-            "profiles": [
-                "2.57"
-            ],
-            "bootApi": 2,
-            "license": "MIT",
-            "default": false,
-            "notes": "Several Wi-Fi networks; not ticked until it has run on the owner's player",
-            "verified": {
-                "date": "2026-10-09",
-                "boot": "d1ad405",
-                "emulator": "f1d5e33",
-                "firmware": "2.57",
-                "acceptance": "network_guest.py 4 of 4 (this binary) against a stand-in of wpa_cli that parses options as stock's: networks kept and given back with \"--\" before each command, confirmed; release 2.57.7"
-            }
-        },
-        {
             "name": "disc-server",
             "role": "service",
             "version": "2.57.5",

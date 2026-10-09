@@ -104,8 +104,8 @@ checked by `tests/conformance/test_health.py`. A release builds its package
 `scripts/build.sh host` and `mips` build `disc-network` (a service of boot API 2;
 [disc-network](network.md)); the host build also makes `disc-network-fixture`, run by
 `tests/conformance/test_network.py` against a stand-in of stock's `wpa_cli`
-(`tests/integration/wpa_cli_stand_in.sh`). A release builds its package (`disc-network-<version>.zip`),
-which the catalog names unticked.
+(`tests/integration/wpa_cli_stand_in.sh`). It is not a release file until it keeps one network in
+stock's configuration (the owner's player, 2026-10-09: stock's UI fails with more; [disc-network](network.md)).
 
 ## The boot menu
 

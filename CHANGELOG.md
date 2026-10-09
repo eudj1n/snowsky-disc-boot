@@ -16,9 +16,6 @@ Entries stay short; how and why it was done is in the [plan](docs/dev/plan.md).
   minutes it notes the battery and its temperature, the free space, card errors
   and crashes, keeps a few days of them on the player and reports the latest
   for the server's diagnostics. It works offline and changes nothing.
-- disc-network, offered but not ticked yet: the player remembers up to 8 Wi-Fi
-  networks and joins whichever is in range without asking the password again.
-  The passwords stay on the player; a reset of the player clears them too.
 - The boot menu has two more screens, at the end of its list: Services turns
   each service on or off, and Packages installs what waits on the card and
   removes an interface or a service with its data, or everything of ours

@@ -18,6 +18,20 @@ one network; its Wi-Fi screen asks the password every time;
 `fix_wpa_conf_ssid` rewrites the file's first `ssid=` line through a 4 KiB
 buffer, so stock's network stays first.
 
+## On the owner's player (2026-10-09)
+
+Release 2.57.7 carried this design. With the networks given back (two in
+stock's configuration), the player switched by itself between them, but stock's
+UI (`mq_ui`) crashed twice while a password was being typed in its Wi-Fi
+screen (SIGSEGV; stock's loop restarted the UI and the player): in the cJSON
+code that builds its list of networks, a string pointer held the bytes
+`EF 87 AB`, LVGL's Wi-Fi symbol (U+F1EB), so it took a wrong element of its
+list. In about 35 earlier boots with one saved network, password entry
+included, it never crashed. Stock's UI is written for the one network stock
+keeps. So disc-network is no release file of 2.57.7 and was turned off on the
+player (its second network removed); its next version keeps one network in
+stock's configuration and changes it itself (owner, 2026-10-09).
+
 ## What it does
 
 While Wi-Fi is on (stock's wpa_supplicant answers on
