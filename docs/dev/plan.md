@@ -1630,7 +1630,7 @@ the only installer. Play at power-on stays the recovery path only.
   the chosen packages by their digests and stages them on the card; the
   player installs them from the menu's Packages screen or with Play. Only
   the installer changes, not the image. 2026-10-10: the mode (Python alone
-  is checked; the player's options refused), `test_installer` 23; from
+  is checked; the player's options refused), `test_installer` 21; from
   2.57.8's unpacked archive with an empty home, `--packages --dry-run`
   staged the menu, disc-server, disc-health, disc-network and Disc Player.
   Next: on the owner's player, then the guide's "Updating the packages".
