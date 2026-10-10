@@ -6,7 +6,7 @@ layer for FiiO's 2.57. Each published release is a `v<version>` tag with its
 files on the [releases page](https://github.com/eudj1n/snowsky-disc-boot/releases).
 Entries stay short; how and why it was done is in the [plan](docs/dev/plan.md).
 
-## [2.57.8] — in preparation
+## [2.57.8] — 2026-10-10
 
 - disc-network, offered by default: the player remembers up to 8 Wi-Fi
   networks it joined. When the network FiiO's interface keeps is out of reach,
