@@ -5,8 +5,8 @@ identity observations. It has passed synthetic host/MIPS tests and offline ELF
 inspection, followed by **one separately authorized physical identity run**.
 SPL/DDR/reserved-RAM checks, identity SFC observations and the payload's entry/ROM
 return succeeded on that unit. Page reads, chip geometry/ECC, stock cold boot and
-installation remain unqualified. [Physical evidence](ram-transport.md#successful-authorized-identity-observation).
-The later [host transport](ram-transport.md) is implemented and tested synthetically;
+installation remain unqualified. [Physical evidence](../usb-boot/ram-transport.md#successful-authorized-identity-observation).
+The later [host transport](../usb-boot/ram-transport.md) is implemented and tested synthetically;
 both modes now have separate physical evidence and still require authorization for new runs.
 The payload is separate from both companion image variants.
 
@@ -121,6 +121,6 @@ clock-init/cleanup failures, restored GPIO/gate state, invalid requests causing
 zero register writes and completion withheld until cleanup. Host ASan/UBSan and
 MIPS/QEMU fake-controller execution pass. There is no new browser behavior to test.
 
-The [bounded host transport](ram-transport.md) now supplies the concrete
+The [bounded host transport](../usb-boot/ram-transport.md) now supplies the concrete
 SPL/DRAM/identity sequence. Physical execution is still a separately authorized
 step. Do not infer NAND geometry/ECC or installation acceptance from this build.

@@ -8,7 +8,7 @@ profile now matches those retained bytes offline without another USB request. Li
 acquisition, partition/active-slot confirmation and recovery qualification remain open.
 
 An [offline identity-only SFC/RAM payload](nand-identity.md) is now implemented
-and tested with fake MMIO. The [host RAM transport](ram-transport.md) provides
+and tested with fake MMIO. The [host RAM transport](../usb-boot/ram-transport.md) provides
 separate RAM-check/identity modes. After correcting the download-length omission,
 a separately authorized physical RAM-check passed SPL readback/execution, DDR
 diagnostics and two reserved-region RAM passes. A subsequent separately authorized

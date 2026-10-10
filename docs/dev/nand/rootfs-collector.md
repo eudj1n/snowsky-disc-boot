@@ -5,7 +5,7 @@ The collector implements the live transport needed by the independent
 separately authorized **full 96 MiB collection** have completed. All official
 rootfs bytes match; the full image differs in its FF tail versus the prepared
 restore image's zero padding, so strict full-image equality is rejected.
-[Full observation and stock boot confirmation](observations/rootfs-full-observation.md).
+[Full observation and stock boot confirmation](../observations/rootfs-full-observation.md).
 Repeated-read OOB differences fall within internal ECC parity; their cause
 remains unresolved. Write and installation acceptance remain open.
 
@@ -133,7 +133,7 @@ DDR diagnostic, with the SPL run only when it is not clean, and the held
 completion asks). Its report, `saved-probe-trace-matches`, gives the first
 blocks' SHA-256: what the installation without a history compares with the
 images known (`firmware/images`, plan stage 6). The boot evidence has its own
-audit (`audit_usb_boot.py`, [boot selection](boot-selection.md)); both share
+audit (`audit_usb_boot.py`, [boot selection](../boot/boot-selection.md)); both share
 the reconstruction of records and calls in `usb_trace_audit.py`. Synthetic
 sessions of the fake ROM run in GitHub Actions (`test_audit_usb_probe`).
 
@@ -152,7 +152,7 @@ The separate full-mode plan is `work/rootfs-full-plan-001.json`, hash
 `bf0d6e2877d36529ef49ecc2f1a0c3040814ce2343c6db64213d72ab25325894`.
 It is an offline artifact, not a proposal to run the full collection before
 qualifying the probe. The probe subsequently executed as recorded below, followed
-by the separately authorized [full observation](observations/rootfs-full-observation.md).
+by the separately authorized [full observation](../observations/rootfs-full-observation.md).
 
 ## Proposed full read after OOB review
 
@@ -183,7 +183,7 @@ Successful collection must be followed by the independent full-image verifier
 against the reviewed stock restore image. A successful USB session alone does
 not satisfy that check. Raw parity qualification, active boot selection and
 installation/recovery remain separate. This was the proposal before execution.
-The owner subsequently authorized one session; [its full evidence](observations/rootfs-full-observation.md)
+The owner subsequently authorized one session; [its full evidence](../observations/rootfs-full-observation.md)
 records successful collection and the rejected exact stock-image comparison.
 It does not authorize another session or physical write.
 

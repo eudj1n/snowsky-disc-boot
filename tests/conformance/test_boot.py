@@ -1,4 +1,4 @@
-"""The boot program (docs/dev/contract.md) through its fixture build, in a temporary root.
+"""The boot program (docs/dev/boot/contract.md) through its fixture build, in a temporary root.
 
 Packages are shell scripts; keys, the card's mount and stock's UI are files.
 Timings are shortened (confirmation after 1 s) through the fixture's variables.

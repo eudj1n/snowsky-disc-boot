@@ -129,7 +129,7 @@ not establish the physical table or currently selected boot rootfs.
 ## Keys
 
 Reviewed 2026-10-03 for `disc-boot`'s key read at power-on (the
-[contract](contract.md), "Facts this rests on"), from the same pinned kernel
+[contract](../boot/contract.md), "Facts this rests on"), from the same pinned kernel
 and embedded DTB; no device was involved.
 
 The enabled node `/x2000_key` (`compatible = "x2000-key"`) names its GPIOs

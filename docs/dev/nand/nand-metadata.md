@@ -197,5 +197,5 @@ installation/recovery or cold boot with the companion installed. Those gates
 remain open; `hardware_qualified` and `flash_ready` are unchanged. This stage
 updates documentation only and does not change executable behavior.
 
-See [kernel review](nand-kernel-review.md), [RAM transport](ram-transport.md),
+See [kernel review](nand-kernel-review.md), [RAM transport](../usb-boot/ram-transport.md),
 [read core](nand-reader-core.md) and project plan (snowsky-disc-web `docs/plan.md`).

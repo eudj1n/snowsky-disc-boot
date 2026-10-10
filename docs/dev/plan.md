@@ -1,7 +1,7 @@
 # Plan
 
 The canonical plan of snowsky-disc-boot. The contract it implements:
-[boot layer contract](contract.md). Decisions and evidence from before this
+[boot layer contract](boot/contract.md). Decisions and evidence from before this
 repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
 "Public installer" sections).
 
@@ -444,7 +444,7 @@ boot menu").
   page, the console's marker (`work/first-write/packages.json`).
 - [ ] Open facts for the device: what "Reset all" removes in `/usr/data`;
   its free space; memory and priority limits. The keys' pins and level are
-  settled offline (2026-10-03, [kernel review](nand-kernel-review.md#keys))
+  settled offline (2026-10-03, [kernel review](nand/nand-kernel-review.md#keys))
   and **confirmed on the owner's V2.57 player** (2026-10-03, read-only over
   the engineering USB console, busybox `devmem` of port B `PxPIN` at
   `0x10010100`; no NAND access; `work/device-read/key-read.json`): resting
@@ -770,7 +770,7 @@ name ([observation](observations/first-write-observation.md)).
     passes. About 7 minutes of transfers become the payload's own time, asked
     every 200 ms, at most 10 minutes (`staging_check_ms`).
     `test_staging_payload` (the C code on the host), `test_writer_transport`,
-    [writer transport](writer-transport.md#the-hash-on-the-player).
+    [writer transport](usb-boot/writer-transport.md#the-hash-on-the-player).
   - [ ] The staged image checked on the player: a SHA-256 of the image
     region, compared with the image's, instead of reading 96 MiB back over
     USB. The payload's code runs uncached (kseg1, every instruction fetched
@@ -1339,7 +1339,7 @@ layer and the emulator's checkout to build the image.
     back stock, the write's ABI the one the sixth write ran
     (`firmware/images` `exercised`); an admission computed for the run in the
     package, never written to `firmware/installers`
-    ([installation review](installation-review.md)). `test_known_review`.
+    ([installation review](installer/installation-review.md)). `test_known_review`.
   - [x] The write refused unless it runs in the same entry (its SPL skipped),
     with the admission the package computed for the run (2026-10-08): a
     `known-image` review's write plan carries `same_entry_required`, and a
@@ -1469,7 +1469,7 @@ the only installer. Play at power-on stays the recovery path only.
   no screen before it works. The manager's "Player software" becomes
   read-only with a hint.
   Done 2026-10-09 by the owner's eight decisions on the specimen
-  ([contract](contract.md#the-menus-screens)): Services and Packages as rows
+  ([contract](boot/contract.md#the-menus-screens)): Services and Packages as rows
   at the end of the interfaces' list, Back first on each; the countdown
   standing while a package waits on the card; autostart from the next start;
   a removal by a second Play, with the package's data (a ui package at the
@@ -1507,7 +1507,7 @@ the only installer. Play at power-on stays the recovery path only.
   `controller` with boot API 2. The server finds every other path in its
   environment (`$DISC_BOOT_INACTIVE`, `$DISC_BOOT_REQUEST`, …), so its
   binary does not change for the move.
-  Done 2026-10-09 (boot API 2; [contract](contract.md#roles)), with the
+  Done 2026-10-09 (boot API 2; [contract](boot/contract.md#roles)), with the
   owner's decisions of that day: services take no part in the boot-loop
   guard (a failing one stops alone, with its reason); each starts after the
   controller is ready or settled, at nice +10 with its address space bounded
@@ -1552,7 +1552,7 @@ the only installer. Play at power-on stays the recovery path only.
   the next release, as the menu's do.
 - [x] disc-health (owner, 2026-10-07): a read-only, offline journal of the
   battery, temperature, uptime, crashes, card errors and free space, shown
-  by the server's diagnostics. Done 2026-10-09 ([disc-health](health.md)):
+  by the server's diagnostics. Done 2026-10-09 ([disc-health](packages/health.md)):
   `device/health`, built beside the menu; at its start and every 10 minutes
   the fuel gauge (the first power supply with a capacity: `cw221X-bat`), the
   thermal zones, uptime, load, memory, the free space of `/usr/data` and the
@@ -1590,7 +1590,7 @@ the only installer. Play at power-on stays the recovery path only.
   notices the reset (the stock header alone and that folder gone). The
   emulator has no Wi-Fi: checked with a stand-in `wpa_cli` on the guest,
   then on the player.
-  Built 2026-10-09 ([disc-network](network.md)) with the owner's decisions of
+  Built 2026-10-09 ([disc-network](packages/network.md)) with the owner's decisions of
   that day: the store in its own folder (`$DISC_BOOT_DATA/networks.json`,
   0600), forgotten when Wi-Fi comes on with a file holding no network (a
   reset); stock's networks changed only through stock's wpa_supplicant (the
@@ -1611,7 +1611,7 @@ the only installer. Play at power-on stays the recovery path only.
   the installer ticks it. 2026-10-09, release 2.57.7's design (the kept
   networks given back beside stock's): the player switched by itself, but
   stock's UI crashed twice while a password was typed (two networks in its
-  configuration; [network](network.md#on-the-owners-player-2026-10-09)), so
+  configuration; [network](packages/network.md#on-the-owners-player-2026-10-09)), so
   disc-network was turned off there and left out of 2.57.7. Its next design
   keeps one network in stock's configuration and puts a kept one in range in
   its place (owner, 2026-10-09; `test_network` 10 on macOS and Linux);
@@ -1709,7 +1709,7 @@ the only installer. Play at power-on stays the recovery path only.
   2.57.5, in its own release. 2026-10-09: the payload (`device/usbboot/restart.c`,
   `--mode restart`, 344 bytes; the other payloads unchanged), the session
   (`restart_player.py`) and its audit (`audit_usb_restart.py`), with the three
-  outcomes on a fake ROM ([restart](restart.md)); next the session alone on the
+  outcomes on a fake ROM ([restart](usb-boot/restart.md)); next the session alone on the
   owner's player, then the installer. On the player the same day, alone and
   without a write (the owner, from another computer): `player-restarted`, the
   menu then stock with the cable connected, its audit matching. The installer
@@ -1721,7 +1721,7 @@ the only installer. Play at power-on stays the recovery path only.
   driver and an exFAT writer run from RAM would risk the music on it), but
   after the restart the system runs with the cable connected, and stock's
   `mq_player` offers the card as a USB drive (`storage_demo`, its USB mode
-  loop, [diagnostics](usb-diagnostics.md)). The installer would then write
+  loop, [diagnostics](usb-boot/usb-diagnostics.md)). The installer would then write
   the packages, apps and console marker there, and read the first start's
   check from the card, after the write instead of before it. To settle on
   the player first: how stock enters that mode (by itself on a cable, a

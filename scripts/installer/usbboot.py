@@ -1,4 +1,4 @@
-"""The player through USB Boot with the reviewed tools (docs/dev/build-and-flash.md, steps 3 to 5).
+"""The player through USB Boot with the reviewed tools (docs/dev/installer/build-and-flash.md, steps 3 to 5).
 
 Nothing here touches USB itself: each step runs one of scripts/deployment/ with the arguments
 the procedure gives it, keeps its output in the run folder and checks its result the way the

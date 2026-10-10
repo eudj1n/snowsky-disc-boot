@@ -2,15 +2,15 @@
 
 The host transport is implemented and tested against a synthetic ROM. The
 current installer profile keeps `physical_write_admitted: false`, now with a
-pinned [installation evidence review](installation-review.md). Only separately
+pinned [installation evidence review](../installer/installation-review.md). Only separately
 authorized RAM staging is executable until the prepared admission profile is
 authorized and activated. A closed write acquisition is rejected before output
 creation, library loading or USB discovery. Initial
 implementation validation was offline; the later separately authorized
-[complete-image RAM experiment passed](observations/writer-staging-observation.md).
+[complete-image RAM experiment passed](../observations/writer-staging-observation.md).
 
 The bounded staging sequence passed on the owner's unit. The subsequent
-[captured SPL review](bootloader-review.md) establishes static primary-pair
+[captured SPL review](../nand/bootloader-review.md) establishes static primary-pair
 selection. The installation package now binds that assessment; live-root observation,
 writer execution, independent post-write readback and candidate/restore boot
 acceptance remain open. The existing native companion passed its disposable guest gate; this
@@ -126,7 +126,7 @@ Changing that flag is not hardware acceptance or owner authorization. Write
 mode additionally requires the pinned review, exact current source/profile/build
 and target image inputs, and checked readback build. Acquisition requires the
 reviewed library, target-specific device-state confirmation and approved plan.
-The [concrete package](installation-review.md) contains the prepared candidate,
+The [concrete package](../installer/installation-review.md) contains the prepared candidate,
 restore and exact readback plans; its activation/physical actions still need
 separate authorization.
 
@@ -167,7 +167,7 @@ to post-write acceptance.
 
 ### A write without a history (plan, stage 6)
 
-A write whose review is `known-image` ([installation review](installation-review.md#without-a-history-the-known-image-plan-stage-6-2026-10-08))
+A write whose review is `known-image` ([installation review](../installer/installation-review.md#without-a-history-the-known-image-plan-stage-6-2026-10-08))
 runs only in the USB Boot entry its evidence was read in: its plan carries
 `same_entry_required`, and the session reads the DDR diagnostic first as every
 session does; unless it is the clean one that entry's SPL left, it stops there,
@@ -231,7 +231,7 @@ touching memory.
 All 13 tests passed on macOS and Linux. The complete host suite passed with
 217 Python tests, eight JavaScript tests and the native C tests. These initial
 checks did not access hardware; no hosted CI run is claimed. The subsequent
-[physical observation](observations/writer-staging-observation.md) is recorded separately.
+[physical observation](../observations/writer-staging-observation.md) is recorded separately.
 
 Offline stage/write plans for both targets passed against the unchanged local
 metadata build and engineering artifacts. The exact 96 MiB images remain:

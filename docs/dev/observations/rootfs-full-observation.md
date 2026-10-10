@@ -8,7 +8,7 @@ as a pass. The owner confirmed normal stock operation after reboot.
 
 ## Session and physical scope
 
-The owner separately authorized the [full read plan](../rootfs-collector.md#proposed-full-read-after-oob-review)
+The owner separately authorized the [full read plan](../nand/rootfs-collector.md#proposed-full-read-after-oob-review)
 and then requested the connected-device invocation. This was one execution,
 with no retry, reconnect, NAND program, erase or feature write.
 
@@ -104,7 +104,7 @@ still compares **every** programmed byte, including padding, with its approved
 image. Active boot selection, writer execution, companion startup and restoration
 remain unqualified; `flash_ready` remains false.
 
-**Subsequent review:** the [separate pre-installation contract](../preinstall-review.md)
+**Subsequent review:** the [separate pre-installation contract](../installer/preinstall-review.md)
 now checks the pinned official rootfs and profile-reviewed FF tail. It passes
 this saved capture; the original strict whole-image rejection above remains
 unchanged, as does the exact post-write requirement.

@@ -12,10 +12,10 @@ disposable emulator stack. All generated files stay under ignored `build/` and
 
 The example paths identify the currently reviewed V2.57 inputs on this
 workstation. Select a new release through reviewed profiles and repeat
-[compatibility acceptance](firmware-compatibility.md); do not substitute a new
+[compatibility acceptance](../firmware/firmware-compatibility.md); do not substitute a new
 OTA into an old package or plan. Set a fresh run name for each preparation.
 The current installed image and completed physical history are recorded in
-[UDC installation](observations/udc-installation-observation.md). The combined ACM/webroot
+[UDC installation](../observations/udc-installation-observation.md). The combined ACM/webroot
 offline candidate and package (snowsky-disc-web `docs/combined-update.md`) are prepared but have no
 physical approval.
 
@@ -64,7 +64,7 @@ boundary.
 ## 2. Build and check a disposable firmware image
 
 The boot layer's image is stock plus the boot layer's own objects; it
-carries no package ([contract](contract.md), "What changes against today"):
+carries no package ([contract](../boot/contract.md), "What changes against today"):
 the boot program with its hooks, the `/sbin/mq_ui` and `/sbin/mq_player`
 wrappers and the card guard, the USB console with its hook, and the boot
 report. The disposable stack is snowsky-disc-web's emulator wrapper
@@ -384,7 +384,7 @@ that differs from the approved candidate. They reproduced every original
 field of the last successful write/readback audits except the auditor's own
 script hash. Synthetic journal mutations run in GitHub Actions. Inspect both
 reports and the separate exact-image review before physical acceptance. The
-completed [UDC write/read audits](observations/udc-installation-observation.md) show the
+completed [UDC write/read audits](../observations/udc-installation-observation.md) show the
 historical evidence expected. Do not mark physical acceptance on
 `readback.py` or transport success alone.
 

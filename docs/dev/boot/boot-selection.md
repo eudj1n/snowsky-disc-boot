@@ -3,8 +3,8 @@
 The stock OTA scripts explicitly use a selector in the `ota` partition. Their
 read-side helper associates `ota:kernel2` with `kernel2`/`rootfs2`; the companion
 installer targets `rootfs`. The physical selector and stock bootloader have now been
-[captured and independently validated](observations/boot-evidence-observation.md). The observed
-`ota:backup` has now been [reviewed against its actual SPL consumer](bootloader-review.md)
+[captured and independently validated](../observations/boot-evidence-observation.md). The observed
+`ota:backup` has now been [reviewed against its actual SPL consumer](../nand/bootloader-review.md)
 and selects the primary kernel/rootfs pair. Physical write admission remains closed.
 
 This stage implements and tests a bounded **read-only NAND acquisition** for
@@ -179,12 +179,12 @@ GitHub Actions discovers these tests with no proprietary inputs or credentials.
 1. Separately authorize and collect this exact boot/OTA evidence — completed.
 2. Independently validate all saved records/journal calls and reconstruct the
    bootloader with its actual block map — completed, with fingerprints in the
-   [physical observation](observations/boot-evidence-observation.md).
+   [physical observation](../observations/boot-evidence-observation.md).
 3. Review the actual selector consumer and boot arguments in Ghidra/assembly —
-   completed for the captured normal NAND path. The [SPL review](bootloader-review.md)
+   completed for the captured normal NAND path. The [SPL review](../nand/bootloader-review.md)
    reconciles the saved selector with primary-rootfs selection and records its
    limits; live command-line/mount observation remains separate.
-4. Complete the [installation/recovery procedure](installation-procedure.md),
+4. Complete the [installation/recovery procedure](../installer/installation-procedure.md),
    bind the accepted boot evidence and current image hashes, then review a
    concrete write-admission change and request that separate write authorization.
 

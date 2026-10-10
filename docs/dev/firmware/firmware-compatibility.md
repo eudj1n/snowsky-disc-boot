@@ -80,7 +80,7 @@ layout without production code changes. Physical qualification remains separate.
 reviewed SPL layout and bounded USB execution/transfer budgets. The offline plan
 also pins the exact build and transport source files; changing mode, profile or
 input changes its review hash. These fields do not admit arbitrary ROM commands,
-NAND writes or an unreviewed SPL layout. See [RAM observation](ram-transport.md).
+NAND writes or an unreviewed SPL layout. See [RAM observation](../usb-boot/ram-transport.md).
 
 `firmware/installers/v<version>.json` binds firmware, metadata, transport and
 writer policies to the complete image staging layout and budgets. The current
@@ -92,18 +92,18 @@ The installer now also pins `installation_review_sha256`, binding a particular
 reviewed unit's boot/stock/staging evidence, exact images, tool/source/profile
 fingerprints and readback plans. The admission flag alone cannot enable writes.
 A new unit/release/input requires fresh review and a new pin; previous authority
-or device-state confirmation is not inherited. See [installation package](installation-review.md)
-and [writer transport](writer-transport.md).
+or device-state confirmation is not inherited. See [installation package](../installer/installation-review.md)
+and [writer transport](../usb-boot/writer-transport.md).
 
 `firmware/boot/v<version>.json` pins the page policy, observed boot/OTA extents,
 stock selector-script fingerprints and read budget. It never enables writes or
 infers primary boot from malformed/erased selector bytes. Re-review the actual
 bootloader consumer, selector and root arguments for each new release; a reused
-OTA string is not boot-chain compatibility. See [boot evidence](boot-selection.md).
+OTA string is not boot-chain compatibility. See [boot evidence](../boot/boot-selection.md).
 
 `firmware/bootloaders/v<version>.json` separately binds the reviewed captured SPL
 image, acquisition policy, prefix mechanism, exact accepted selector tokens and
-kernel/root argument mapping. The [offline checker](bootloader-review.md) validates
+kernel/root argument mapping. The [offline checker](../nand/bootloader-review.md) validates
 saved records against this review; it does not change the acquisition classifier,
 authorize writing or assert a live mount. The complete current image pin is
 capture-specific, not a guarantee that rootfs version identifies every installed
@@ -115,7 +115,7 @@ reusing this assessment in installation review.
 Native deployment also uses `kernels/v<version>.json`: an independently reviewed
 OTA kernel fingerprint, chip-table/DTB addresses and NAND metadata format, bound
 to the selected rootfs and writer profile. Re-run the
-[kernel and partition review](nand-kernel-review.md) for a new release. Passing
+[kernel and partition review](../nand/nand-kernel-review.md) for a new release. Passing
 the offline checker never admits page reads or writes, and a previous physical
 partition table must not be inferred from a new OTA kernel.
 
@@ -153,7 +153,7 @@ than assuming an unused function is reachable. Confirm important behavior in
 the disposable runtime. Ghidra can resolve binary behavior; it cannot establish
 the owner's NAND identity, bad-block map or successful physical recovery.
 
-The [USB diagnostic investigation](usb-diagnostics.md) records stock card/USB
+The [USB diagnostic investigation](../usb-boot/usb-diagnostics.md) records stock card/USB
 ownership and the vendor serial-number service in the fingerprinted V2.57 player.
 No Ghidra-derived addresses are used by our runtime; new firmware needs renewed
 analysis of changed paths before enabling the engineering profile.

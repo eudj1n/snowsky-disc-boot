@@ -4,7 +4,7 @@ The separate `usb-engineering` image adds a bounded local root console while
 preserving the stock UI/player and loopback companion. It is implemented and
 tested offline. The first candidate passed physical writing/exact readback and
 normal owner-confirmed reboot, but diagnostic enumeration/coexistence remain
-unqualified. The revised [independent boot reporter](boot-report.md) records
+unqualified. The revised [independent boot reporter](../boot/boot-report.md) records
 startup failures to SD only with a separate report marker. The ordinary `companion` image does not include this mode. Neither
 image supplies an execution path merely by copying it to a stock player's SD card.
 
@@ -25,18 +25,18 @@ and 900 seconds (the startup was 30 s until 2026-10-06: stock's player, which mo
 waits up to 60 s for the boot menu's choice, and the console gave up before it). Stock also supports an unpartitioned card; this initial profile
 deliberately admits only the partitioned layout.
 
-The [first physical boot report](observations/boot-report-observation.md) established the
+The [first physical boot report](../observations/boot-report-observation.md) established the
 `_new` controller suffix. Earlier installed images requested `13500000.otg`, so
 their exact-name readiness guard timed out. The tested profile correction was
-packaged in a [reviewed update](udc-update.md), which passed
-[physical write, exact full readback and owner-confirmed normal UI boot](observations/udc-installation-observation.md).
+packaged in a [reviewed update](../installer/udc-update.md), which passed
+[physical write, exact full readback and owner-confirmed normal UI boot](../observations/udc-installation-observation.md).
 ACM enumeration/coexistence still require physical acceptance, and no fallback
 to an arbitrary UDC is introduced.
-The [new physical report](observations/udc-boot-report-observation.md) confirms controller
+The [new physical report](../observations/udc-boot-report-observation.md) confirms controller
 readiness but exposes an ACM symlink-target ENOENT before binding. The helper now
 uses an absolute function target, matching configfs lookup semantics regardless
 of the caller's cwd. The corrected combined image passed
-[physical installation and exact readback](observations/combined-installation-observation.md);
+[physical installation and exact readback](../observations/combined-installation-observation.md);
 ACM enumeration remains to be checked.
 
 The installed combined engineering image includes that ACM correction with
@@ -190,4 +190,4 @@ passed duplicate-start, explicit-stop and no-card timeout checks in private
 namespaces without exposed USB sysfs. The no-card process exited after 30.06
 seconds and never created a gadget. Companion health/disable/relaunch passed;
 its pre-existing BusyBox executable-match limitation under QEMU remains open.
-See validation (snowsky-disc-web `docs/validation.md`) for logs and [remaining installation work](deployment-writer-review.md).
+See validation (snowsky-disc-web `docs/validation.md`) for logs and [remaining installation work](../installer/deployment-writer-review.md).

@@ -1,9 +1,9 @@
 # Offline installation and recovery review
 
-This continues [native deployment preparation](native-deployment.md). The local
+This continues [native deployment preparation](../firmware/native-deployment.md). The local
 diskOS checkout at `646212d57425bd437468ab8896f63b16bae8f744` was inspected without
 executing its installer, native USB helper or debug-access scripts. Firmware
-and writer selection is now [profile based](firmware-compatibility.md).
+and writer selection is now [profile based](../firmware/firmware-compatibility.md).
 
 ## Reviewed writer behavior
 
@@ -34,16 +34,16 @@ Persistent failures abort rather than inventing a different logical mapping.
 The later kernel review confirms that its sequential good-block translation
 agrees with this marker location and mapping rule. The actual metadata observation
 places the writer range inside primary rootfs. The subsequent
-[full physical collection](observations/rootfs-full-observation.md) establishes the observed
+[full physical collection](../observations/rootfs-full-observation.md) establishes the observed
 block map (383 and 716 skipped) and exact official rootfs content. Active boot
 selection still needs evidence; the strict padded-image comparison failed
 because the player returns FF after the official rootfs rather than zeros.
 The writer's per-page comparison is not a pre-write backup or an independent
 post-write logical-image dump.
 
-The later [physical identity and chip comparison](nand-chip-review.md) identified
+The later [physical identity and chip comparison](../nand/nand-chip-review.md) identified
 the XTX XT26G02C family on the owner's unit. Documented geometry and marker
-location agree. The [stock kernel review](nand-kernel-review.md) also establishes
+location agree. The [stock kernel review](../nand/nand-kernel-review.md) also establishes
 its XTX ECC/marker handling and matching program command order. A physical
 metadata-page read and owner-confirmed return to stock boot subsequently passed.
 These update the initial unobserved-NAND state without qualifying writes.
@@ -94,7 +94,7 @@ alone cannot make a device record fresh.
 ## Diagnostic access decision
 
 The opt-in **USB CDC-ACM mode in a separate engineering image** is implemented
-and tested offline. [Its design and evidence](usb-diagnostics.md) document the
+and tested offline. [Its design and evidence](../usb-boot/usb-diagnostics.md) document the
 exact card marker, bounded supervisor, Ghidra findings, MIPS/PTY tests and packed
 image checks. The default companion image does not contain it; no Wi-Fi or stock
 password change is required by the diagnostic design.
@@ -119,10 +119,10 @@ Physical enumeration and stock DAC/storage coexistence remain unqualified.
    inspected installer saves stock from the OTA; it supplies no qualified live
    NAND backup flow. The generic cloner `--dump-partition` code is not proof that
    a matching read protocol is available from a bare stock mask-ROM device.
-   [Subsequent RAM transport work](ram-transport.md) passed separately authorized
+   [Subsequent RAM transport work](../usb-boot/ram-transport.md) passed separately authorized
    CPU/SPL/RAM, identity and metadata-page observations. The independent
-   [saved-image verifier](logical-readback.md) now has synthetic acceptance and
-   exact-image/partition plan checks. The [bounded collector](rootfs-collector.md)
+   [saved-image verifier](../nand/logical-readback.md) now has synthetic acceptance and
+   exact-image/partition plan checks. The [bounded collector](../nand/rootfs-collector.md)
    is implemented with synthetic ROM/SFC acceptance and separate MIPS probe/full
    builds. The separately authorized full collection and stock reboot now passed;
    all official rootfs bytes match, but exact equality with the zero-padded
@@ -130,7 +130,7 @@ Physical enumeration and stock DAC/storage coexistence remain unqualified.
    now accepts exact official content and its profile-selected tail, preserving
    strict complete-image verification after either candidate or restore writing.
    Full-chip backup remains deferred, not a new prerequisite. The
-   [acquisition review](native-acquisition.md) also records
+   [acquisition review](../nand/native-acquisition.md) also records
    unchecked cloner ACK/CRC handling and remaining backup limitations.
 4. Only then present the exact physical action and its target to the owner.
    A later write must target the qualified primary rootfs range, preserve

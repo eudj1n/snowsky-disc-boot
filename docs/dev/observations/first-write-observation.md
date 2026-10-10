@@ -406,6 +406,6 @@ root device; the owner answered yes, all went well, no history. The installer re
 itself after the write, the cable left connected (the owner: "the installer restarted the device
 itself, all as planned"). The restart payload had run alone on
 the player the same day first (`player-restarted`, the menu then stock, the cable connected;
-[restart](../restart.md)). The run's `report.json` does not name the restart's outcome (its
+[restart](../usb-boot/restart.md)). The run's `report.json` does not name the restart's outcome (its
 `usb/restart/result.json` does); it will from the next release.
 

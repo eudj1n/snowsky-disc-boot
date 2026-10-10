@@ -89,7 +89,7 @@ binary is committed.
 
 The unchanged collector previously passed 227 Python tests, eight JavaScript
 tests and native C assertions, including ten new boot-evidence cases and Linux,
-MIPS/QEMU and sanitizer checks described in [preparation](../boot-selection.md).
+MIPS/QEMU and sanitizer checks described in [preparation](../boot/boot-selection.md).
 This stage adds physical and saved-evidence acceptance; no transport behavior,
 profile admission or runtime source changed.
 
@@ -101,10 +101,10 @@ this acquisition. This is direct owner observation, separate from the USB trace.
 The saved transport flags `active_boot_verified` and `flash_ready` remain false;
 the original evidence is not rewritten by the manual confirmation.
 
-The subsequent [SPL review](../bootloader-review.md) resolves the captured
+The subsequent [SPL review](../nand/bootloader-review.md) resolves the captured
 `ota:backup` to the primary pair without rewriting this acquisition's original
 unknown-selector classification. Live command-line/root-mount evidence remains
 separate. Installation, writer/restore execution,
 exact post-write readback and native companion operation on hardware remain open.
-Follow the [installation and recovery procedure](../installation-procedure.md);
+Follow the [installation and recovery procedure](../installer/installation-procedure.md);
 physical write admission remains closed.

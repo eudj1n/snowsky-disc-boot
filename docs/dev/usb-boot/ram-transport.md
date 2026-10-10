@@ -40,7 +40,7 @@ Approval of `ram-check` does **not** approve this second mode.
 The separate `metadata` mode repeats the RAM checks and executes a payload that
 can read only the profiled metadata page, with ID/ECC/OTP admission and retained
 main/OOB data. One separately authorized physical observation now passed with
-ECC status zero and decoded partition extents. See [scope, tests and evidence](nand-metadata.md). Earlier RAM-check
+ECC status zero and decoded partition extents. See [scope, tests and evidence](../nand/nand-metadata.md). Earlier RAM-check
 or identity authorization does not cover this new operation.
 
 All modes change volatile state: SPL configures clocks, GPIO, DDR and watchdog;
@@ -86,7 +86,7 @@ and the USB reference hash. It retains the exact SPL/payload bytes in memory for
 the run. Modified payload/build sources require a new build; transport/profile
 changes require a new plan review.
 The external SPL and captured parameters stay external; see its GPL/source and
-private-input boundaries in [identity provenance](nand-identity.md).
+private-input boundaries in [identity provenance](../nand/nand-identity.md).
 
 ## Bounds, ownership and evidence
 
@@ -156,7 +156,7 @@ authentication, full RAM/NAND qualification or readiness to flash.
 ## Offline review commands
 
 Use the existing reviewed build or create a fresh one as described in
-[identity payload builds](nand-identity.md). These commands never load libusb:
+[identity payload builds](../nand/nand-identity.md). These commands never load libusb:
 
 ```sh
 python3 scripts/deployment/ram_transport.py plan --mode ram-check \
@@ -334,5 +334,5 @@ of the observed chip's documented geometry/ECC/OOB and recovery implications;
 any subsequent physical operation needs its own concrete authorization. Stock
 cold-boot return had not been observed at that point. After the subsequent metadata
 read, the owner confirmed normal stock boot following the requested manual power
-cycle; see [the recorded observation](nand-metadata.md#owner-confirmed-return-to-stock-boot).
+cycle; see [the recorded observation](../nand/nand-metadata.md#owner-confirmed-return-to-stock-boot).
 General installation/recovery and post-installation cold boot remain outstanding.

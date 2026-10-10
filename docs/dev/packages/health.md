@@ -1,7 +1,7 @@
 # disc-health
 
 The health journal (plan, stage 7; owner, 2026-10-07): a service of boot
-API 2 ([contract](contract.md#roles)) that reads, offline and read-only, what
+API 2 ([contract](../boot/contract.md#roles)) that reads, offline and read-only, what
 the player shows of itself, keeps a short journal of it on the player and
 reports the latest reading for the server's diagnostics. It opens no socket
 and writes nothing outside its own two folders. Source: `device/health/health.c`;

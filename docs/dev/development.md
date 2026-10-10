@@ -5,7 +5,7 @@
 | Path | What |
 | --- | --- |
 | `README.md`, `CHANGELOG.md`, `docs/install.md`, `docs/way-back.md` | For users (the installer's archive carries them, with `docs/assets/`) |
-| `docs/dev/contract.md` | The boot layer's contract with packages |
+| `docs/dev/boot/contract.md` | The boot layer's contract with packages |
 | `docs/dev/plan.md` | The canonical plan |
 | `docs/dev/` | For developers: this page, the contract, the plan, reviews, transports and procedures |
 | `docs/dev/observations/` | The records of sessions on players (writes, readbacks, boot evidence) |
@@ -25,7 +25,7 @@
 | `scripts/package.py` | Packages: describe a folder, check it as `disc-boot` does, zip it, stage it on a card |
 | `scripts/deployment/build_candidate.py` | The image builder (variant `boot`): stock plus the boot layer, verified offline |
 | `scripts/deployment/` | Reviews, transports, readback and audits of a USB Boot installation |
-| `tests/integration/` | Checks run in the disposable container ([build and flash](build-and-flash.md)) |
+| `tests/integration/` | Checks run in the disposable container ([build and flash](installer/build-and-flash.md)) |
 | `scripts/firmware_profile.py`, `firmware/` | Reviewed firmware profiles (V2.57) |
 | `tests/conformance/` | Synthetic tests, runnable without firmware or a player |
 
@@ -94,7 +94,7 @@ leaves what was staged.
 ## The health journal
 
 `scripts/build.sh host` and `mips` build `disc-health` beside the menu (a service of boot API 2;
-[disc-health](health.md)); the host build also makes `disc-health-fixture`, whose player is a
+[disc-health](packages/health.md)); the host build also makes `disc-health-fixture`, whose player is a
 folder (`DISC_BOOT_FIXTURE_ROOT`, the kernel's ring as `fixture/kmsg`, `DISC_HEALTH_INTERVAL`),
 checked by `tests/conformance/test_health.py`. A release builds its package
 (`disc-health-<version>.zip`, `release.py build`), which the catalog offers by default.
@@ -102,11 +102,11 @@ checked by `tests/conformance/test_health.py`. A release builds its package
 ## Several Wi-Fi networks
 
 `scripts/build.sh host` and `mips` build `disc-network` (a service of boot API 2;
-[disc-network](network.md)); the host build also makes `disc-network-fixture`, run by
+[disc-network](packages/network.md)); the host build also makes `disc-network-fixture`, run by
 `tests/conformance/test_network.py` against a stand-in of stock's `wpa_cli`
 (`tests/integration/wpa_cli_stand_in.sh`). A release builds its package (`disc-network-<version>.zip`, a memory
 bound of 32 MiB) from 2.57.8, which the catalog offers by default; 2.57.7 left it out while it gave the kept
-networks back beside stock's (the owner's player, 2026-10-09: stock's UI fails with more; [disc-network](network.md)).
+networks back beside stock's (the owner's player, 2026-10-09: stock's UI fails with more; [disc-network](packages/network.md)).
 
 ## The boot menu
 
@@ -129,7 +129,7 @@ scripts/menu_screens.py` after `scripts/build.sh host` writes them into `docs/as
 | --- | --- | --- | --- | --- |
 | ![](../assets/menu/choose.png) | ![](../assets/menu/reading-the-card.png) | ![](../assets/menu/installing.png) | ![](../assets/menu/starting.png) | ![](../assets/menu/switching-off.png) |
 
-Its other screens ([contract](contract.md#the-menus-screens)): a package waiting on the card, the
+Its other screens ([contract](boot/contract.md#the-menus-screens)): a package waiting on the card, the
 services, the packages, a removal's question, and everything of ours going:
 
 | Waiting | Services | Packages | Remove | Everything |
@@ -138,7 +138,7 @@ services, the packages, a removal's question, and everything of ours going:
 
 The font header is generated, not edited: `python3 scripts/menu_font.py --font
 <Inter[opsz,wght].ttf> --output device/menu/font.h` (Pillow with FreeType; the source font's
-SHA-256 and the versions used are written into the header, docs/dev/provenance.md).
+SHA-256 and the versions used are written into the header, docs/dev/firmware/provenance.md).
 
 ## The installer
 
@@ -183,7 +183,7 @@ offline) knows what the player holds by its first blocks, stock or one of ours (
 and the releases' images), or stops before anything is written and names FiiO's Local upgrade as
 the way back; `decision.json` says what it found. The write (`WRITE`) takes the admission the
 review computed for the run (`--installer-profile`, the tracked profile untouched) and runs only
-in that entry, then restarts the player from USB Boot itself ([restart](restart.md)), so the
+in that entry, then restarts the player from USB Boot itself ([restart](usb-boot/restart.md)), so the
 cable stays connected; its first start's check proves it as below, the readback following only when
 the check does not come back. The user answers yes or no about the start, without the words a
 history keeps for the developers. A no takes the player back to stock with the evidence of a new entry
@@ -196,7 +196,7 @@ With `--history` (this player's `history.json`: its boot and stock captures, and
 installation's review, image, write and readback, or the stage capture of a first one),
 diskOS's pinned files (`--diskos`, or fetched) and libusb (found, or `--libusb`), the step runs the
 reviewed tools in `scripts/installer/usbboot.py`, the order of
-[build and flash](build-and-flash.md) steps 3 to 5 as the owner runs it: the package offline,
+[build and flash](installer/build-and-flash.md) steps 3 to 5 as the owner runs it: the package offline,
 then, in one entry into USB Boot, the identity check (`CHECK`: the first rootfs blocks by the
 reviewed probe read, about a minute, which must be the history's image's; a full backup restored
 nothing, the way back being stock) and the write (`WRITE`: the profile's admission, only it and
@@ -225,7 +225,7 @@ plan's call limit (`expected_calls`). The write checks the image region on the p
 payload (built beside the metadata payload and passed as `--staging-build` to the review, the
 transport and the audit), reads the image back, hashes a 1 MiB sample of it on the player, and
 holds one request to the ROM until the writer returns instead of waiting 15 minutes
-([writer transport](writer-transport.md#the-hash-on-the-player)). Right after the backup, in the same entry, the rootfs is read again by digest
+([writer transport](usb-boot/writer-transport.md#the-hash-on-the-player)). Right after the backup, in the same entry, the rootfs is read again by digest
 (only there since 2026-10-05: one run measures what a page takes, a second after the readback
 added about 27 minutes for nothing new) (`collect_rootfs.py --mode rootfs-digest`: 794 batches, 13,588 calls and
 8.9 MB against the full read's 42,220 calls and 227.5 MB); every page's SHA-256 must equal the full

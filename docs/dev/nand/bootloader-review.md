@@ -9,7 +9,7 @@ successful installation, or permission/readiness to write NAND.
 
 ## Inputs and method
 
-The [authorized capture](observations/boot-evidence-observation.md) supplies the complete
+The [authorized capture](../observations/boot-evidence-observation.md) supplies the complete
 2,097,152-byte boot image, metadata and all eight OTA first pages, with an
 independently reconstructed USB trace. The owner confirmed normal stock boot
 and operation afterward. All boot blocks 0–15 have good first-page markers;
@@ -164,8 +164,8 @@ run could not bind local sockets; the permitted rerun passed. The focused Linux
 run is `work/boot-re/linux-tests.log`. This change affects only offline review;
 service/browser behavior and acquisition payloads/profiles did not change.
 
-The subsequent [installation package](installation-review.md) binds this static
+The subsequent [installation package](../installer/installation-review.md) binds this static
 assessment and capture provenance to stock/staging evidence, current exact images
 and write/readback plans. Physical write admission remains closed pending
 separate authorization of the concrete prepared activation/write/readback step. See the
-[installation procedure](installation-procedure.md).
+[installation procedure](../installer/installation-procedure.md).

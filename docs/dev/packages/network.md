@@ -1,7 +1,7 @@
 # disc-network
 
 Several Wi-Fi networks for the player (plan, stage 7; owner, 2026-10-08/09): a
-service of boot API 2 ([contract](contract.md#roles)) that keeps the networks
+service of boot API 2 ([contract](../boot/contract.md#roles)) that keeps the networks
 stock connected to and, when stock's network is out of reach, puts a kept one
 in range in its place in stock's wpa_supplicant, so the player joins whichever
 is in range without its password again. Source: `device/network/network.c`;

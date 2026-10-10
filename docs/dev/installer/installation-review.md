@@ -3,8 +3,8 @@
 This page records preparation before authorization. The owner subsequently
 authorized the exact activation, one candidate write and conditional independent
 readback. Current physical results and remaining acceptance are recorded in the
-[candidate installation observation](observations/candidate-installation-observation.md).
-The later [boot-report image](boot-report.md) changes code/profile/image inputs;
+[candidate installation observation](../observations/candidate-installation-observation.md).
+The later [boot-report image](../boot/boot-report.md) changes code/profile/image inputs;
 this historical package is not current for it, and admission is closed again.
 The replacement [boot-report installation package](boot-report-installation.md)
 accounts explicitly for the installed candidate and its exact readback.
@@ -228,7 +228,7 @@ accepts it only with those. The package keeps the proposed admission
 (`proposed-installer-profile.json`) and `decision.json`, what the installer
 tells the user; nothing is written to `firmware/installers`. The write takes
 this admission with `--installer-profile` and runs only in the same entry
-([writer transport](writer-transport.md#a-write-without-a-history-plan-stage-6)).
+([writer transport](../usb-boot/writer-transport.md#a-write-without-a-history-plan-stage-6)).
 `test_known_review` runs both sessions on the fake ROMs, audits them and
 reviews them, with an unknown image, an ABI no player ran, a way back that is
 not stock, other plans and other entries refused.

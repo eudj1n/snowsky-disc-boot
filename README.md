@@ -68,7 +68,7 @@ return.
 ## For developers
 
 How the layer works, how to build, test and release it:
-[development](docs/dev/development.md), the [contract](docs/dev/contract.md) the
+[development](docs/dev/development.md), the [contract](docs/dev/boot/contract.md) the
 packages rely on, and the [plan](docs/dev/plan.md).
 
 License: MIT (see [LICENSE](LICENSE)).

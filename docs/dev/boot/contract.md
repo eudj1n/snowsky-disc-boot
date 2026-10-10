@@ -85,7 +85,7 @@ only through USB Boot; everything above it becomes files.
   low; bit 13 Volume Up, 14 Volume Down, 15 Play. Volume Down with USB at
   power-on is the chip's mask ROM (never a boot-layer gesture). The source
   is the stock V2.57 kernel (reviewed offline 2026-10-03, [kernel
-  review](nand-kernel-review.md#keys)): its board tree's `x2000_key` node
+  review](../nand/nand-kernel-review.md#keys)): its board tree's `x2000_key` node
   puts Volume Up, Volume Down and Play on GPB13, GPB14 and GPB15, and its
   key driver takes a raw level of 0 as pressed; `kernel_review.py` refuses a
   kernel whose tree moves Volume Up or Play. Confirmed on the owner's V2.57
@@ -807,7 +807,7 @@ added and its `lib/` first in `LD_LIBRARY_PATH`.
 A package must not write MTD devices, change FiiO's files in `/usr/data`
 (`fiio/`, `sn.txt` and the rest; disc-network changes stock's Wi-Fi networks
 through stock's own wpa_supplicant, never its file: the owner's decision of
-2026-10-09, [disc-network](network.md)), signal stock processes, take stock's ports
+2026-10-09, [disc-network](../packages/network.md)), signal stock processes, take stock's ports
 or create a USB gadget while the console owns the controller. Boot cannot
 enforce this: packages run as root, at the installer's risk.
 
@@ -862,7 +862,7 @@ readback through USB Boot, which stays the way when it is missing or differs.
 
 ## USB console
 
-Unchanged in behavior ([USB diagnostics](usb-diagnostics.md), whose marker
+Unchanged in behavior ([USB diagnostics](../usb-boot/usb-diagnostics.md), whose marker
 moved to `.disc/` with combined-008): the card file `.disc/dev/usb-console`
 with the exact content `DISC_WEB_LOCAL_ROOT_CONSOLE` and a newline enables it
 at boot, independently of the mode. The installer writes the marker (owner,
