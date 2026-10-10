@@ -1625,11 +1625,38 @@ the only installer. Play at power-on stays the recovery path only.
   phone's hotspot off, disc-network put MikroTik_83 in its place 36 s later
   (the minute after stock's connection) and the player joined it; confirmed.
   Next: a release that carries it ticked, with the packages without the image.
-- [ ] Packages without the image (owner, 2026-10-09): `install.py --packages`
+- [x] Packages without the image (owner, 2026-10-09): `install.py --packages`
   skips FiiO's update, the image and the player, checks the catalog, takes
   the chosen packages by their digests and stages them on the card; the
   player installs them from the menu's Packages screen or with Play. Only
-  the installer changes, not the image.
+  the installer changes, not the image. 2026-10-10: the mode (Python alone
+  is checked; the player's options refused), `test_installer` 21; from
+  2.57.8's unpacked archive with an empty home, `--packages --dry-run`
+  staged the menu, disc-server, disc-health, disc-network and Disc Player.
+  On the owner's player (2026-10-10), twice: the card through stock's
+  Working mode → USB Storage, no card reader; the menu offered the packages
+  and installed each from its row; disc-health 2.57.8 started in its new
+  slot at once (18 s after the start, no restart of the player), the menu
+  kept while used past 60 s, then the server 2.57.6 the same way. The guide
+  has "Updating the packages".
+- [x] Release 2.57.8 (2026-10-10): no new image (build `8eb15a998d85`, the
+  image `9e6448dd…` as 2.57.7's), disc-network 2.57.8 offered by default
+  (one network in stock's configuration), `install.py --packages`, the
+  texts on Play only the first time. The menu and disc-health are 2.57.7's
+  binaries byte for byte; disc-network's package is the one accepted on the
+  guest (`network_guest.py` 5 of 5) and on the owner's player. On the guest:
+  `install.py --guest` from the unpacked archive with an empty home (the
+  menu, disc-server 2.57.5, disc-health, disc-network installed by Play and
+  confirmed; the image built on the computer `9e6448dd…`), again with the
+  server 2.57.6 in its catalog (installed by Play, confirmed). On the owner's
+  player with `install.py --packages` from this archive (above), the server
+  2.57.6 included. The server's release workflow refused 2.57.6 (its package
+  held an earlier build's civetweb object): the catalog names the server
+  2.57.7 instead, the same work from a clean build, and the archive is built
+  and accepted again with it. Recorded (`releases/2.57.8.json`); tagged and
+  published after the server 2.57.7, whose package its catalog names (the
+  owner, 2026-10-10: the tags and the publication by Claude, in that order;
+  2.57.7 published the same day).
 - [ ] Updates over Wi-Fi from the server's page (owner, 2026-10-09; after
   disc-network's check): the controller may ask boot to install a package it
   staged on the card (`disc-boot install <folder>`, the menu's command) and
@@ -1700,7 +1727,11 @@ the only installer. Play at power-on stays the recovery path only.
   the player first: how stock enters that mode (by itself on a cable, a
   setting, a prompt), that it and the USB console share the port in turn,
   and a first start's check without an expected digest on the card (the
-  installer compares it).
+  installer compares it). 2026-10-10, the owner: the card needs no reader;
+  the player switched to stock's USB storage shows it to the computer as a
+  drive, which the installer takes as any card (`--packages`, and the card's
+  step of an installation before USB Boot). The guide and the installer say
+  so; the installation's card after the write stays open.
 
 - [x] Release 2.57.6 (2026-10-09): FiiO's own interface first, the player
   restarted by the installer after the write, the archive's downloads into a

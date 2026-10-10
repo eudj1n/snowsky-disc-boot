@@ -36,8 +36,10 @@ back](way-back.md) returns the player to stock.
 2. The installer asks for the folder of FiiO's update and builds the new
    system (about a minute). It offers the packages: the menu, the server and
    Disc Player are ticked; they come with the installer.
-3. **The card.** Put the player's card into the computer, name where it is
-   mounted and type `CARD`. Then put the card back into the player.
+3. **The card.** Put the player's card into the computer, or connect the
+   player with its cable and choose **Working mode → USB Storage** on it: the
+   card shows as a drive either way. Name where it is mounted and type `CARD`. Then eject it,
+   and put the card back into the player (or leave USB storage).
 4. **The player.** Switch the player off, hold **Volume Down** and connect
    the cable to the computer (USB Boot). Type `CHECK`: in about a minute the
    installer reads what the player holds and checks it. It writes nothing to
@@ -60,6 +62,24 @@ back](way-back.md) returns the player to stock.
 All together it takes about 15 minutes with the player. Each run is kept,
 with its report, in `~/Library/Application Support/SNOWSKY DISC/runs`
 (macOS) or `~/.local/share/snowsky-disc/runs` (Linux).
+
+## Updating the packages
+
+When the player has the boot layer and its menu already, new versions of the
+packages need no USB Boot: from the newest release's archive,
+
+```sh
+python3 install.py --packages
+```
+
+offers the packages and apps as above and puts the chosen ones on the card
+(in a card reader, or the player itself in Working mode → USB Storage);
+nothing else is needed on the computer (no FiiO update, no libusb). Eject
+the card, put it back into the player (or leave USB storage), then switch
+the player off and on: the menu's row "on the card" opens Packages, where
+Play installs each one. A new version of a service or the server starts at
+once, a new menu at the next start; each keeps its previous version, and one
+that fails gives way to it.
 
 ## What is installed
 

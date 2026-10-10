@@ -8,6 +8,7 @@ changes (scripts/build.sh mips):
 
   disc-menu-<version>.zip           the boot menu's package (role menu), for the card
   disc-health-<version>.zip         the health journal's package (a service), for the card
+  disc-network-<version>.zip        several Wi-Fi networks (a service), for the card
   disc-boot-<version>-mips.tar.gz   disc-boot and disc-usb-console, which install.py puts into
                                     the image it builds from FiiO's update on the user's computer
   disc-usb-payloads-<version>.tar.gz  the programs install.py runs from the player's RAM in USB Boot
@@ -75,15 +76,16 @@ def digest(path):
         return hashlib.file_digest(source, 'sha256').hexdigest()
 
 
-# disc-network is not a release file until it keeps one network in stock's configuration: stock's UI fails
-# with more (the owner's player, 2026-10-09; docs/dev/network.md).
+# disc-network is a release file again from 2.57.8, keeping one network in stock's configuration (stock's UI fails
+# with more: the owner's player, 2026-10-09; docs/dev/network.md).
 def names(version):
     return (f'disc-menu-{version}.zip', f'disc-boot-{version}-mips.tar.gz', f'disc-usb-payloads-{version}.tar.gz',
-            f'disc-health-{version}.zip')
+            f'disc-health-{version}.zip', f'disc-network-{version}.zip')
 
 
 def own_packages(version):
-    """The packages a release carries itself (the menu, disc-health): the catalog offers each by default."""
+    """The packages a release carries itself (the menu, disc-health, disc-network): the catalog offers each by
+    default."""
     return [name for name in names(version) if name.endswith('.zip')]
 
 
@@ -147,7 +149,7 @@ def build(version, output, mips=ROOT/'build/mips', release=True, diskos=None, pa
     if output.exists() and any(output.iterdir()):
         raise ReleaseError(f'{output} is not empty')
     output.mkdir(parents=True, exist_ok=True)
-    menu_zip, kit_name, _, health_zip = names(version)
+    menu_zip, kit_name, _, health_zip, network_zip = names(version)
     with tempfile.TemporaryDirectory() as temp:
         folder = Path(temp)/'disc-menu'
         (folder/'bin').mkdir(parents=True)
@@ -166,6 +168,15 @@ def build(version, output, mips=ROOT/'build/mips', release=True, diskos=None, pa
         shutil.copyfile(ROOT/'LICENSE', folder/'LICENSE')
         package.describe(folder, 'disc-health', version, 'service', 'bin/disc-health', profiles=[firmware], homepage=REPOSITORY)
         package.zip_package(folder, output/health_zip)
+        # disc-network runs stock's wpa_cli (a dynamic program) under its bound: 32 MiB.
+        folder = Path(temp)/'disc-network'
+        (folder/'bin').mkdir(parents=True)
+        shutil.copyfile(mips/'disc-network', folder/'bin/disc-network')
+        (folder/'bin/disc-network').chmod(0o755)
+        shutil.copyfile(ROOT/'LICENSE', folder/'LICENSE')
+        package.describe(folder, 'disc-network', version, 'service', 'bin/disc-network', profiles=[firmware], homepage=REPOSITORY,
+                         memory=32)
+        package.zip_package(folder, output/network_zip)
     kit(version, mips, output/kit_name)
     payload_name = names(version)[2]
     if diskos is None:

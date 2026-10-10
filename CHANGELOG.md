@@ -6,8 +6,18 @@ layer for FiiO's 2.57. Each published release is a `v<version>` tag with its
 files on the [releases page](https://github.com/eudj1n/snowsky-disc-boot/releases).
 Entries stay short; how and why it was done is in the [plan](docs/dev/plan.md).
 
-## [2.57.8] — in preparation
+## [2.57.8] — 2026-10-10
 
+- disc-network, offered by default: the player remembers up to 8 Wi-Fi
+  networks it joined. When the network FiiO's interface keeps is out of reach,
+  it puts a remembered one in range in its place, so the player joins it
+  without asking the password again. FiiO's interface keeps one network, as
+  it expects. The passwords stay on the player; a reset of the player clears
+  them too.
+- `install.py --packages` updates the packages without USB Boot: it puts them
+  on the card, and the boot menu installs them.
+- The server 2.57.7 by default: its page lists the services beside it and
+  FiiO's own interface with the firmware's version.
 - The installer and the guide say what is true since the boot menu's
   Packages screen: once the menu is installed, it offers the packages on the
   card at a start; Play at power-on is needed only the first time.

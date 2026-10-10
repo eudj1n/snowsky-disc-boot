@@ -6,8 +6,8 @@ stock connected to and, when stock's network is out of reach, puts a kept one
 in range in its place in stock's wpa_supplicant, so the player joins whichever
 is in range without its password again. Source: `device/network/network.c`;
 its package (`disc-network-<version>.zip`, a memory bound of 32 MiB: it runs
-stock's dynamic `wpa_cli`) is no release file until this design has run on
-the owner's player.
+stock's dynamic `wpa_cli`) is a release file from 2.57.8, offered ticked, after
+this design ran on the owner's player (2026-10-10).
 
 ## Why stock keeps one
 

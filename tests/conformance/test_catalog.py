@@ -40,20 +40,20 @@ class CatalogTests(unittest.TestCase):
     def test_this_repositorys_catalog_is_valid(self):
         data = catalog.load()
         entries = {e['name']: e for e in data['entries']}
-        # disc-network waits until it keeps one network in stock's configuration (the owner's player, 2026-10-09).
-        self.assertEqual(sorted(entries), ['disc-health', 'disc-menu', 'disc-server', 'diskos'])
+        self.assertEqual(sorted(entries), ['disc-health', 'disc-menu', 'disc-network', 'disc-server', 'diskos'])
         self.assertEqual({n: e['role'] for n, e in entries.items()},
-                         {'disc-health': 'service', 'disc-menu': 'menu', 'disc-server': 'service', 'diskos': 'ui'})
-        self.assertEqual(entries['disc-health']['bootApi'], 2)
+                         {'disc-health': 'service', 'disc-menu': 'menu', 'disc-network': 'service', 'disc-server': 'service', 'diskos': 'ui'})
+        self.assertEqual({n: e['bootApi'] for n, e in entries.items() if n in ('disc-health', 'disc-network')}, {'disc-health': 2, 'disc-network': 2})
         # The server of boot API 1 (up to 2.57.5) is the controller.
         self.assertEqual(package.taken(entries['disc-server']), 'controller' if entries['disc-server']['bootApi'] < 2 else 'service')
-        self.assertEqual(sorted(n for n, e in entries.items() if e['default']), ['disc-health', 'disc-menu', 'disc-server'])
+        self.assertEqual(sorted(n for n, e in entries.items() if e['default']), ['disc-health', 'disc-menu', 'disc-network', 'disc-server'])
         # diskOS is built from its own published release on the user's computer, never from here.
         self.assertEqual(entries['diskos']['source']['recipe'], 'diskos-release')
         self.assertTrue(all(PROFILE in e['profiles'] for e in entries.values()))
         # Every package is public: each names its project's page.
         self.assertEqual({n: e['homepage'] for n, e in entries.items()}, {
             'disc-health': 'https://github.com/eudj1n/snowsky-disc-boot',
+            'disc-network': 'https://github.com/eudj1n/snowsky-disc-boot',
             'disc-menu': 'https://github.com/eudj1n/snowsky-disc-boot',
             'disc-server': 'https://github.com/eudj1n/snowsky-disc-server',
             'diskos': 'https://github.com/b0hemia/diskos'})
