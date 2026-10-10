@@ -65,6 +65,10 @@ return.
 | Play | The installation of the packages staged on the card, then the boot layer |
 | Volume Down, with the cable to a computer | USB Boot, for the installer |
 
+After three starts in a row that did not get ready, the player starts FiiO's
+interface by itself at every start; a start with Play brings the boot layer
+back.
+
 ## For developers
 
 How the layer works, how to build, test and release it:

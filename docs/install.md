@@ -21,7 +21,8 @@ back](way-back.md) returns the player to stock.
     `apt install squashfs-tools openssl`).
 
   The installer checks each of them first and names what is missing.
-- A USB cable and a card reader for the player's memory card.
+- A USB cable. The memory card is reached through a card reader, or through
+  the player itself in Working mode → USB Storage (step 3).
 
 ## Step by step
 
@@ -34,8 +35,9 @@ back](way-back.md) returns the player to stock.
    ```
 
 2. The installer asks for the folder of FiiO's update and builds the new
-   system (about a minute). It offers the packages: the menu, the server and
-   Disc Player are ticked; they come with the installer.
+   system (about a minute). It offers the packages: the menu, the server,
+   disc-health, disc-network and Disc Player are ticked; they come with the
+   installer.
 3. **The card.** Put the player's card into the computer, or connect the
    player with its cable and choose **Working mode → USB Storage** on it: the
    card shows as a drive either way. Name where it is mounted and type `CARD`. Then eject it,

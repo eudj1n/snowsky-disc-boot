@@ -50,7 +50,7 @@ acquisition. A changed input requires a fresh plan and scope review.
    address/nonce-derived SHAKE256 patterns to **all** chunks before comparing
    **all** chunks, then repeat with their complement. This detects aliases
    that an immediate write/read of each chunk could miss.
-4. Check the image region on the player (plan, stage 4c): upload the staging
+4. Check the image region on the player (2026-10-07): upload the staging
    check (`device/usbboot/staging.c`, built as the `staging-check` payload
    with no NAND opcodes) into the code region and compare it, then run it once
    for the region. It writes xorshift32 words from a seed of the session's nonce
@@ -81,7 +81,7 @@ All regions are non-overlapping; code, reader stack/request/result, writer stack
 and debug are checked alongside the image. Bulk chunks are at most 64 KiB.
 
 The staging deadline is 900 seconds. The write plan's upper bound is a few
-thousand calls fewer than before stage 4c (27,892): one held ask after each run
+thousand calls fewer than before the held asks (27,892, 2026-10-07): one held ask after each run
 of the staging check (at most `staging_check_ms` 600 s and `staging_sample_ms`
 60 s) and two for the writer.
 The image crosses USB twice (its upload and its read back, 192 MiB, about
@@ -136,7 +136,7 @@ check, it journals one writer invocation before sending it. The current profile
 specifies a 900-second wait and a 1,800-second overall session budget, following
 the reviewed diskOS host wait. These bounds are not physically qualified writer
 timing. Right after the invocation the host sends one CPU-info request held
-for the whole `writer_wait_ms` (plan, stage 4c); the ROM answers it only once
+for the whole `writer_wait_ms` (2026-10-07); the ROM answers it only once
 the writer has returned, so the reply ends the wait and the result keeps the
 writer's time (`writer_ms`). An ask changes nothing on the player: one that
 fails at once is no outcome, and is followed by the rest of the wait and one
@@ -165,9 +165,9 @@ Independently collect and compare every byte of the exact approved padded image
 after candidate or restore writing. The pre-install FF-tail rule never applies
 to post-write acceptance.
 
-### A write without a history (plan, stage 6)
+### A write without a history (2026-10-08)
 
-A write whose review is `known-image` ([installation review](../installer/installation-review.md#without-a-history-the-known-image-plan-stage-6-2026-10-08))
+A write whose review is `known-image` ([installation review](../installer/installation-review.md#without-a-history-the-known-image-2026-10-08))
 runs only in the USB Boot entry its evidence was read in: its plan carries
 `same_entry_required`, and the session reads the DDR diagnostic first as every
 session does; unless it is the clean one that entry's SPL left, it stops there,
@@ -215,7 +215,7 @@ the host retains uncertainty and never invokes again. Tests run through the
 existing GitHub Actions discovery, without libusb, firmware, a sibling checkout,
 a player or credentials.
 
-Since stage 4c, `test_writer_transport.py` has 16 tests: its fake ROM runs the
+`test_writer_transport.py`'s fake ROM runs the
 staging check (the pattern through the region's own mapping, so an alias shows,
 and the hash) and stays busy for some asks after each run and after the
 writer. They add the sample's hash and its mismatch, the writer's wait ended by

@@ -98,7 +98,7 @@ loading, enumeration/open/claim/release and filesystem operations do not have a
 hard interruptible wall-clock guarantee from this synchronous API.
 
 A batch of the rootfs collector (the backup, the readback, the read by digest)
-no longer sleeps the settle after its execution (plan, stage 4c): the ROM does
+no longer sleeps the settle after its execution (2026-10-07): the ROM does
 not answer USB while a payload runs, so the host sends the batch's one CPU-info
 request right after the execution with the whole settle as its timeout: the
 controller holds it and the ROM answers it once the batch has returned, which
@@ -115,7 +115,7 @@ fixed settle as before. The write session asks the same way after its staging
 check and its writer ([writer transport](writer-transport.md#completion-on-the-player)).
 
 A session reads the DDR diagnostic in TCSM before anything else
-(`ram_transport.bring_up`, plan, stage 4c): the clean one (`d1a6c0de 9 0 0 0`)
+(`ram_transport.bring_up`, 2026-10-07/08): the clean one (`d1a6c0de 9 0 0 0`)
 is what this USB Boot entry's SPL left, DDR is up, and the SPL is not run
 again (a second SPL re-runs the DDR bring-up, whose training failed in 3 of 6
 re-runs, both after the writer); anything else (a fresh entry) uploads,
@@ -131,7 +131,10 @@ evidence pins the transport profile byte for byte, and installations keep the
 installer's RAM contract identical, so a setting added there refuses the next
 installation of every installed player (it did on 2026-10-07, before any USB
 access). A plan made without the completion profile has none of its fields and
-no asks, as before.
+no asks, as before. `expected_ms` holds the asks' times measured on the
+player: the region's check 111 s, the 1 MiB sample's hash 4.3 s and the
+writer 246 s. The journal is silent while the ROM holds the request, so the
+installer's progress counts a held ask by this time.
 
 Negative returns, zero progress, successful short transfers, excessive counts,
 comparison failures or deadline expiry stop the sequence. Even an error with

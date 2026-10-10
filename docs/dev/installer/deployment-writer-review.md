@@ -60,6 +60,22 @@ device-side abort is established by killing `usbboot`. An interrupted or missing
 readback is an unknown outcome, not permission to unplug or immediately retry.
 A future installer must preserve logs and resolve the device state explicitly.
 
+### diskOS 1.2.0's `my_write6` (reviewed 2026-10-05)
+
+diskOS 1.2.0 (`0edcfba`) adds `my_write6`: `my_write5` (our pinned
+`4f23a3c9…`, unchanged in 1.2.0) plus a gate before the NAND is unlocked. The
+gate hashes the staged image in DRAM with SHA-256 against a host plan blob,
+and reads the kernel, the recovery kernel and the recovery rootfs and hashes
+them against a catalogue. Its CP0 Count timing (64-bit accumulation,
+CPCCR/CPAPCR kept for the conversion) is compiled only into the builds that
+write nothing (`PROBE_ONLY`, `GATE_ONLY`), so it measures no writer; diskOS's
+host waits 18 minutes for it instead of 15, to cover its hashes, which are not
+measured either. `my_write5` already reads every block back against the
+source in DRAM, with retries, so adopting `my_write6` would shorten nothing.
+On the owner's player the writer takes about 246 s for 768 blocks (245.7 s,
+measured by the held request, 2026-10-07/08); the chip's erase and program
+timings give about 1–1.5 minutes, and where the rest goes is not measured.
+
 ## Offline checker
 
 ```sh

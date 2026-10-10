@@ -33,9 +33,11 @@ docs/dev/boot/contract.md and docs/dev/plan.md before extending it.
   documentation.
 - Documentation for users: README.md, CHANGELOG.md and the pages in docs/
   (the installation guide, the way back), which the installer's archive
-  carries. For developers: docs/dev/ (development.md first, the contract, the
-  plan, reviews and procedures) and docs/dev/observations/ (the records of
-  sessions on players). Put build, test and architecture instructions there.
+  carries. For developers: docs/dev/, by area (docs/dev/README.md lists them;
+  development.md first, the plan, boot/, packages/, installer/, usb-boot/,
+  nand/, firmware/) and docs/dev/observations/ (the records of sessions on
+  players). Put build, test and architecture instructions there; a new
+  document goes into its area's folder.
 - Keep on-device identifiers (paths, hook and marker names) stable across
   images unless a stage explicitly renames them; installation evidence pins
   them.

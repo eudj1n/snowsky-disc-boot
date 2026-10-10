@@ -1,6 +1,6 @@
 # disc-health
 
-The health journal (plan, stage 7; owner, 2026-10-07): a service of boot
+The health journal (owner, 2026-10-07): a service of boot
 API 2 ([contract](../boot/contract.md#roles)) that reads, offline and read-only, what
 the player shows of itself, keeps a short journal of it on the player and
 reports the latest reading for the server's diagnostics. It opens no socket

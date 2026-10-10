@@ -219,6 +219,22 @@ the menu only when it does not answer within 60 s (`t_menu`, not 30 s as first s
 two of three starts. Stock's UI keeps no log. The kernel showed no fault. `/run`, which held the
 boot program's state, was gone after the reboot.
 
+**Ruled out and suspected (2026-10-06).** On 2026-10-06 the owner saw it once more, after the
+countdown's choice: a dark, flickering screen, as stock's loop turned the backlight off at each
+restart of the UI, so a key press is not the cause. Ruled out offline: the menu's framebuffer
+page (stock's UI pans to page 0 itself at its start); the environment the menu hands on (stock's,
+plus `DISC_BOOT_*`); the order in which the pair starts, taken alone (on the guest every order
+recovered). Suspected: stock's pair serialises on a blocking `flock` (`LOCK_EX`) of
+`/usr/data/fiio/process_lock.txt` (`util.c`'s `process_lock_segment`; `process_try_lock_segment`
+takes it with `LOCK_NB`); a holder that never lets go would leave the UI on its logo, and a
+process that inherited the lock's descriptor would keep it across the pair's restarts. Stock's
+POSIX queues (`/dev/mqueue/ui`, `/dev/mqueue/player`) also outlive the processes until a reboot.
+After the menu's choice the UI and the player started at once, whereas stock starts the player
+2 s after the UI. From the fourth write on, the image starts the player 2 s after the UI and, at
+each start of the pair, logs the lock's holders and waiters, the queues and the fatal signals
+(contract, "Stock's order after the menu" and "What the boot log keeps"). No recurrence has been
+recorded since the fourth write.
+
 ### The second SPL of a USB Boot entry
 
 The read by digest failed at the SPL, which brings DDR up before any payload.
@@ -271,7 +287,7 @@ of one entry, and the known DDR failure stopped it; the owner lost an hour to a 
 since the third write. The installer now asks for a fresh entry before each write, and
 `--resume` went on from that run's backup (compared again offline, the same package prepared
 again). The read by digest no longer goes with an installation: three runs brought page ticks of
-zero (plan, stage 4b).
+zero ([rootfs collector](../nand/rootfs-collector.md#the-read-by-digest-rootfs-digest)).
 
 ### Play after the write
 
@@ -409,3 +425,19 @@ the player the same day first (`player-restarted`, the menu then stock, the cabl
 [restart](../usb-boot/restart.md)). The run's `report.json` does not name the restart's outcome (its
 `usb/restart/result.json` does); it will from the next release.
 
+## The tenth and eleventh writes (release 2.57.7)
+
+On 2026-10-09 the owner installed the first build of 2.57.7 (`d1ad405880ec`, image `6d1a6780…`)
+from its archive. The player was written in the review's entry and restarted by the installer
+(`player-restarted`). The server of boot API 1 moved to `controller/`, and the menu, the server,
+disc-health and disc-network were installed by Play and confirmed. Its starts found the fixes of
+release 2.57.7: disc-network's `--` for wpa_cli and then its one-network design
+([network](../packages/network.md)), disc-health's clock and current ([health](../packages/health.md)),
+the menu kept while it is used, and a package installed over the running one started at once
+([contract](../boot/contract.md)).
+
+On 2026-10-10 the release's build (`8eb15a998d85`, image `9e6448dd…`) went over it. The review knew
+the first build by its first blocks (`eff13569…`, in `firmware/images` `earlier`), the write ran in
+the same entry, the installer restarted the player, and the first start's check matched. The new
+menu was confirmed by its first answer. Later packages came without USB Boot, through
+`install.py --packages` and the player's Working mode → USB Storage.
