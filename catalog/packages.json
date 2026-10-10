@@ -80,12 +80,12 @@
         {
             "name": "disc-server",
             "role": "service",
-            "version": "2.57.5",
+            "version": "2.57.6",
             "homepage": "https://github.com/eudj1n/snowsky-disc-server",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-server/releases/download/v2.57.5/disc-server-2.57.5.zip",
-                "sha256": "26d19b4ceccb329ad6a07ff163bea70d116e4acfde2dea43018010243e3affa2",
-                "size": 838153
+                "url": "https://github.com/eudj1n/snowsky-disc-server/releases/download/v2.57.6/disc-server-2.57.6.zip",
+                "sha256": "da9cfda316010d17cc117fcdeb09ddc45dea3cb44238dec3c570fef8134b27e5",
+                "size": 840076
             },
             "profiles": [
                 "2.57"
@@ -95,11 +95,11 @@
             "default": true,
             "notes": "snowsky-disc-server's release variant; its catalog/apps.json offers Disc Player 1.0.0 by default",
             "verified": {
-                "date": "2026-10-08",
-                "boot": "b29581a",
+                "date": "2026-10-10",
+                "boot": "8eb15a9",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "2.57.4 to 2.57.5 through the manager on the guest (boot 2.57.3's image), confirmed in 187 s; Disc Player 1.0.0 installed through it; release 2.57.5 (2.57.4's build)"
+                "acceptance": "the controller of boot 2.57.7's image on the guest: installed by Play, confirmed, integration.py --about, manager_guest.py; release 2.57.6"
             }
         },
         {

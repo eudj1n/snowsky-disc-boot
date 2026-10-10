@@ -16,6 +16,8 @@ Entries stay short; how and why it was done is in the [plan](docs/dev/plan.md).
   them too.
 - `install.py --packages` updates the packages without USB Boot: it puts them
   on the card, and the boot menu installs them.
+- The server 2.57.6 by default: its page lists the services beside it and
+  FiiO's own interface with the firmware's version.
 - The installer and the guide say what is true since the boot menu's
   Packages screen: once the menu is installed, it offers the packages on the
   card at a start; Play at power-on is needed only the first time.
