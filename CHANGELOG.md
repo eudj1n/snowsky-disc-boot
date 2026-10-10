@@ -6,6 +6,12 @@ layer for FiiO's 2.57. Each published release is a `v<version>` tag with its
 files on the [releases page](https://github.com/eudj1n/snowsky-disc-boot/releases).
 Entries stay short; how and why it was done is in the [plan](docs/dev/plan.md).
 
+## [2.57.8] — in preparation
+
+- The installer and the guide say what is true since the boot menu's
+  Packages screen: once the menu is installed, it offers the packages on the
+  card at a start; Play at power-on is needed only the first time.
+
 ## [2.57.7] — 2026-10-09
 
 - Besides the server, the player can run services: small background programs,
