@@ -1,7 +1,7 @@
 {
     "schema": 1,
     "kind": "packages",
-    "description": "The packages the installer offers (docs/dev/contract.md, \"Catalogs\"): release files only, each accepted on the guest with this boot layer; a package is identified by its archive's SHA-256, fetched from its url once published or taken from a local file with that digest. Debug builds stay local.",
+    "description": "The packages the installer offers (docs/dev/boot/contract.md, \"Catalogs\"): release files only, each accepted on the guest with this boot layer; a package is identified by its archive's SHA-256, fetched from its url once published or taken from a local file with that digest. Debug builds stay local.",
     "entries": [
         {
             "name": "disc-menu",

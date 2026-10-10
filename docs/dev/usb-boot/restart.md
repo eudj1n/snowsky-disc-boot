@@ -1,6 +1,6 @@
 # The player restarted from USB Boot
 
-The installer leaves USB Boot by itself (plan, stage 7; owner, 2026-10-09: FiiO's
+The installer leaves USB Boot by itself (owner, 2026-10-09: FiiO's
 update restarts the player itself): after the write, in the same entry, a small
 program run from the player's RAM starts the watchdog, the chip restarts and,
 Volume Down no longer held, starts the system it holds from NAND with the cable
@@ -25,7 +25,14 @@ the pinned SPL source's `_machine_restart` (diskOS's u-boot-xburst,
 Then it waits on CP0 Count for 2^28 ticks (a fraction of a second at the SPL's
 clocks). Should no restart come, it stops the watchdog and returns to the ROM, so
 the player is never left looping and the host can tell (`device/tests/restart_test.c`
-checks the sequence; the other payloads' bytes do not change with it).
+checks the sequence; the other payloads' bytes do not change with it). A limit
+of that fallback: CP0 Count may stand still in the payloads' context (the read
+by digest found every page's ticks to be 0 on the player: [rootfs
+collector](../nand/rootfs-collector.md#the-read-by-digest-rootfs-digest)). So far the restart
+has always come within its 4 ms; if it ever does not, the payload may not
+return, the held request ends `restart-uncertain`, and the player has to be
+switched off before it starts its system. Bounding the wait by another clock
+is open work ([plan](../plan.md)).
 
 ## The session and its audit
 
@@ -63,4 +70,8 @@ or built with the others) and audits it. When the player left the bus it says so
 the cable stays connected: the user answers about the start, and the first start's
 check is read over that cable. Any other outcome, or a release without the payload, is
 the cable as before (unplug, then plug while the new system runs); the write stands
-either way and nothing is retried (`test_usbboot`).
+either way and nothing is retried (`test_usbboot`). The run's `report.json` names
+the outcome in the player's step: its `restart` field holds `outcome`
+(`player-restarted`, `restart-not-observed`, `restart-uncertain`, `failed` with
+`why`, or `not available` for a release without the payload) and the session's
+folder.

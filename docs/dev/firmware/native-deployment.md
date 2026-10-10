@@ -2,8 +2,8 @@
 
 This page records the initial offline preparation. The subsequent engineering
 candidate passed an authorized physical write, exact full readback and
-owner-confirmed normal reboot; see the [physical observation](observations/candidate-installation-observation.md).
-The later [physical boot report](observations/boot-report-observation.md) confirms native
+owner-confirmed normal reboot; see the [physical observation](../observations/candidate-installation-observation.md).
+The later [physical boot report](../observations/boot-report-observation.md) confirms native
 process presence, a loopback listener and primary-root boot data. Native health,
 stock protocol round trips and diagnostic USB acceptance remain outstanding.
 
@@ -13,9 +13,9 @@ in diskOS. The native deployment gate takes priority over Stage 1. This stage
 produces **review-only images**, not an installer or physical acceptance.
 The implementation now uses [reviewed firmware/writer profiles](firmware-compatibility.md).
 V2.57 below names recorded evidence, not a hard-coded runtime restriction. The
-next [writer audit and diagnostic-access design](deployment-writer-review.md)
+next [writer audit and diagnostic-access design](../installer/deployment-writer-review.md)
 documents the offline checker and remaining installation work.
-The later [USB engineering variant](usb-diagnostics.md) adds controlled local
+The later [USB engineering variant](../usb-boot/usb-diagnostics.md) adds controlled local
 diagnostics separately; the three-object companion-only image below is unchanged.
 
 ## What diskOS establishes
@@ -178,7 +178,7 @@ the restore image hash is unchanged. The isolated hook result remains
    an independently usable restore route. Produce a concrete device-specific
    procedure before seeking authorization for any physical connection/write.
    Do not bypass diskOS's untested-firmware guard to infer acceptance.
-2. Qualify the separate opt-in [USB engineering image](usb-diagnostics.md) on
+2. Qualify the separate opt-in [USB engineering image](../usb-boot/usb-diagnostics.md) on
    hardware: enumeration, card activation/revocation and stock mode coexistence.
    The ordinary companion-only candidate above contains no diagnostic bootstrap.
 3. Verify actual ISA/FPU/NaN mode, kernel/syscalls, `/proc` process matching and

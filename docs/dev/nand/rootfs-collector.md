@@ -5,7 +5,7 @@ The collector implements the live transport needed by the independent
 separately authorized **full 96 MiB collection** have completed. All official
 rootfs bytes match; the full image differs in its FF tail versus the prepared
 restore image's zero padding, so strict full-image equality is rejected.
-[Full observation and stock boot confirmation](observations/rootfs-full-observation.md).
+[Full observation and stock boot confirmation](../observations/rootfs-full-observation.md).
 Repeated-read OOB differences fall within internal ECC parity; their cause
 remains unresolved. Write and installation acceptance remain open.
 
@@ -53,6 +53,40 @@ precedes publishing the batch magic last. Unused results remain zero.
 Only ID, feature/status reads, page-to-cache and cache-read commands exist. No
 NAND reset, feature change, unlock, write-enable, program or erase is added.
 The command range is enforced on the device as well as by host ordering.
+
+## The read by digest (`rootfs-digest`)
+
+`device/usbboot/digest.c` is built as the `rootfs-digest` payload
+(2026-10-05). It answers the full read's batch with 128 bytes a page instead
+of 4,428: the full result's counters and status, the first 8 OOB bytes (the
+bad-block marker), and the SHA-256 of the page's 2,048 main bytes, from the
+payload's own SHA-256 without libc. A batch's result is therefore 8 KiB
+instead of 277, and takes 17 calls instead of 53; a whole read is 794
+batches, 13,588 calls and 8.9 MB, against the full read's 42,220 calls and
+227.5 MB. The full read's payload stays byte for byte `b1743a1d…`.
+`collect_rootfs.py --mode rootfs-digest` reads it, and `readback.py verify
+--digest` compares every page with the image.
+
+It keeps the reads' batches (owner, 2026-10-05): the progress then counts real
+work against the plan, and a stalled call stays a bounded timeout; it never
+makes one long digest of the whole image. Sampling blocks was weighed and
+refused: a NAND write fails in one block or page, and a squashfs shows that
+only when the file is read.
+
+On the player (2026-10-05/06) it agreed page by page with the full read and
+the image each time it ran. It never replaced the full read, which would first
+have needed an offline audit of its journal, and the installer no longer runs
+it (owner, 2026-10-06); since 2026-10-07/08 the identity check and the first
+start's check take the place of the full reads.
+
+Each record's `cycles` word was meant to hold the page's CP0 Count ticks.
+Three reads on the player gave every page 0 (2026-10-06), although the payload
+reads Count before and after each page: Count stands still in the payloads'
+context, probably because the ROM or the SPL leaves Cause.DC set (not
+settled). A payload that needs time must clear Cause.DC first or use the
+SoC's own timer, `core-ost` at `0x12000000` (`0x12100000` per core) in the
+stock kernel's tree. The host times a batch by its held request instead
+(`batch_ready_ms`, [RAM transport](../usb-boot/ram-transport.md)).
 
 ## Host lifecycle and retained evidence
 
@@ -132,8 +166,8 @@ marker pages and the pages of the first good blocks, the first blocks
 DDR diagnostic, with the SPL run only when it is not clean, and the held
 completion asks). Its report, `saved-probe-trace-matches`, gives the first
 blocks' SHA-256: what the installation without a history compares with the
-images known (`firmware/images`, plan stage 6). The boot evidence has its own
-audit (`audit_usb_boot.py`, [boot selection](boot-selection.md)); both share
+images known (`firmware/images`, 2026-10-08). The boot evidence has its own
+audit (`audit_usb_boot.py`, [boot selection](../boot/boot-selection.md)); both share
 the reconstruction of records and calls in `usb_trace_audit.py`. Synthetic
 sessions of the fake ROM run in GitHub Actions (`test_audit_usb_probe`).
 
@@ -152,7 +186,7 @@ The separate full-mode plan is `work/rootfs-full-plan-001.json`, hash
 `bf0d6e2877d36529ef49ecc2f1a0c3040814ce2343c6db64213d72ab25325894`.
 It is an offline artifact, not a proposal to run the full collection before
 qualifying the probe. The probe subsequently executed as recorded below, followed
-by the separately authorized [full observation](observations/rootfs-full-observation.md).
+by the separately authorized [full observation](../observations/rootfs-full-observation.md).
 
 ## Proposed full read after OOB review
 
@@ -183,7 +217,7 @@ Successful collection must be followed by the independent full-image verifier
 against the reviewed stock restore image. A successful USB session alone does
 not satisfy that check. Raw parity qualification, active boot selection and
 installation/recovery remain separate. This was the proposal before execution.
-The owner subsequently authorized one session; [its full evidence](observations/rootfs-full-observation.md)
+The owner subsequently authorized one session; [its full evidence](../observations/rootfs-full-observation.md)
 records successful collection and the rejected exact stock-image comparison.
 It does not authorize another session or physical write.
 

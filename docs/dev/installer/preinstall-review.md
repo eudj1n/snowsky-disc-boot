@@ -10,7 +10,7 @@ writer execution, image modification or hardware authorization is involved.
 | Candidate after writing | Every byte of the exact approved padded candidate | `readback.py` |
 | Stock after restoration | Every byte of the exact approved padded restore image | `readback.py` |
 
-The [earlier full-image rejection](observations/rootfs-full-observation.md) remains valid.
+The [earlier full-image rejection](../observations/rootfs-full-observation.md) remains valid.
 This new stock check is not a retrospective pass of that test. The writer will
 program a padded image, so subsequent readback must include its padding even
 if the stock device previously had FF.
@@ -61,13 +61,13 @@ There is no CLI tail override or physical execution action.
 ## Installation and restoration design
 
 This is the required workflow for separately authorized installation. The
-[writer transport](writer-transport.md) now implements staging and single-invocation
+[writer transport](../usb-boot/writer-transport.md) now implements staging and single-invocation
 handling, with synthetic acceptance and physical write admission closed. This
 is not an admitted physical flashing procedure yet.
 
 1. Bind selected firmware, chip, metadata extents, writer/SPL source and binary
    pins, exact capacity and candidate/restore hashes. Bind the accepted
-   [static boot-target assessment](bootloader-review.md) and capture provenance/currency. Primary-rootfs content and its
+   [static boot-target assessment](../nand/bootloader-review.md) and capture provenance/currency. Primary-rootfs content and its
    observed map are established; no full-chip backup is added as a prerequisite.
 2. Prepare one exact session plan with RAM ranges, writer entry, poisoned result,
    transfer/time bounds and one invocation. The pinned diskOS host stages the
@@ -98,9 +98,9 @@ is not an admitted physical flashing procedure yet.
 
 The target remains primary rootfs; kernel, recovery rootfs, userdata and
 calibration are excluded. Blocks 383/716 are observed evidence, never hard-coded
-skips. The subsequent bounded [complete-image staging experiment](observations/writer-staging-observation.md)
+skips. The subsequent bounded [complete-image staging experiment](../observations/writer-staging-observation.md)
 passed, with owner-confirmed stock reboot. The subsequent
-[captured SPL review](bootloader-review.md) establishes static primary-pair
+[captured SPL review](../nand/bootloader-review.md) establishes static primary-pair
 selection for the observed `ota:backup`. Live-root observation, physical
 installation/recovery remain open. The [installation package](installation-review.md)
 now binds accepted evidence to exact images and readback plans; physical write

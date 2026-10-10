@@ -40,7 +40,7 @@ Approval of `ram-check` does **not** approve this second mode.
 The separate `metadata` mode repeats the RAM checks and executes a payload that
 can read only the profiled metadata page, with ID/ECC/OTP admission and retained
 main/OOB data. One separately authorized physical observation now passed with
-ECC status zero and decoded partition extents. See [scope, tests and evidence](nand-metadata.md). Earlier RAM-check
+ECC status zero and decoded partition extents. See [scope, tests and evidence](../nand/nand-metadata.md). Earlier RAM-check
 or identity authorization does not cover this new operation.
 
 All modes change volatile state: SPL configures clocks, GPIO, DDR and watchdog;
@@ -86,7 +86,7 @@ and the USB reference hash. It retains the exact SPL/payload bytes in memory for
 the run. Modified payload/build sources require a new build; transport/profile
 changes require a new plan review.
 The external SPL and captured parameters stay external; see its GPL/source and
-private-input boundaries in [identity provenance](nand-identity.md).
+private-input boundaries in [identity provenance](../nand/nand-identity.md).
 
 ## Bounds, ownership and evidence
 
@@ -98,7 +98,7 @@ loading, enumeration/open/claim/release and filesystem operations do not have a
 hard interruptible wall-clock guarantee from this synchronous API.
 
 A batch of the rootfs collector (the backup, the readback, the read by digest)
-no longer sleeps the settle after its execution (plan, stage 4c): the ROM does
+no longer sleeps the settle after its execution (2026-10-07): the ROM does
 not answer USB while a payload runs, so the host sends the batch's one CPU-info
 request right after the execution with the whole settle as its timeout: the
 controller holds it and the ROM answers it once the batch has returned, which
@@ -115,7 +115,7 @@ fixed settle as before. The write session asks the same way after its staging
 check and its writer ([writer transport](writer-transport.md#completion-on-the-player)).
 
 A session reads the DDR diagnostic in TCSM before anything else
-(`ram_transport.bring_up`, plan, stage 4c): the clean one (`d1a6c0de 9 0 0 0`)
+(`ram_transport.bring_up`, 2026-10-07/08): the clean one (`d1a6c0de 9 0 0 0`)
 is what this USB Boot entry's SPL left, DDR is up, and the SPL is not run
 again (a second SPL re-runs the DDR bring-up, whose training failed in 3 of 6
 re-runs, both after the writer); anything else (a fresh entry) uploads,
@@ -131,7 +131,10 @@ evidence pins the transport profile byte for byte, and installations keep the
 installer's RAM contract identical, so a setting added there refuses the next
 installation of every installed player (it did on 2026-10-07, before any USB
 access). A plan made without the completion profile has none of its fields and
-no asks, as before.
+no asks, as before. `expected_ms` holds the asks' times measured on the
+player: the region's check 111 s, the 1 MiB sample's hash 4.3 s and the
+writer 246 s. The journal is silent while the ROM holds the request, so the
+installer's progress counts a held ask by this time.
 
 Negative returns, zero progress, successful short transfers, excessive counts,
 comparison failures or deadline expiry stop the sequence. Even an error with
@@ -156,7 +159,7 @@ authentication, full RAM/NAND qualification or readiness to flash.
 ## Offline review commands
 
 Use the existing reviewed build or create a fresh one as described in
-[identity payload builds](nand-identity.md). These commands never load libusb:
+[identity payload builds](../nand/nand-identity.md). These commands never load libusb:
 
 ```sh
 python3 scripts/deployment/ram_transport.py plan --mode ram-check \
@@ -334,5 +337,5 @@ of the observed chip's documented geometry/ECC/OOB and recovery implications;
 any subsequent physical operation needs its own concrete authorization. Stock
 cold-boot return had not been observed at that point. After the subsequent metadata
 read, the owner confirmed normal stock boot following the requested manual power
-cycle; see [the recorded observation](nand-metadata.md#owner-confirmed-return-to-stock-boot).
+cycle; see [the recorded observation](../nand/nand-metadata.md#owner-confirmed-return-to-stock-boot).
 General installation/recovery and post-installation cold boot remain outstanding.

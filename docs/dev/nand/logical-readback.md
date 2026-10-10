@@ -4,7 +4,7 @@
 an exact candidate or stock-restore image. It is separate from diskOS's writer
 and its in-writer compare loop. It never loads USB, executes a payload, writes
 NAND or authorizes an installation. The separate [multi-page collector](rootfs-collector.md)
-has synthetic acceptance and a separately authorized [full physical observation](observations/rootfs-full-observation.md).
+has synthetic acceptance and a separately authorized [full physical observation](../observations/rootfs-full-observation.md).
 Official rootfs content matches; strict whole-image equality is rejected because
 the observed FF tail differs from the prepared image's zero padding. The existing
 metadata payload still admits only its single compiled page.
@@ -126,14 +126,14 @@ were added to tests or Git, and external repositories were not changed.
 
 The separately bounded rootfs collector now implements this record contract and
 has completed its authorized probe and full collection. The strict stock-image
-comparison rejected the different padding; [the retained result](observations/rootfs-full-observation.md)
+comparison rejected the different padding; [the retained result](../observations/rootfs-full-observation.md)
 separates full official-rootfs identity from this failed equality check. The
-[separate stock contract](preinstall-review.md) now defines and tests
+[separate stock contract](../installer/preinstall-review.md) now defines and tests
 pre-installation content/tail acceptance. Resolve active rootfs selection and
 implement the separately bounded writer transport before installation. Prepare the exact engineering
 image/stock-restore writer procedure and post-write evidence flow afterward.
 Only those affected rootfs ranges are in the readback design; full-chip backup
 remains deferred and is not introduced as a new installation prerequisite.
 
-See [writer review](deployment-writer-review.md), [metadata evidence](nand-metadata.md),
+See [writer review](../installer/deployment-writer-review.md), [metadata evidence](nand-metadata.md),
 [kernel mapping review](nand-kernel-review.md) and project plan (snowsky-disc-web `docs/plan.md`).

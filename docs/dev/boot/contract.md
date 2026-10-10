@@ -1,10 +1,10 @@
 # Boot layer contract
 
-Status: accepted by the owner (2026-10-02); not implemented yet. No image,
-NAND write or device step follows from it without a separately authorized
-stage. The products' names are settled; this repository is
-snowsky-disc-boot, and the gateway (today's snowsky-disc-web) becomes
-snowsky-disc-server after this layer.
+Status: accepted by the owner (2026-10-02) and implemented: boot API 2 since
+release 2.57.7 (2026-10-09). No image, NAND write or device step follows from
+it without a separately authorized step. This repository is snowsky-disc-boot;
+the gateway that was snowsky-disc-web is snowsky-disc-server, a package of
+this layer.
 
 ## Products
 
@@ -77,7 +77,7 @@ only through USB Boot; everything above it becomes files.
   project (snowsky-disc-qemu `research/docs/reports/diskos-v257.md`): its UI
   runs and plays through stock's player there, but its image patches
   `fiio_init.sh`, decides the boot in its own `S96` hook and starts the player
-  through its own link, which a `ui` package of this layer replaces (stage 3).
+  through its own link, which a `ui` package of this layer replaces ("Acceptance: two independent packages").
 - Keys (diskOS, validated on a device 2026-08-13): a key held from power-on
   is invisible to the input layer (`mq_player` grabs `event0`; `EVIOCGKEY`
   sees no edge before the input core). The pin level is readable through
@@ -85,12 +85,12 @@ only through USB Boot; everything above it becomes files.
   low; bit 13 Volume Up, 14 Volume Down, 15 Play. Volume Down with USB at
   power-on is the chip's mask ROM (never a boot-layer gesture). The source
   is the stock V2.57 kernel (reviewed offline 2026-10-03, [kernel
-  review](nand-kernel-review.md#keys)): its board tree's `x2000_key` node
+  review](../nand/nand-kernel-review.md#keys)): its board tree's `x2000_key` node
   puts Volume Up, Volume Down and Play on GPB13, GPB14 and GPB15, and its
   key driver takes a raw level of 0 as pressed; `kernel_review.py` refuses a
   kernel whose tree moves Volume Up or Play. Confirmed on the owner's V2.57
-  player (2026-10-03, read-only over the engineering USB console; plan,
-  stage 4): resting word `0xF6EFF327`, and with each key held 20 of 20 reads
+  player (2026-10-03, read-only over the engineering USB console;
+  `work/device-read/key-read.json`, ignored): resting word `0xF6EFF327`, and with each key held 20 of 20 reads
   gave Volume Up `0xF6EFD327` (bit 13), Volume Down `0xF6EFB327` (bit 14)
   and Play `0xF6EF7327` (bit 15), active low. Port B also carries the
   charger, card and power-detect pins (GPB0, GPB6, GPB20), so its whole word
@@ -108,7 +108,15 @@ only through USB Boot; everything above it becomes files.
   Stock starts both programs by name through `PATH` (`fiio_init.sh`, its
   first start and its watch loop), and BusyBox 1.31.1's `sh` finds `rm`
   through `PATH` (checked on the guest), so a guard first in their `PATH`
-  takes the removal (below, "The card guard").
+  takes the removal (below, "The card guard"). The removal also follows a
+  failed unmount when stock's player starts, because it unmounts and mounts
+  the card at each start: on the guest a restart of stock's player in stock
+  mode ran it twice while the mount kept its id, and the guard refused it
+  both times (2026-10-03). A card event with no card file open leaves the
+  card whole. The guest ran combined-010's image, which has no guard and was
+  then on the owner's player: with its gateway streaming a track, one card
+  event emptied the card (four files of four, read from the backing image with
+  the guest off).
 - Read on the owner's V2.57 player (2026-10-03, over the console;
   `work/device-read/menu-facts.json`, ignored):
   - Stock's `mq_player` owns the hardware watchdog: `cmd_watchdog start
@@ -125,8 +133,19 @@ only through USB Boot; everything above it becomes files.
     Volume − `0xfc`, Play `0xfa`; the UI holds `event1`. A process that takes
     `event0` (`EVIOCGRAB`) gets every key and the player none; after the
     release the player handles them as before (a test program from `/tmp`).
+  - The power key (GPE31, the same `x2000_key` driver) reports on `event0`
+    too, as gestures: `0x103` for a press and `0x108` for a hold. Stock's UI
+    answers them with its standby and its power-off (`poweroff -f`), as
+    snowsky-disc-qemu reads stock's UI. While the menu asks, neither stock's
+    UI nor its player runs, so only the menu can answer the hold ("The
+    menu's turn"). The hold has not been seen on the device yet, and the
+    emulator does not model it (the guest stops). A power key held for about
+    ten seconds switches the player off in hardware.
   - Idle: 71 of 117 MiB available, no swap; `mq_ui` 16 MiB resident (24 at
     its peak), `mq_player` 9 (12).
+  - `/usr/data` (UBIFS on the 83 MiB `userdata` partition) had 58 MiB free
+    of 67.6 before any package was installed. `/dev/mem` is present, which
+    the key read needs.
 - The emulator (snowsky-disc-qemu `d7f1b9b`, now `690a55c`) runs stock's `rcS`,
   `fiio_init.sh` and its watch loop, models the port B word in `/dev/mem`
   with keys held from power-on, and power events (reboot and off through
@@ -171,7 +190,13 @@ only through USB Boot; everything above it becomes files.
   `stock` (reason `boot-loop`). A key still chooses (Volume Up, Play). Stock
   boots are not counted. Confirming means running 180 s in that boot: a
   version restored by a rollback is marked confirmed at once, yet the count
-  clears only after it has run its 180 s again (seen on the guest).
+  clears only after it has run its 180 s again (seen on the guest). Once the
+  guard has chosen stock, every start without a key stays in stock (stock
+  boots are not counted, so the count stays); a start with Play brings
+  `platform` back, and the count then clears as soon as the controller and the
+  chosen UI are ready, when both were confirmed before, else when they are
+  confirmed. This was the owner's way back to the menu after six quick
+  restarts (2026-10-07).
 - The default is changed by a package's request (below) or by the console;
   there is no card file for it.
 
@@ -181,7 +206,7 @@ the rest of the boot.
 
 ## Roles
 
-Boot API 2 (owner, 2026-10-08/09; plan, stage 7) has four roles:
+Boot API 2 (owner, 2026-10-08/09) has four roles:
 
 - `controller`, at most one: the server (snowsky-disc-server). It owns the
   player's protocol, listens on the network and updates itself through its
@@ -381,8 +406,8 @@ unreadable state runs nothing for that role and says so.
    below, in `$DISC_BOOT_DATA`, at a lower priority than stock: `nice` +5
    for the controller, +10 for a service, whose address space is bounded by
    its `memory`. A service whose `autostart` is off does not start (its
-   status says `disabled`); the menu's services screen will change the flag
-   (plan, stage 7).
+   status says `disabled`); the menu's Services screen changes the flag,
+   from the next start.
 2. **Ready:** the package creates `$DISC_BOOT_RUN/ready` within `ready`
    seconds, or boot stops it and counts a failure.
 3. **Confirmed:** ready and still running 180 s later; a tentative slot
@@ -463,6 +488,15 @@ do the same for its player):
   stock's player at once and says why in `/run/disc-boot/ui/player.json`.
   Every crash of the player restarts the UI too, so the UI's own count of
   starts bounds a launcher that fails.
+- The wrappers fail open. Nothing they do before the `exec` (the boot log's
+  line, the `player-ran` mark) may keep stock's program from starting, so
+  each of those steps is a plain command whose failure is ignored. A POSIX
+  shell (BusyBox ash, dash) ends a script when a redirection on a special
+  built-in such as `:` fails; the first image's player wrapper did that
+  without a run folder (2026-10-04). `tests/conformance/test_wrappers.py`
+  checks both wrappers under dash, BusyBox 1.31.1 ash and bash in POSIX mode.
+  When the boot program cannot run at all, stock runs and the early hook's
+  log says `Permission denied`, `early exit 126` (the guest, 2026-10-05).
 
 ### Stock's order after the menu
 
@@ -492,6 +526,14 @@ Besides the early hook's and the wrappers' lines, the boot program adds to
   `/run/disc-boot/out`, a tmpfs of 1 MiB of its own: a full one refuses writes,
   which no program dies of. The player's output stays where stock sends it: the
   emulator waits for its network thread's line there.
+
+The log is in `/usr/data` because nothing else keeps an early boot's lines
+through a reset (owner, 2026-10-05): `/run` is a tmpfs; the card's boot
+report waits 45 s; the card is mounted later by stock's player, which
+remounts it at each of its starts, and a FAT file system written through
+resets is at risk. `/usr/data` is UBIFS, mounted by `S21mount_ubifs` before
+`S22disc-boot` opens the boot's section. Every logging step is a plain
+command whose failure is ignored.
 
 ### Process names
 
@@ -576,7 +618,8 @@ menu's `stock` entry is stock's UI with the controller and the services running.
 - In `platform` mode, with a menu installed and no choice by `next`, the
   `mq_ui` launcher starts the menu first. `/run/disc-boot/ui/choices.json`
   lists `{"ui": "stock", "version": "<firmware profile>"}` first (owner,
-  2026-10-09: FiiO's own interface leads), then every installed `ui` package
+  2026-10-09: FiiO's own interface leads, so the project does not look built
+  around diskOS, a project of its own), then every installed `ui` package
   (`ui`, `title` or else its name, `version`, `confirmed`), and the
   `default` of this boot.
 - The menu writes `$DISC_BOOT_RUN/choice` (`{"ui": "<name>"|"stock"}`)
@@ -650,7 +693,13 @@ menu's `stock` entry is stock's UI with the controller and the services running.
 
 ### The menu's screens
 
-The owner's decisions of 2026-10-09 (plan, stage 7). The menu has three
+The owner's concept (2026-10-07): the server manages only its own web apps
+and its own updates; the boot layer's packages (menus, interfaces, services)
+are installed and removed in the menu on the player, and boot stays the only
+installer. The server's manager shows these packages read-only. Play at
+power-on stays the recovery.
+
+The owner's decisions of 2026-10-09. The menu has three
 screens; the second and the third are rows at the end of the first list
 ("Services ›", "Packages ›"), and each of them begins with "‹ Back":
 
@@ -679,7 +728,11 @@ turn and again after each command, adds what these screens show:
 `services` (`[{name, title, version, autostart, removing}]`), `packages`
 (`[{role, name, title, version, removing}]`) and `staged` (`[{folder, role,
 name, title, version, refused}]`; the card read where stock mounted it, or
-through a read-only mount of the boot layer's own for the look). The menu
+through a read-only mount of the boot layer's own for the look; when the
+device is already mounted with other flags, a second read-only mount is
+refused, since a second mount shares the superblock and must take its flags
+(the guest, 2026-10-09), and the look then mounts the card with the
+recovery's flags, and only reads). The menu
 changes things through the boot program (`$DISC_BOOT_PROGRAM`), whose
 commands answer `{"ok", "note"}` and write `ui/choices.json` again:
 `autostart <service> on|off`, `remove ui|service <name>`, `install <folder>`
@@ -727,7 +780,7 @@ commands answer `{"ok", "note"}` and write `ui/choices.json` again:
   `boot_guest.py` and `two_packages.py` again on the new layout.
 - `disc-menu` with its screen on the guest (emulator `690a55c`, which serves
   static programs' screen and input since snowsky-disc-qemu #54/#55):
-  accepted 2026-10-03 with the keys, the countdown and a touch (plan, stage 3b).
+  accepted 2026-10-03 with the keys, the countdown and a touch ([development](../development.md#the-boot-menu)).
 
 ## The card guard
 
@@ -779,6 +832,10 @@ controller or service package starts with its own `PATH` and does not need it.
   every `mq_ui` process is the launcher, also before it marks its wait
   (`ui/install-wait`). The packages then run as in `platform` mode.
 - Without the gesture boot never installs or runs anything from the card.
+- Play's timing at power-on stays as it is (owner, 2026-10-08), even though
+  it is awkward to press together with the power key. Once the menu is
+  installed, its Packages screen installs what waits on the card without
+  Play.
 
 ## Environment of a package
 
@@ -807,7 +864,7 @@ added and its `lib/` first in `LD_LIBRARY_PATH`.
 A package must not write MTD devices, change FiiO's files in `/usr/data`
 (`fiio/`, `sn.txt` and the rest; disc-network changes stock's Wi-Fi networks
 through stock's own wpa_supplicant, never its file: the owner's decision of
-2026-10-09, [disc-network](network.md)), signal stock processes, take stock's ports
+2026-10-09, [disc-network](../packages/network.md)), signal stock processes, take stock's ports
 or create a USB gadget while the console owns the controller. Boot cannot
 enforce this: packages run as root, at the installer's risk.
 
@@ -828,6 +885,14 @@ hashes them, and writes the outcome to the card,
 shorter than the image or a read error is an error, never a match. The
 installer reads the outcome over the USB console; a match stands for the
 readback through USB Boot, which stays the way when it is missing or differs.
+
+The check guards against a faulty write, not against a deliberate
+substitution, which the reviewed write path already excludes. Any corruption
+changes the hash, including corruption of the checking code. The writer
+itself reads back and compares every block it programs (`my_write5`); this
+check proves the result as the kernel reads it, in seconds with the CPU's
+caches, instead of about 25 minutes of readback through the ROM (owner,
+2026-10-07).
 
 ## Status (`/run/disc-boot/`)
 
@@ -862,7 +927,7 @@ readback through USB Boot, which stays the way when it is missing or differs.
 
 ## USB console
 
-Unchanged in behavior ([USB diagnostics](usb-diagnostics.md), whose marker
+Unchanged in behavior ([USB diagnostics](../usb-boot/usb-diagnostics.md), whose marker
 moved to `.disc/` with combined-008): the card file `.disc/dev/usb-console`
 with the exact content `DISC_WEB_LOCAL_ROOT_CONSOLE` and a newline enables it
 at boot, independently of the mode. The installer writes the marker (owner,
@@ -904,7 +969,7 @@ back (Volume Up for stock, USB Boot for the stock image).
   console `disc-usb-console`, `boot-report.sh`), `/sbin/mq_ui`,
   `/sbin/mq_player`, and the hooks `S22disc-boot`, `S99disc-boot` and
   `S99disc-usb`. The console and the report moved from `/opt/disc-web/` with
-  stage 1; the console's hook name, gadget and marker stay.
+  the boot program (2026-10-02); the console's hook name, gadget and marker stay.
 
 ## Tests
 
@@ -951,7 +1016,7 @@ Stock's control ports 12100 and 12103 belong to `mq_player` (observed on
 the guest), so the server's bridge does not depend on the UI process, and
 `song.db` stays open in stock's player under diskOS's UI.
 
-Accepted on the guest (2026-10-03, plan, stage 3; `tests/integration/
+Accepted on the guest (2026-10-03; `tests/integration/
 two_packages.py` with diskOS 1.2.0 built locally by `diskos_package.py`; its
 UI itself running since the emulator at `690a55c`, below): both installed
 with Play and confirmed, stock's player started by diskOS's
@@ -985,22 +1050,23 @@ confirmed one without touching the server. What diskOS would change to fit
   requires the UI to hold the touch panel, passed all six steps without a
   workaround.
 
-## Open before implementation
+diskOS's own "Screen off" (1.2.0, `ui/main.c`, PW-10) cuts the panel's rail
+itself (`bl_power=4`) after its screensaver and screen-off times. Only a touch
+wakes the panel, read on a raw `event1` descriptor of its own; by design it
+ignores the player's wake signals ("random wake"), and the power key brings
+the panel back only when the player itself blanked it. On the owner's player
+(2026-10-06/07) the power key did not wake it, twice, and a touch did. This is
+diskOS's behaviour, not the boot layer's: the menu takes only `event0`, never
+`event1`.
 
-- diskOS's release with V2.57 support: what its image changes on V2.57, and
-  whether the table above still holds (a separate session of the emulator
-  project).
+## Still open
 
-- What "Reset all" removes in `/usr/data` on the device (the emulator does
-  not complete it; contract-neutral, see the facts).
-- Free space of `/usr/data` on the owner's player (a diagnostics field).
-- Play on GPB15 read on this unit: the stock kernel settles the pin and its
-  level (facts above); the device read confirms it before the image is
-  written.
-- Memory and priority limits that keep stock's audio smooth (the device):
-  boot API 2 gives a service `nice` +10 and 16 MiB unless it names its own;
-  disc-health on the owner's player confirms them.
-- The emulator runs stock's `rcS` and `fiio_init.sh`, so boot's hooks and the
-  `mq_ui` launcher can be accepted on the guest (the emulator session).
+- What "Reset all" removes in `/usr/data` on the device. The guest's reading
+  keeps `/usr/data/disc-boot` (see the facts), and the emulator does not
+  complete it.
+- Memory and priority limits that keep stock's audio smooth during playback.
+  The idle baseline is in the facts. Boot API 2 gives a service `nice` +10 and
+  16 MiB unless it names its own; disc-health's journal on the owner's player
+  is to confirm them.
 - An optional "official" label for packages signed by us (shown, never
   required).

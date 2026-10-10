@@ -129,7 +129,7 @@ not establish the physical table or currently selected boot rootfs.
 ## Keys
 
 Reviewed 2026-10-03 for `disc-boot`'s key read at power-on (the
-[contract](contract.md), "Facts this rests on"), from the same pinned kernel
+[contract](../boot/contract.md), "Facts this rests on"), from the same pinned kernel
 and embedded DTB; no device was involved.
 
 The enabled node `/x2000_key` (`compatible = "x2000-key"`) names its GPIOs
@@ -160,9 +160,10 @@ whose tree moves Volume Up or Play away from the pins `disc-boot` reads
 then has to answer before an image is built for it. Volume Down is reported,
 not required (the boot layer never reads it).
 
-The level a held key gives on the player is still a device read (plan,
-stage 4); this review settles which pins and which level the stock kernel
-itself uses. Port B also carries the charger, card and power-detect pins,
+The level a held key gives was read on the owner's V2.57 player on
+2026-10-03: active low, each key clearing only its own bit ([contract](../boot/contract.md#facts-this-rests-on));
+this review settles which pins and which level the stock kernel itself
+uses. Port B also carries the charger, card and power-detect pins,
 so the word as a whole changes with the unit's state.
 
 ## Saved-page parser and next step

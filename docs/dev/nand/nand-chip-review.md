@@ -85,7 +85,7 @@ and `page_reads_admitted` remain false even when geometry matches.
 
 It does not authenticate the supplied records, audit their transfer journal,
 prove which firmware was running, or establish physical provenance. Those remain
-the separate [retained run evidence](ram-transport.md#successful-authorized-identity-observation).
+the separate [retained run evidence](../usb-boot/ram-transport.md#successful-authorized-identity-observation).
 No USB dependency is imported and no helper is executed.
 
 ## Acceptance — 2026-09-24

@@ -25,7 +25,7 @@ Runtime evidence is ignored under `work/boot-report-export-001/`, including the
 USB/volume observations, `marker-provision.json` and `eject.txt`. This is physical
 marker provisioning acceptance, not proof that the boot hook or report exporter
 ran. Existing synthetic marker/export checks are documented in
-[boot reporting](../boot-report.md); no implementation changed in this step.
+[boot reporting](../boot/boot-report.md); no implementation changed in this step.
 
 ## First report acquired and reviewed
 

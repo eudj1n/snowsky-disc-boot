@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Packages for the boot layer (docs/dev/contract.md, "Packages").
+"""Packages for the boot layer (docs/dev/boot/contract.md, "Packages").
 
 Describes a folder as a package (package.json), checks a folder or a zip the
 way disc-boot does (same rules, same messages), packs a checked folder as a

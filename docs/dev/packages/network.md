@@ -1,7 +1,7 @@
 # disc-network
 
-Several Wi-Fi networks for the player (plan, stage 7; owner, 2026-10-08/09): a
-service of boot API 2 ([contract](contract.md#roles)) that keeps the networks
+Several Wi-Fi networks for the player (owner, 2026-10-08/09): a
+service of boot API 2 ([contract](../boot/contract.md#roles)) that keeps the networks
 stock connected to and, when stock's network is out of reach, puts a kept one
 in range in its place in stock's wpa_supplicant, so the player joins whichever
 is in range without its password again. Source: `device/network/network.c`;
@@ -16,7 +16,8 @@ From stock's programs (V2.57, wpa_supplicant 2.9): its connection
 new network, selects it and saves, so `/usr/data/wpa_supplicant.conf` holds
 one network; its Wi-Fi screen asks the password every time;
 `fix_wpa_conf_ssid` rewrites the file's first `ssid=` line through a 4 KiB
-buffer, so stock's network stays first.
+buffer, so stock's network stays first. Its "Forget" and "Reconnect" send
+nothing to wpa_supplicant.
 
 ## On the owner's player (2026-10-09)
 
@@ -31,6 +32,14 @@ included, it never crashed. Stock's UI is written for the one network stock
 keeps. So disc-network is no release file of 2.57.7 and was turned off on the
 player (its second network removed); its next version keeps one network in
 stock's configuration and changes it itself (owner, 2026-10-09).
+
+## On the owner's player (2026-10-10)
+
+With one network in stock's configuration, stock joined a new network with
+its password typed in its Wi-Fi screen, and its UI ran on; the configuration
+held one network throughout. When that network went away, disc-network put a
+kept one in range in its place 36 s later (a minute after stock's
+connection), and the player joined it.
 
 ## What it does
 
@@ -63,16 +72,18 @@ begins with `-` for one):
   stock's) goes: kept networks beside stock's one are removed, all but the
   connected one or else the first.
 - **It forgets** its networks when Wi-Fi comes on with a file that holds no
-  network (stock's reset; `S43wifi` writes a new one); a file emptied while
-  Wi-Fi is on gets one back as above. Forgetting one network comes with the
-  menu's services screen; until then, removing the boot layer's packages and
-  data removes them.
+  network (stock's reset; `S43wifi` writes a new one; owner, 2026-10-08:
+  before the player is sold, its networks go with the rest of its settings);
+  a file emptied while Wi-Fi is on gets one back as above. Removing
+  disc-network with its data (the menu's Packages screen), or everything
+  ours, forgets them all; forgetting a single network is open work.
 
 `$DISC_BOOT_RUN/status.json` (at most 4 KiB): `{"schema": 1, "wifi": "off" |
 "searching" | "connecting" | "connected", "connected": <name> | null,
 "networks": [{"name", "open", "held", "inRange"}], "lastChange": {"what", "t"}
 | null}`: `held` when it is the network in stock's configuration, `inRange`
-when the last scan heard it; names only, never a key.
+when the last scan heard it; names only, never a key (a PSK in hex works as
+the password, so neither form may appear).
 
 ## Tests
 

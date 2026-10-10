@@ -3,8 +3,8 @@
 This page records preparation before authorization. The owner subsequently
 authorized the exact activation, one candidate write and conditional independent
 readback. Current physical results and remaining acceptance are recorded in the
-[candidate installation observation](observations/candidate-installation-observation.md).
-The later [boot-report image](boot-report.md) changes code/profile/image inputs;
+[candidate installation observation](../observations/candidate-installation-observation.md).
+The later [boot-report image](../boot/boot-report.md) changes code/profile/image inputs;
 this historical package is not current for it, and admission is closed again.
 The replacement [boot-report installation package](boot-report-installation.md)
 accounts explicitly for the installed candidate and its exact readback.
@@ -175,7 +175,17 @@ prepared profile and run **one candidate write**, followed only after confirmed
 return by the reviewed full read and exact comparison. Restoration is prepared
 but requires its own authorization and is never an automatic fallback.
 
-## Without a history: the known image (plan, stage 6, 2026-10-08)
+## With a history: the previous write's target (2026-10-05)
+
+A player's history names the last write's target, a candidate or the restore
+(`previousTarget` in `history.json`). That target selects the image the
+player holds, its exact readback plan, its audit status and its comparison
+file, so a restore is a source state like an installed candidate; the
+installer names a readback's comparison `exact-<target>-…`, as the review
+reads it. Since 2026-10-08 the first start's check is the previous write's
+proof in place of its readback (`validate_binding`).
+
+## Without a history: the known image (2026-10-08)
 
 A user's installation keeps no history: `installation_review.py --known` takes
 the evidence of the USB Boot entry the write will run in, never a stock or
@@ -205,7 +215,19 @@ python3 scripts/deployment/installation_review.py --known \
   changed image, stops the review: nothing is written, and FiiO's own update
   (Local upgrade) is the way back to stock. The kernel is not read: FiiO's
   update writes it with the rootfs, and none of our images touches it (the
-  owner accepted this and the first blocks as the image's identity).
+  owner accepted this and the first blocks as the image's identity). The
+  probe reads 2 blocks (256 KiB) at the start of the rootfs, inside the
+  squashfs; blocks after it are not used, because FiiO may leave a tail other
+  than `FF` there (the pre-install review's rule). The squashfs superblock and
+  first blocks differ for each FiiO build, so another FiiO version or another
+  system (diskOS) is refused before any write. The probe does not see a rootfs
+  changed beyond those blocks, but the write replaces the whole rootfs and the
+  first start's check proves the result. It replaced a full backup (owner,
+  2026-10-07): the way back is only ever stock, so a backup's bytes restore
+  nothing. One USB Boot entry serves the whole installation (owner,
+  2026-10-07): easier for the user (diskOS's single `usbboot` run takes about
+  20 minutes, 18 of them a blind wait), and needed without a history, since the
+  evidence holds only for the entry it was read in.
 - The way back (`restore`) must be the stock image of the list, by its digest.
 - The write's ABI must be the one a player ran (`exercised` in
   `firmware/images`: the sixth write's writer, SPL, metadata and staging
@@ -228,7 +250,7 @@ accepts it only with those. The package keeps the proposed admission
 (`proposed-installer-profile.json`) and `decision.json`, what the installer
 tells the user; nothing is written to `firmware/installers`. The write takes
 this admission with `--installer-profile` and runs only in the same entry
-([writer transport](writer-transport.md#a-write-without-a-history-plan-stage-6)).
+([writer transport](../usb-boot/writer-transport.md#a-write-without-a-history-2026-10-08)).
 `test_known_review` runs both sessions on the fake ROMs, audits them and
 reviews them, with an unknown image, an ABI no player ran, a way back that is
 not stock, other plans and other entries refused.

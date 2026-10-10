@@ -65,10 +65,14 @@ return.
 | Play | The installation of the packages staged on the card, then the boot layer |
 | Volume Down, with the cable to a computer | USB Boot, for the installer |
 
+After three starts in a row that did not get ready, the player starts FiiO's
+interface by itself at every start; a start with Play brings the boot layer
+back.
+
 ## For developers
 
 How the layer works, how to build, test and release it:
-[development](docs/dev/development.md), the [contract](docs/dev/contract.md) the
+[development](docs/dev/development.md), the [contract](docs/dev/boot/contract.md) the
 packages rely on, and the [plan](docs/dev/plan.md).
 
 License: MIT (see [LICENSE](LICENSE)).

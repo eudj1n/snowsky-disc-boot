@@ -1,5 +1,5 @@
 /* disc-network: the player keeps several Wi-Fi networks and joins whichever is in range (a service
-   of boot API 2; plan, stage 7; docs/dev/network.md). Stock's connection removes every saved network
+   of boot API 2; plan, stage 7; docs/dev/packages/network.md). Stock's connection removes every saved network
    before it adds the new one (remove_network all), so its configuration (/usr/data/wpa_supplicant.conf)
    holds one, and stock's UI fails with more (the owner's player, 2026-10-09). While Wi-Fi is on, every
    5 s this service looks at stock's wpa_supplicant through wpa_cli: it keeps the network stock

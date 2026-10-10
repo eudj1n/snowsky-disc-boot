@@ -1,17 +1,17 @@
 # Native installation and recovery procedure
 
-This is the concrete sequence following the [captured SPL boot-target review](bootloader-review.md).
+This is the concrete sequence following the [captured SPL boot-target review](../nand/bootloader-review.md).
 Static primary-pair selection is resolved for the saved observation. The exact
 prepared admission profile was subsequently activated for the owner's separately
-authorized [candidate write](observations/candidate-installation-observation.md); future
+authorized [candidate write](../observations/candidate-installation-observation.md); future
 writes and restoration still require their own concrete authorization. Neither a successful
 RAM staging result nor a recognized OTA string is permission/readiness to flash.
 No installation, boot-hook write, selector change or restore is performed by
 this document or by the boot-evidence acquisition.
-The subsequent [boot-report image](boot-report.md) received a separate
+The subsequent [boot-report image](../boot/boot-report.md) received a separate
 [update review](boot-report-installation.md), authorization, completed write,
 exact full readback and owner-confirmed normal boot. Its
-[observation](observations/boot-report-installation-observation.md) also records a DDR-guard
+[observation](../observations/boot-report-installation-observation.md) also records a DDR-guard
 stop before NAND access and successful reading after a manual power cycle.
 Admission is closed again; neither candidate's approval permits future writes.
 

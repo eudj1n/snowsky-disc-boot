@@ -2,10 +2,10 @@
 
 This page records offline package preparation. The owner subsequently authorized
 one new candidate write and full readback, which passed; see the
-[physical observation](observations/boot-report-installation-observation.md), including the
+[physical observation](../observations/boot-report-installation-observation.md), including the
 first reader's DDR stop and the successful read after a manual power cycle.
 **Physical admission is closed again.** The subsequent separately authorized
-[SD report](observations/boot-report-observation.md) confirmed native startup and primary-root
+[SD report](../observations/boot-report-observation.md) confirmed native startup and primary-root
 boot data and identified a USB controller-name mismatch. A
 [corrected-controller package](udc-update.md) is prepared; the artifact hashes
 below describe the earlier image actually installed.
@@ -125,7 +125,7 @@ C assertions** (`work/update-conformance.log`). The host had 49 GiB free during
 review, above the 2 GiB combined capture requirement.
 
 No device payload, image content or browser behavior changed in this stage.
-The existing [packed-image acceptance](boot-report.md) still applies. Generated
+The existing [packed-image acceptance](../boot/boot-report.md) still applies. Generated
 images, captures, plans and test logs remain ignored. External repositories are
 unchanged.
 
@@ -137,7 +137,7 @@ unchanged.
 2. Reboot normally and confirm the stock UI works. Provision the separate
    `DISC_WEB_BOOT_REPORT` marker only under report-export authorization. The
    existing `DISC_WEB_USB_DEBUG` marker does not authorize SD report writes.
-3. Follow the [report procedure](boot-report.md): first report boot without a USB
+3. Follow the [report procedure](../boot/boot-report.md): first report boot without a USB
    cable, wait at least two minutes after UI/card readiness, then use stock USB
    storage to read the report. Preserve existing reports. Inspect boot ID/profile,
    live root/cmdline and launch errors before claiming native acceptance.

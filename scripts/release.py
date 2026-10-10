@@ -77,7 +77,7 @@ def digest(path):
 
 
 # disc-network is a release file again from 2.57.8, keeping one network in stock's configuration (stock's UI fails
-# with more: the owner's player, 2026-10-09; docs/dev/network.md).
+# with more: the owner's player, 2026-10-09; docs/dev/packages/network.md).
 def names(version):
     return (f'disc-menu-{version}.zip', f'disc-boot-{version}-mips.tar.gz', f'disc-usb-payloads-{version}.tar.gz',
             f'disc-health-{version}.zip', f'disc-network-{version}.zip')

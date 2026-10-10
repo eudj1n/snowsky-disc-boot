@@ -21,7 +21,11 @@ what stays afterwards.
   a player with another FiiO version use FiiO's own update instead.
 
 Either way, the packages' files in the player's data partition and the
-card's `.disc` folder stay; FiiO's software does not use them.
+card's `.disc` folder stay; FiiO's software does not use them. To have the
+boot layer again, install it over stock as the first time: the packages it
+finds in the data partition run again. The way back is always FiiO's own
+system, built from your update; the installer never writes an earlier copy of
+the player back.
 
 ## USB Boot
 
