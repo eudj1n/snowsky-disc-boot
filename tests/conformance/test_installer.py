@@ -89,6 +89,33 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual([s['step'] for s in report['steps']], ['check', 'firmware', 'packages', 'card', 'player', 'first boot'])
         self.assertFalse(report['steps'][4]['written'], 'the player is not written in this part')
 
+    def test_packages_only_stage_the_card_without_an_image_or_the_player(self):
+        """install.py --packages (owner, 2026-10-10): the chosen packages and apps on the card for the player's
+        boot menu; FiiO's update, the image's tools and libusb are not needed (none on this PATH)."""
+        card = self.root/'card'
+        card.mkdir()
+        result = subprocess.run([sys.executable, str(ROOT/'install.py'), '--plain', '--packages', '--yes', '--card', str(card),
+                                 '--catalog', str(self.catalog), '--from', str(self.local), '--work', str(self.root/'run')],
+                                capture_output=True, text=True, timeout=120,
+                                env=dict(os.environ, DISC_INSTALL_ANY_CARD='1', PATH='/nonexistent'))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        report = json.loads((self.root/'run/report.json').read_text())
+        self.assertEqual((report['status'], report['packagesOnly']), ('prepared', True))
+        self.assertEqual([s['step'] for s in report['steps']], ['check', 'packages', 'card', 'on the player'])
+        self.assertIsNone(report['steps'][2]['expected'], 'no image for the first start to check')
+        self.assertTrue((card/'.disc/boot/install/controller/package.json').exists())
+        self.assertTrue((card/'.disc/boot/install/menu/package.json').exists())
+        self.assertTrue((card/'Apps/Disc Player/app.json').exists())
+        self.assertIn('the boot menu offers the packages on the card', ' '.join(result.stdout.split()))
+        self.assertNotIn('Firmware and image', result.stdout)
+
+    def test_packages_only_take_no_option_of_the_player(self):
+        for extra in (['--ota', str(self.root)], ['--image', str(self.image)], ['--guest'], ['--restore'], ['--simulate']):
+            result = subprocess.run([sys.executable, str(ROOT/'install.py'), '--plain', '--packages', *extra],
+                                    capture_output=True, text=True, timeout=60)
+            self.assertEqual(result.returncode, 2, extra)
+            self.assertIn('--packages only stages packages on the card', result.stderr)
+
     def test_the_card_is_written_only_when_confirmed(self):
         card = self.root/'card'
         card.mkdir()
@@ -138,14 +165,14 @@ class InstallerTests(unittest.TestCase):
         self.assertIn('disc-menu 9: no local file with sha256', installer.report['status'])
 
     def release_catalog(self, dist):
-        """The test's catalog as a release names its own packages: this release's menu and disc-health, by default."""
+        """The test's catalog as a release names its own packages: this release's menu, disc-health and disc-network, by default."""
         import release
         catalog = json.loads(self.catalog.read_text())
         for entry in catalog['entries']:
             if entry['name'] == 'disc-menu':
                 menu = dist/'disc-menu-2.57.9.zip'
                 entry.update(version='2.57.9', source=dict(url=release.url('2.57.9', menu.name), sha256=digest(menu), size=menu.stat().st_size))
-        for name in ('disc-health',):
+        for name in ('disc-health', 'disc-network'):
             zipped = dist/f'{name}-2.57.9.zip'
             catalog['entries'].append(dict(name=name, role='service', version='2.57.9', profiles=[PROFILE], bootApi=2, license='MIT',
                                            default=True, source=dict(url=release.url('2.57.9', zipped.name), sha256=digest(zipped),
@@ -175,7 +202,7 @@ class InstallerTests(unittest.TestCase):
         offered.write_text(json.dumps(catalog))
         built = release.installer('2.57.9', dist, [self.local], False, catalog_path=offered, committed=False)
         self.assertEqual(sorted(built['packages']), ['Disc Player-p1.zip', 'disc-boot-2.57.9-mips.tar.gz', 'disc-health-2.57.9.zip',
-                                                     'disc-menu-2.57.9.zip', 'disc-server-9.zip',
+                                                     'disc-menu-2.57.9.zip', 'disc-network-2.57.9.zip', 'disc-server-9.zip',
                                                      'disc-usb-payloads-2.57.9.tar.gz'])
         unpacked = self.root/'unpacked'
         with tarfile.open(dist/'disc-installer-2.57.9.tar.gz') as tar:
@@ -203,6 +230,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(json.loads((card/'.disc/boot/install/menu/package.json').read_text())['version'], '2.57.9')
         self.assertTrue((card/'.disc/boot/install/controller/package.json').is_file() and (card/'Apps/Disc Player/app.json').is_file())
         self.assertEqual(json.loads((card/'.disc/boot/install/service/disc-health/package.json').read_text())['bootApi'], 2)
+        self.assertEqual(json.loads((card/'.disc/boot/install/service/disc-network/package.json').read_text())['memory'], 32)
         self.assertFalse((top/'work').exists(), 'nothing of the run in the archive')
 
     def test_the_archive_downloads_what_it_was_not_given(self):

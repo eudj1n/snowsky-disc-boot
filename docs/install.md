@@ -61,6 +61,22 @@ All together it takes about 15 minutes with the player. Each run is kept,
 with its report, in `~/Library/Application Support/SNOWSKY DISC/runs`
 (macOS) or `~/.local/share/snowsky-disc/runs` (Linux).
 
+## Updating the packages
+
+When the player has the boot layer and its menu already, new versions of the
+packages need no USB Boot: from the newest release's archive,
+
+```sh
+python3 install.py --packages
+```
+
+offers the packages and apps as above and puts the chosen ones on the card;
+nothing else is needed on the computer (no FiiO update, no libusb). Put the
+card back into the player and switch it on: the menu's row "on the card"
+opens Packages, where Play installs each one. A new version of a service or
+the server starts at once, a new menu at the next start; each keeps its
+previous version, and one that fails gives way to it.
+
 ## What is installed
 
 - **On the player:** the system partition (FiiO's root file system) becomes

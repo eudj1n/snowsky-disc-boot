@@ -30,7 +30,9 @@ and its packages, from the card or installed._
 | **Packages from the card** | Interfaces, a menu and services come as packages on the memory card; the boot menu installs them (the first time, a start with Play), each checked before it runs. |
 | **The boot menu** | At power-on the player asks which interface to start, FiiO's own among them. Its Services screen turns each service on or off; its Packages screen installs what waits on the card and removes an interface, a service or everything of ours. |
 | **[DISC server](https://github.com/eudj1n/snowsky-disc-server)** | Offered by default: the player serves [Disc Player](https://github.com/eudj1n/snowsky-disc-player) and other web apps over its Wi-Fi. |
-| **Health journal** | Offered by default: disc-health notes the battery, temperatures, free space, card errors and crashes every 10 minutes, offline, for the server's diagnostics. |
+| **Health journal** | Offered by default: disc-health notes the battery and its temperature, free space, card errors and crashes every 10 minutes, offline, for the server's diagnostics. |
+| **Several Wi-Fi networks** | Offered by default: disc-network remembers up to 8 networks the player joined; when the one FiiO's interface keeps is out of reach, it puts a remembered one in range in its place, so the player joins it without the password again. |
+| **Updates without USB Boot** | `install.py --packages` puts new versions of the packages on the card; the boot menu installs them. |
 | **Safe starts** | A package that fails at its start gives way to the previous one by itself; three failed starts in a row bring FiiO's interface back. |
 | **A way back, always** | FiiO's own update, or the installer through USB Boot, returns the player to stock. |
 

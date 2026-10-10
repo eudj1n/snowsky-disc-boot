@@ -31,6 +31,8 @@ LIBUSB_PLACES = ('/opt/homebrew/lib/libusb-1.0.0.dylib', '/usr/local/lib/libusb-
                  '/usr/lib/libusb-1.0.so.0')
 LIBUSB_HINT = 'install it (macOS: brew install libusb; Debian or Ubuntu: apt install libusb-1.0-0) or give it with --libusb.'
 STEPS = ['Check this computer', 'Firmware and image', 'Packages', 'The card', 'The player (USB Boot)', 'First boot']
+# The packages without the image (owner, 2026-10-10): the player is not written, its boot menu installs them.
+PACKAGE_STEPS = ['Check this computer', 'Packages', 'The card', 'On the player']
 
 
 def data_home():
@@ -111,6 +113,9 @@ class Installer:
         runs = base/'runs' if self.archive else base
         self.work = Path(args.work or runs/time.strftime('install-%Y%m%d-%H%M%S')).resolve()
         self.report = dict(started=time.strftime('%Y-%m-%dT%H:%M:%S'), dryRun=args.dry_run, guest=bool(args.guest), steps=[])
+        self.packages_only = bool(getattr(args, 'packages', False))
+        if self.packages_only:
+            self.report['packagesOnly'] = True
         self.step, self.guest, self.ota = 0, None, None
         # Where archives are looked for by their digest: --from, the places given on the way, and
         # the downloads of earlier runs (work/downloads, kept: each is checked by its digest again).
@@ -126,9 +131,11 @@ class Installer:
         s.clear()
         s.blank()
         mode = '  ·  dry run' if self.args.dry_run else '  ·  guest' if self.args.guest else ''
+        if self.packages_only:
+            mode = '  ·  packages' + mode
         s.line(('  ● ', tui.ACCENT), ('S N O W S K Y   D I S C   B O O T', tui.MUTED), (mode, tui.MUTED))
         s.blank()
-        s.steps(STEPS, self.step)
+        s.steps(PACKAGE_STEPS if self.packages_only else STEPS, self.step)
         s.blank()
         for draw in body:
             draw()
@@ -234,6 +241,15 @@ class Installer:
 
     def check(self):
         facts = dict(python=sys.version.split()[0])
+        if self.packages_only:
+            # Packages only: neither the image nor the player, so Python alone.
+            problems = [] if sys.version_info >= (3, 11) else ['Python 3.11 or later is needed.']
+            self.say('Check this computer', [f'Python {facts["python"]}', 'Packages only: no image is built and the player is '
+                                             'not written.'] + problems)
+            if problems:
+                raise Stop(' '.join(problems))
+            self.done('check', **facts)
+            return
         # The image is built on this computer with squashfs-tools and openssl (plan, stage 6); only the guest
         # needs Docker and the emulator's checkout; an image built before needs neither.
         facts['squashfs'] = self.host_builder()
@@ -449,6 +465,19 @@ class Installer:
         self.done('card', card=str(target), packages=staged, apps=placed, marker=str(marker), cleared=cleared,
                   expected=self.expected)
         return target
+
+    def on_the_player(self):
+        """Packages only: the player's boot menu installs what waits on the card (since boot release 2.57.7); a
+        boot layer without the menu's screens, or no menu, installs it at a start with Play."""
+        lines = ['Put the card back into the player and switch it on: the boot menu offers the packages on the card '
+                 '(its row "on the card", then Packages, where Play installs each one). A new version of a service or the '
+                 'server starts at once; a new menu at the next start.',
+                 'Without the boot menu, or with a boot layer before 2.57.7, switch the player on holding Play instead '
+                 '(let Play go once the logo shows): it installs everything on the card.']
+        if self.args.dry_run:
+            lines = [f'Dry run: staged in {self.work/"card"}; nothing was written to a card.']
+        self.say('On the player', lines)
+        self.done('on the player')
 
     def faults(self):
         """--fault no-device | bad-blocks=81,90 | write-stops=5 | readback-flip=123 (simulated player)."""
@@ -997,6 +1026,12 @@ class Installer:
                 self.restore_from_run()
                 return 0
             self.check()
+            if self.packages_only:
+                folders, apps = self.packages()
+                self.card(folders, apps)
+                self.on_the_player()
+                self.report['status'] = 'prepared'
+                return 0
             image = self.firmware()
             if self.args.restore:
                 # Back to stock: the restore image built beside the boot layer's, the same path to the player.

@@ -11,6 +11,7 @@ through USB Boot with the reviewed tools (--history) and records its first boot.
     python3 install.py --simulate           # the player's step against a simulated NAND
     python3 install.py --guest --image FILE --ota DIR --from work/packages   # the emulator's guest as the player
     python3 install.py --yes --ota DIR --card /Volumes/PLAY --from work/packages   # without questions
+    python3 install.py --packages           # packages only: onto the card for the player's boot menu
 
 Packages are taken from local files with their catalog digest (--from) or downloaded from
 their published address and checked by that digest (not with --offline). The run's report is
@@ -29,6 +30,9 @@ from installer import flow, tui  # noqa: E402
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--dry-run', action='store_true', help='Stage into the run folder instead of a card')
+    parser.add_argument('--packages', action='store_true',
+                        help="Packages only: stage the chosen packages and apps on the card for the player's boot menu; "
+                             "no image is built and the player is not written")
     # The player's step: a simulated one, the emulator's guest, or the player through the reviewed tools.
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument('--simulate', nargs='?', const='run', help='Write a simulated player (a NAND file; default in the run folder)')
@@ -68,6 +72,10 @@ def main():
         parser.error('--resume goes on with a player\'s installation: give --history, without --restore, --guest, --simulate or --dry-run')
     if args.guest and args.restore:
         parser.error('--restore writes a player; a guest starts fresh from each image')
+    if args.packages and (args.restore or args.resume or args.run or args.guest or args.simulate is not None or args.history
+                          or args.image or args.ota or args.boot_build or args.fault):
+        parser.error('--packages only stages packages on the card: no image, no player (without --restore, --resume, --run, '
+                     '--guest, --simulate, --history, --image, --ota, --boot-build or --fault)')
     screen = tui.Screen(look='plain') if args.plain else None
     return flow.Installer(args, screen).run()
 
