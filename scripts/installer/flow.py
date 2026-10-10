@@ -430,7 +430,7 @@ class Installer:
                 target = cards.card_ok(path)
             except cards.CardError as error:
                 raise Stop(str(error))
-            self.confirm('The card', [f'On {target}: {len(folders)} package(s) for the recovery with Play, {len(apps)} app(s) in Apps/, '
+            self.confirm('The card', [f'On {target}: {len(folders)} package(s) for the player, {len(apps)} app(s) in Apps/, '
                                       'and the USB console\'s marker.'], 'CARD')
         profile = load_profile()['version']
         cleared = cards.clear_unchosen(target, cards.places(folders))
@@ -571,10 +571,12 @@ class Installer:
         return show
 
     # Leaving USB Boot restarts the player by itself into what was written (owner, 2026-10-08): a start
-    # with Play is possible only after that start, switched off and on again.
-    PLAY_AFTER = ('To install the packages staged on the card: once it has started, switch it off, then switch it on '
-                  'holding Play (press the power key briefly and let Play go once the logo shows); the menu shows '
-                  'Installing.')
+    # with Play is possible only after that start, switched off and on again. Once the boot menu is installed
+    # it offers the packages on the card itself (owner, 2026-10-10), so Play is for the first installation.
+    PLAY_AFTER = ('To install the packages on the card: once the boot menu is installed, it offers them at a start '
+                  '(its row "on the card", then Packages). The first time, once the player has started, switch it off, '
+                  'then switch it on holding Play (press the power key briefly and let Play go once the logo shows); '
+                  'the menu shows Installing.')
 
     def restart(self, reviewed, title):
         """The player restarted by the installer after the write (plan, stage 7), so the cable stays connected:
@@ -964,16 +966,18 @@ class Installer:
         if getattr(self, 'proven_start', False):
             # The first start was seen and its check fetched: nothing is left to do but what the card holds.
             self.say('First boot', ['Done: the image is written, and its first start found it on the root device.',
-                                    'Packages staged on the card are installed at a start with Play (switch the player off, '
-                                    'then on holding Play); .disc/boot/result.json on the card says what was installed.',
+                                    'The packages on the card: once the boot menu is installed, it offers them at a start '
+                                    '(Packages); the first time, switch the player off, then on holding Play. '
+                                    '.disc/boot/result.json on the card says what was installed.',
                                     f'This run\'s report: {self.work/"report.json"}'])
             self.done('first boot', proven=True)
             return
         self.say('First boot', ['Disconnect the cable and put the card in: leaving USB Boot, the player restarts into the new '
-                                'system by itself. Once it has started, switch it off; then hold Play, press the power key '
-                                'briefly and let Play go once the logo shows (a power key held about ten seconds switches the '
-                                'player off): the boot layer installs the packages from the card and writes '
-                                '.disc/boot/result.json; the player page then answers on the network.'])
+                                'system by itself. The first time, once it has started, switch it off; then hold Play, press '
+                                'the power key briefly and let Play go once the logo shows (a power key held about ten seconds '
+                                'switches the player off): the boot layer installs the packages from the card and writes '
+                                '.disc/boot/result.json; the player page then answers on the network. Once the boot menu is '
+                                'installed, it offers the packages on the card at a start itself (Packages).'])
         self.done('first boot')
 
     def run(self):

@@ -27,7 +27,7 @@ and its packages, from the card or installed._
 | | |
 | --- | --- |
 | **FiiO's player, unchanged** | The image keeps FiiO's own system and adds only the boot layer; music, settings and the library stay as they are. |
-| **Packages from the card** | Interfaces, a menu and services come as packages on the memory card; a start with Play installs them, each checked before it runs. |
+| **Packages from the card** | Interfaces, a menu and services come as packages on the memory card; the boot menu installs them (the first time, a start with Play), each checked before it runs. |
 | **The boot menu** | At power-on the player asks which interface to start, FiiO's own among them. Its Services screen turns each service on or off; its Packages screen installs what waits on the card and removes an interface, a service or everything of ours. |
 | **[DISC server](https://github.com/eudj1n/snowsky-disc-server)** | Offered by default: the player serves [Disc Player](https://github.com/eudj1n/snowsky-disc-player) and other web apps over its Wi-Fi. |
 | **Health journal** | Offered by default: disc-health notes the battery, temperatures, free space, card errors and crashes every 10 minutes, offline, for the server's diagnostics. |

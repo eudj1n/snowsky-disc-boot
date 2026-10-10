@@ -50,9 +50,12 @@ back](way-back.md) returns the player to stock.
    reads that over the cable. (Should the restart not come, the installer
    asks you to disconnect the cable and connect it again while the new system
    runs.)
-7. To install the packages from the card, switch the player off, then switch
-   it on holding **Play** (let Play go once the logo shows). The menu shows
-   the installation, then the player starts as usual.
+7. **The packages from the card.** The first time, switch the player off,
+   then switch it on holding **Play** (let Play go once the logo shows). The
+   menu shows the installation, then the player starts as usual. Once the
+   boot menu is installed, it offers new packages on the card itself: its
+   row "on the card" opens Packages, where Play installs each one; nothing
+   is held at power-on.
 
 All together it takes about 15 minutes with the player. Each run is kept,
 with its report, in `~/Library/Application Support/SNOWSKY DISC/runs`
@@ -66,7 +69,7 @@ with its report, in `~/Library/Application Support/SNOWSKY DISC/runs`
   kernel, FiiO's recovery, your settings and your library stay as they are.
 - **In the player's data partition:** the packages installed from the card
   (`/usr/data/disc-boot`), each with its previous version kept.
-- **On the card:** the packages staged for a start with Play
+- **On the card:** the packages waiting to be installed
   (`.disc/boot/install`), the apps (`Apps/`), the boot layer's status and the
   USB console's marker (`.disc`); your music is not touched.
 
