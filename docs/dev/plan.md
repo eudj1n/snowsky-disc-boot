@@ -1715,7 +1715,11 @@ the only installer. Play at power-on stays the recovery path only.
   the player first: how stock enters that mode (by itself on a cable, a
   setting, a prompt), that it and the USB console share the port in turn,
   and a first start's check without an expected digest on the card (the
-  installer compares it).
+  installer compares it). 2026-10-10, the owner: the card needs no reader;
+  the player switched to stock's USB storage shows it to the computer as a
+  drive, which the installer takes as any card (`--packages`, and the card's
+  step of an installation before USB Boot). The guide and the installer say
+  so; the installation's card after the write stays open.
 
 - [x] Release 2.57.6 (2026-10-09): FiiO's own interface first, the player
   restarted by the installer after the write, the archive's downloads into a
