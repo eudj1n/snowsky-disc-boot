@@ -441,7 +441,9 @@ class Installer:
             target = self.work/'card'
             target.mkdir(parents=True, exist_ok=True)
         else:
-            path = self.ask('The card', 'Where the player\'s card is mounted', self.args.card)
+            # In a card reader, or the player itself in stock's USB storage (owner, 2026-10-10): a drive either way.
+            path = self.ask('The card', 'Where the player\'s card is mounted (a card reader, or the player in USB storage)',
+                            self.args.card)
             try:
                 target = cards.card_ok(path)
             except cards.CardError as error:
@@ -469,7 +471,8 @@ class Installer:
     def on_the_player(self):
         """Packages only: the player's boot menu installs what waits on the card (since boot release 2.57.7); a
         boot layer without the menu's screens, or no menu, installs it at a start with Play."""
-        lines = ['Put the card back into the player and switch it on: the boot menu offers the packages on the card '
+        lines = ['Eject the card, put it back into the player (or leave USB storage), then switch the player off and on: '
+                 'the boot menu offers the packages on the card '
                  '(its row "on the card", then Packages, where Play installs each one). A new version of a service or the '
                  'server starts at once; a new menu at the next start.',
                  'Without the boot menu, or with a boot layer before 2.57.7, switch the player on holding Play instead '
