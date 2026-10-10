@@ -73,13 +73,13 @@ python3 install.py --packages
 ```
 
 offers the packages and apps as above and puts the chosen ones on the card
-(in a card reader, or the player itself in Working mode → USB Storage); nothing else is
-needed on the computer (no FiiO update, no libusb). Eject the card, put it
-back into the player (or leave USB storage), then switch the player off and
-on: the menu's row "on the card" opens Packages, where Play installs each
-one. A new version of a service or
-the server starts at once, a new menu at the next start; each keeps its
-previous version, and one that fails gives way to it.
+(in a card reader, or the player itself in Working mode → USB Storage);
+nothing else is needed on the computer (no FiiO update, no libusb). Eject
+the card, put it back into the player (or leave USB storage), then switch
+the player off and on: the menu's row "on the card" opens Packages, where
+Play installs each one. A new version of a service or the server starts at
+once, a new menu at the next start; each keeps its previous version, and one
+that fails gives way to it.
 
 ## What is installed
 
