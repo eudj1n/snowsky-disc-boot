@@ -1796,6 +1796,30 @@ the only installer. Play at power-on stays the recovery path only.
 
 ## Later
 
+- Packages released on their own, without a cascade (owner, 2026-10-10; to
+  do later, not started). Today a new server, disc-health or disc-network
+  needs a boot release, whose packages change only in their manifests
+  (2.57.8: the menu and disc-health 2.57.7's binaries under a new version
+  and digest, reinstalled on players). Three couplings cause it: the own
+  packages take the boot release's version (`release.py`); the catalog lives
+  in this repository and the installer's archive; `install.py --packages`
+  reads the archive's copy. Proposed: a boot release only for what is
+  written to the player (`disc-boot`, the USB console, the payloads, the
+  installer); each package its own version, tag (`disc-health-v1.0.1` and
+  the like) and build id from its own sources; the catalog published apart,
+  at a stable address, signed with our ed25519 key (verified by CI without
+  secrets, and later by the server on the player), each entry with its
+  digest, compatibility (profile, `bootApi`, a minimum boot layer when
+  needed) and acceptance; `install.py --packages` and later the server's
+  page read the live catalog, the archive keeping a snapshot and the
+  packages for a first installation offline. Open decisions: the catalog in
+  a repository of its own (`snowsky-disc-catalog`, recommended) or a file
+  on `2.x` here; signed (recommended) or not; per-package semantic versions
+  (recommended) or `2.57.N`; the menu and the services kept here with tags
+  of their own (recommended) or split; the order (the catalog and the
+  versions, then `--packages` on the live catalog, then updates over Wi-Fi).
+  Updates over Wi-Fi (above) build on it.
+
 - diskOS Disco! as another interface before the large public release (owner,
   2026-10-09): zmd22's fork of diskOS (https://zmd22.github.io/diskos-disco/,
   https://github.com/zmd22/diskos-disco; 1.2.1 for V2.57; its UI under
