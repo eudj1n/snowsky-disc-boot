@@ -37,8 +37,8 @@ back](way-back.md) returns the player to stock.
    system (about a minute). It offers the packages: the menu, the server and
    Disc Player are ticked; they come with the installer.
 3. **The card.** Put the player's card into the computer, or connect the
-   player with its cable and switch it to USB storage: the card shows as a
-   drive either way. Name where it is mounted and type `CARD`. Then eject it,
+   player with its cable and choose **Working mode → USB Storage** on it: the
+   card shows as a drive either way. Name where it is mounted and type `CARD`. Then eject it,
    and put the card back into the player (or leave USB storage).
 4. **The player.** Switch the player off, hold **Volume Down** and connect
    the cable to the computer (USB Boot). Type `CHECK`: in about a minute the
@@ -73,7 +73,7 @@ python3 install.py --packages
 ```
 
 offers the packages and apps as above and puts the chosen ones on the card
-(in a card reader, or the player itself in USB storage); nothing else is
+(in a card reader, or the player itself in Working mode → USB Storage); nothing else is
 needed on the computer (no FiiO update, no libusb). Eject the card, put it
 back into the player (or leave USB storage), then switch the player off and
 on: the menu's row "on the card" opens Packages, where Play installs each

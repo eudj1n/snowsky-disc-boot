@@ -442,8 +442,8 @@ class Installer:
             target.mkdir(parents=True, exist_ok=True)
         else:
             # In a card reader, or the player itself in stock's USB storage (owner, 2026-10-10): a drive either way.
-            path = self.ask('The card', 'Where the player\'s card is mounted (a card reader, or the player in USB storage)',
-                            self.args.card)
+            path = self.ask('The card', 'Where the player\'s card is mounted (a card reader, or the player in Working mode → '
+                            'USB Storage)', self.args.card)
             try:
                 target = cards.card_ok(path)
             except cards.CardError as error:
