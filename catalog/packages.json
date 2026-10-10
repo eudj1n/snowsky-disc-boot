@@ -80,12 +80,12 @@
         {
             "name": "disc-server",
             "role": "service",
-            "version": "2.57.6",
+            "version": "2.57.7",
             "homepage": "https://github.com/eudj1n/snowsky-disc-server",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-server/releases/download/v2.57.6/disc-server-2.57.6.zip",
-                "sha256": "da9cfda316010d17cc117fcdeb09ddc45dea3cb44238dec3c570fef8134b27e5",
-                "size": 840076
+                "url": "https://github.com/eudj1n/snowsky-disc-server/releases/download/v2.57.7/disc-server-2.57.7.zip",
+                "sha256": "a93bfa034fe14443687787a7b6ab4a7c86a65ec1cc87586fbf6957d31a348946",
+                "size": 840075
             },
             "profiles": [
                 "2.57"
@@ -99,7 +99,7 @@
                 "boot": "8eb15a9",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "the controller of boot 2.57.7's image on the guest: installed by Play, confirmed, integration.py --about, manager_guest.py; release 2.57.6"
+                "acceptance": "the controller of boot 2.57.7's image on the guest: installed by Play, confirmed, integration.py --about, manager_guest.py; release 2.57.7 (2.57.6's work, a clean build)"
             }
         },
         {

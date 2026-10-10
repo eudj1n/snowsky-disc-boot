@@ -1650,10 +1650,13 @@ the only installer. Play at power-on stays the recovery path only.
   confirmed; the image built on the computer `9e6448dd…`), again with the
   server 2.57.6 in its catalog (installed by Play, confirmed). On the owner's
   player with `install.py --packages` from this archive (above), the server
-  2.57.6 included. Recorded (`releases/2.57.8.json`); tagged and published
-  after the server 2.57.6, whose package its catalog names (the owner,
-  2026-10-10: the tags and the publication by Claude, in that order; 2.57.7
-  published the same day).
+  2.57.6 included. The server's release workflow refused 2.57.6 (its package
+  held an earlier build's civetweb object): the catalog names the server
+  2.57.7 instead, the same work from a clean build, and the archive is built
+  and accepted again with it. Recorded (`releases/2.57.8.json`); tagged and
+  published after the server 2.57.7, whose package its catalog names (the
+  owner, 2026-10-10: the tags and the publication by Claude, in that order;
+  2.57.7 published the same day).
 - [ ] Updates over Wi-Fi from the server's page (owner, 2026-10-09; after
   disc-network's check): the controller may ask boot to install a package it
   staged on the card (`disc-boot install <folder>`, the menu's command) and
