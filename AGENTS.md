@@ -8,9 +8,9 @@ the USB console), and the tooling that builds, writes and verifies that image.
 Packages run on top of it: snowsky-disc-server (the gateway, a sibling
 repository) and third-party ones such as diskOS's UI. snowsky-disc-web is the
 frozen history of both. Read
-docs/dev/contract.md and docs/dev/plan.md before extending it.
+docs/dev/boot/contract.md and docs/dev/plan.md before extending it.
 
-- The contract (docs/dev/contract.md) is what packages build on. Change it only
+- The contract (docs/dev/boot/contract.md) is what packages build on. Change it only
   with the owner's decision, and raise `bootApi` when packages can tell.
 - Boot never runs or installs anything from the card without the physical
   gesture, adds no network listener, and requires no signature of ours:
@@ -26,8 +26,11 @@ docs/dev/contract.md and docs/dev/plan.md before extending it.
   paid services without a separately authorized concrete step.
 - Commit each completed stage, including its tests and documentation. Keep
   generated runtime evidence out of commits.
-- Keep docs/dev/plan.md as the canonical plan; mark completed checklist items
-  with evidence after each stage.
+- Keep docs/dev/plan.md as the canonical plan of open work (owner,
+  2026-10-10): remove an item once it is done, since the commits keep its
+  history; before removing it, move what later work needs (facts about the
+  player and stock, pitfalls, why a design is so, procedures) into the
+  documentation.
 - Documentation for users: README.md, CHANGELOG.md and the pages in docs/
   (the installation guide, the way back), which the installer's archive
   carries. For developers: docs/dev/ (development.md first, the contract, the
