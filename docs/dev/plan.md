@@ -1606,9 +1606,37 @@ the only installer. Play at power-on stays the recovery path only.
   below it, the store 0600 and no key in the report, confirmed, and the next
   start joining Home. snowsky-disc-server lists the networks (its plan,
   stage 5).
-- [ ] disc-network on the owner's player: two networks joined in turn
+- [x] disc-network on the owner's player: two networks joined in turn
   through stock's screen, then the player joining either by itself; then
-  the installer ticks it.
+  the installer ticks it. 2026-10-09, release 2.57.7's design (the kept
+  networks given back beside stock's): the player switched by itself, but
+  stock's UI crashed twice while a password was typed (two networks in its
+  configuration; [network](network.md#on-the-owners-player-2026-10-09)), so
+  disc-network was turned off there and left out of 2.57.7. Its next design
+  keeps one network in stock's configuration and puts a kept one in range in
+  its place (owner, 2026-10-09; `test_network` 10 on macOS and Linux);
+  `disc-network-2.57.8.zip` for the guest's `network_guest.py`, then the
+  player: two networks joined in turn, each joined again by itself, and a
+  password typed in stock's Wi-Fi screen without its UI failing. Done
+  2026-10-10: `network_guest.py` 5 of 5 with the 2.57.8 package; on the
+  owner's player (release 2.57.7's image, the package installed from the
+  menu) stock joined iPhone XV with its password typed, its UI ran on (no
+  fatal signal), the configuration held one network throughout; with the
+  phone's hotspot off, disc-network put MikroTik_83 in its place 36 s later
+  (the minute after stock's connection) and the player joined it; confirmed.
+  Next: a release that carries it ticked, with the packages without the image.
+- [ ] Packages without the image (owner, 2026-10-09): `install.py --packages`
+  skips FiiO's update, the image and the player, checks the catalog, takes
+  the chosen packages by their digests and stages them on the card; the
+  player installs them from the menu's Packages screen or with Play. Only
+  the installer changes, not the image.
+- [ ] Updates over Wi-Fi from the server's page (owner, 2026-10-09; after
+  disc-network's check): the controller may ask boot to install a package it
+  staged on the card (`disc-boot install <folder>`, the menu's command) and
+  boot starts it at once (as the menu's installation does since 2.57.7). The
+  contract's rule for that request here; the server's side (the catalog,
+  each package by its digest, signed by our key) in snowsky-disc-server's
+  plan.
 
 - [ ] Remove everything ours (owner, 2026-10-08: before the player is sold,
   and for a clean test): in the menu, the boot layer's packages and their
@@ -1683,9 +1711,57 @@ the only installer. Play at power-on stays the recovery path only.
   macOS without root and in the Linux container. On the owner's player from
   the other computer with the archive only: written in the review's entry,
   the first start's check matched ([record](observations/first-write-observation.md#the-ninth-write-release-2576-the-player-restarted-by-the-installer)).
-- [ ] The run's report names the restart's outcome (`report.json`, the player
+- [x] The run's report names the restart's outcome (`report.json`, the player
   step), not only its `usb/restart/result.json`; with the next release, as
-  it changes the archive.
+  it changes the archive. Done for 2.57.7: `restart` in the player's step
+  (`outcome`: player-restarted, restart-not-observed, restart-uncertain,
+  failed or not available, and its run folder); `test_usbboot`.
+- [x] Release 2.57.7 (2026-10-09/10): services beside the server (boot API 2),
+  disc-health, disc-network (named, not ticked), the menu's three screens,
+  the restart's outcome in the report. On the guest, with these binaries
+  (build `d1ad405880ec`; the menu, disc-health and disc-network byte for byte
+  the ones accepted; the USB payloads 2.57.6's): `boot_guest.py` 16 of 16,
+  `menu_guest.py` 6 of 6, `roles_guest.py` 5 of 5, `health_guest.py` 3 of 3,
+  `network_guest.py` 4 of 4, and `install.py --guest` from the unpacked
+  archive with an empty home: the image built on the computer from the
+  release file (`6d1a6780…`, the tested one), the menu, disc-server 2.57.5
+  (the controller), disc-health and disc-network installed by Play and
+  confirmed. The owner's player with the archive (2026-10-09): written and
+  restarted by the installer (`player-restarted`), the server of boot API 1
+  moved to `controller/`, the four packages installed by Play and confirmed.
+  There disc-network gave no network back: stock's wpa_cli took `priority -1`
+  for an option (glibc's getopt), so the service ends wpa_cli's options with
+  `--` and the stand-in parses as stock's does. disc-health's first reading of
+  each start had the time 6 h ahead (the hardware clock holds local time until
+  stock's player sets the clock) and a current of 1 or 0 (the gauge's, not
+  µA); the player has no thermal zones. A reading now has the time once the
+  clock is set, and no current. Both fixes are only in their packages: the
+  build id counts only the image's programs, so the image stays `6d1a6780…`
+  and `d1ad405880ec`. Again on the guest: `network_guest.py` 4 of 4,
+  `health_guest.py` 3 of 3 and `install.py --guest` from the unpacked archive.
+  On the player with both packages (2026-10-09/10): disc-health's first
+  reading without the time, the next with it, no current; disc-network
+  switched by itself, but stock's UI crashed with two networks in its
+  configuration, so disc-network left the release (its next design keeps one;
+  see its item above). The menu's installation of the two services showed two
+  faults of boot: the menu was stopped 60 s after its start while being read,
+  and the services ran their previous version on, which then confirmed the
+  new slot. Fixed in boot (the menu's time from the owner's last use, a slot
+  installed over the running one started at once, a confirmation naming the
+  slot that ran), so the image changes: build `8eb15a998d85`, image
+  `9e6448dd…`; the installer knows the first build's image (`6d1a6780…`,
+  first blocks `eff13569…`) that the owner's player holds. On the guest with
+  these binaries: `boot_guest.py` 16 of 16, `menu_guest.py` 7 of 7 (its new
+  step: the menu used beyond 60 s, a service installed over the running one),
+  `roles_guest.py` 5 of 5, `health_guest.py` 3 of 3, and `install.py --guest`
+  from the unpacked archive with an empty home (the menu, disc-server 2.57.5,
+  disc-health; the image built on the computer `9e6448dd…`). On the owner's
+  player with this archive's installer (2026-10-10): the first build's image
+  known by its first blocks, this image written in the same entry, the player
+  restarted by the installer, the first start's check matched `9e6448dd…`;
+  the new menu confirmed by its first answer (the old one's answer left it
+  tentative, as it should). Recorded (`releases/2.57.7.json`); the tag waits
+  for the owner.
 
 ## Later
 

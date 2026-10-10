@@ -503,7 +503,16 @@ static void play(const char *status) {
     }
 }
 
-static const char *status_dir;
+static const char *status_dir, *run_dir;
+static unsigned long uses;
+
+/* The owner's use, counted in <run>/active for boot, which then gives the menu its time again from
+   now (owner, 2026-10-09: the menu was stopped while its screens were being read). */
+static void in_use(void) {
+    char p[PATH_MAX], buf[24];
+    int n = snprintf(buf, sizeof(buf), "%lu\n", ++uses);
+    if (run_dir && snprintf(p, sizeof(p), "%s/active", run_dir) < (int)sizeof(p)) write_atomic(p, buf, (size_t)n, 0644);
+}
 
 static void key(int code, int value) {
     fprintf(stderr, "disc-menu: key 0x%x %d\n", code, value);
@@ -523,9 +532,11 @@ static void key(int code, int value) {
 
 static void read_events(void) {
     event32 e;
+    int used = 0;
     while (keys_fd >= 0 && read(keys_fd, &e, sizeof(e)) == (ssize_t)sizeof(e))
-        if (e.type == EV_KEY_TYPE) key(e.code, e.value);
+        if (e.type == EV_KEY_TYPE) { key(e.code, e.value); used = 1; }
     while (touch_fd >= 0 && read(touch_fd, &e, sizeof(e)) == (ssize_t)sizeof(e)) {
+        used = 1;
         if (e.type == EV_ABS_TYPE && (e.code == 0x35 || e.code == 0x00)) touch_x = e.value;
         else if (e.type == EV_ABS_TYPE && (e.code == 0x36 || e.code == 0x01)) touch_y = e.value;
         else if (e.type == EV_KEY_TYPE && e.code == BTN_TOUCH_CODE) {
@@ -539,6 +550,7 @@ static void read_events(void) {
             }
         }
     }
+    if (used) in_use();
 }
 
 /* The answer, then the hand-over to the UI launcher in this process. */
@@ -563,6 +575,7 @@ int main(void) {
 #endif
     program = getenv("DISC_BOOT_PROGRAM");
     status_dir = status;
+    run_dir = run;
     if (load_choices(status)) { fprintf(stderr, "disc-menu: nothing to offer\n"); return 1; }
     /* Packages waiting on the card hold the countdown (owner, 2026-10-09). */
     counting = !waiting;
@@ -572,7 +585,7 @@ int main(void) {
     recovery_start = started_with_play(status);
     setvbuf(stderr, NULL, _IONBF, 0);
     deadline = now_ms() + countdown_ms;
-    long shown = -1, polled = 0;
+    long shown = -1, polled = 0, used_at = 0;
     int last_selected = -1, last_counting = -1, last_screen = -1, last_rows = -1, was_installing = read_install(status), last_done = -1;
     for (;;) {
         read_events();
@@ -596,6 +609,8 @@ int main(void) {
                 last_selected = -1;
             }
         }
+        /* An installation is a use too: each second of it, the menu's own or the recovery's. */
+        if ((installing || installer > 0) && now - used_at >= 1000) { in_use(); used_at = now; }
         if (installing) {
             deadline = now + countdown_ms;
             if (!was_installing || inst_done != last_done || now - shown >= 500) {

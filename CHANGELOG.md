@@ -6,27 +6,27 @@ layer for FiiO's 2.57. Each published release is a `v<version>` tag with its
 files on the [releases page](https://github.com/eudj1n/snowsky-disc-boot/releases).
 Entries stay short; how and why it was done is in the [plan](docs/dev/plan.md).
 
-## [Unreleased]
+## [2.57.7] — 2026-10-09
 
+- Besides the server, the player can run services: small background programs,
+  each started and watched on its own. A service that fails stops alone and
+  never sends the player back to FiiO's interface. The server you installed
+  moves to its new place at the first start by itself: nothing to reinstall.
+- disc-health, the first service, offered ticked by the installer: every 10
+  minutes it notes the battery and its temperature, the free space, card errors
+  and crashes, keeps a few days of them on the player and reports the latest
+  for the server's diagnostics. It works offline and changes nothing.
 - The boot menu has two more screens, at the end of its list: Services turns
   each service on or off, and Packages installs what waits on the card and
   removes an interface or a service with its data, or everything of ours
   before the player changes hands. While a package waits on the card, the
   menu waits for you instead of counting down.
-
-- Besides the server, the player can run services: small background programs
-  such as a health journal, each started and watched on its own. A service
-  that fails stops alone and never sends the player back to FiiO's
-  interface.
-- The server you installed moves to its new place at the first start by
-  itself: nothing to reinstall.
-- disc-health, the first service, offered ticked by the installer: every 10
-  minutes it notes the battery, the temperatures, the free space, card errors
-  and crashes, keeps a few days of them on the player and reports the latest
-  for the server's diagnostics. It works offline and changes nothing.
-- disc-network, offered but not ticked: the player remembers up to 8 Wi-Fi
-  networks and joins whichever is in range without asking the password again.
-  The passwords stay on the player; a reset of the player clears them too.
+- The installer's report says whether the player restarted after the write.
+- The boot menu waits while you use it: a minute after your last key, not
+  after it appeared.
+- A service or the server installed from the menu starts at once, in its
+  new version, and is kept only once that version has run for three
+  minutes.
 
 ## [2.57.6] — 2026-10-09
 

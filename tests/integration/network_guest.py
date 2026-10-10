@@ -7,10 +7,11 @@
 The emulator has no Wi-Fi: at each power-on it puts a guard of its own in wpa_cli's place (the
 original kept in /emu/original-commands); after it, the run puts the stand-in there
 (tests/integration/wpa_cli_stand_in.sh, BusyBox's shell runs it), and the emulator's guard back at the end. The
-release's package is staged as the installer stages it and installed with Play; the MIPS build then
-runs the stand-in as it would run stock's wpa_cli: stock's connection to Home, then to Office (Home
-added back after it, below it), a new start with Office out of range joining Home, and its
-confirmation after 180 s. The report names the networks and never a key.
+package is staged as the installer stages it and installed with Play; the MIPS build then runs the
+stand-in as it would run stock's wpa_cli: stock's connection to Home, then to Office (stock's
+configuration keeps Office alone), Office out of reach and Home in range (Home takes its place, a
+minute after Office's connection), the confirmation after 180 s, and a new start with Home out of
+reach joining Office. The report names the networks and never a key.
 """
 import argparse
 import json
@@ -45,7 +46,7 @@ def report(predicate, label, timeout=120):
 
 def wpa(*args):
     quoted = ' '.join("'" + a.replace("'", "'\\''") + "'" for a in args)
-    return bg.guest(f'/usr/sbin/wpa_cli -i wlan0 {quoted}')
+    return bg.guest(f'/usr/sbin/wpa_cli -i wlan0 -- {quoted}')
 
 
 def saved():
@@ -78,29 +79,36 @@ def run(archive, output, guard):
     ready = bg.wait(status, lambda s: s['state'] in ('ready', 'confirmed'), 'disc-network ready', 300)
     off = report(lambda r: r['wifi'] == 'off', 'Wi-Fi off')
     bg.step('installed with play, Wi-Fi off', staged=staged, status=ready, report=off)
-    # Stock connects to Home, then to Office: Home comes back after Office, below it.
+    # Stock connects to Home, then to Office: both kept, stock's configuration holds Office alone.
     wpa('_up')
     wpa('_stock_connect', '"Home"', '"home secret"')
     home = report(lambda r: r['connected'] == 'Home' and [n['name'] for n in r['networks']] == ['Home'], 'Home kept')
     wpa('_stock_connect', '"Office"', '"office pass"')
-    both = report(lambda r: r['connected'] == 'Office' and len(r['networks']) == 2 and all(n['held'] for n in r['networks']), 'Home back')
+    both = report(lambda r: r['connected'] == 'Office' and len(r['networks']) == 2, 'Office kept')
     blocks = saved()
-    assert [(b['ssid'], b.get('priority')) for b in blocks] == [('"Office"', None), ('"Home"', '-1')], blocks
+    assert [b['ssid'] for b in blocks] == ['"Office"'], blocks
     text = bg.guest(f'cat {RUN}/status.json')
     assert 'secret' not in text and 'office pass' not in text, text
     mode = bg.guest('ls -l /usr/data/disc-boot/data/disc-network/networks.json').split()[0]
     assert mode == '-rw-------', mode
-    bg.step('stock\'s connections kept, the earlier one added back', home=home, both=both, saved=blocks, storeMode=mode)
+    bg.step('stock\'s connections kept, stock\'s configuration holds one', home=home, both=both, saved=blocks, storeMode=mode)
+    # Office out of reach, Home in range: Home takes Office's place, a minute after Office's connection.
+    wpa('_range', '"Home"')
+    switched = report(lambda r: r['connected'] == 'Home', 'Home in Office\'s place', 240)
+    blocks = saved()
+    assert [b['ssid'] for b in blocks] == ['"Home"'], blocks
+    bg.step('out of reach, a kept network in range takes its place', report=switched, saved=blocks)
     confirmed = bg.wait(status, lambda s: s['state'] == 'confirmed', 'disc-network confirmed', 420)
     bg.step('confirmed', status=confirmed)
-    # A new start: wpa_supplicant loads both from the file; Office out of range, Home in it.
+    # A new start: wpa_supplicant loads Home from the file; Home out of reach, Office in range.
     bg.power('off')
     bg.power('on')
     stand_in(guard)
     wpa('_up')
-    wpa('_scan', '1')
-    joined = report(lambda r: r['connected'] == 'Home' and len(r['networks']) == 2, 'Home joined at the next start')
-    bg.step('the next start joins the network in range', report=joined, asked=bg.guest('tail -n 5 /run/wpa-stand-in/log').splitlines())
+    wpa('_range', '"Office"')
+    joined = report(lambda r: r['connected'] == 'Office' and len(r['networks']) == 2, 'Office joined at the next start', 240)
+    assert [b['ssid'] for b in saved()] == ['"Office"']
+    bg.step('the next start joins the network in range', report=joined, asked=bg.guest('tail -n 8 /run/wpa-stand-in/log').splitlines())
     bg.power('off')
     bg.evidence['status'] = 'passed'
     Path(output).write_text(json.dumps(bg.evidence, indent=2) + '\n')

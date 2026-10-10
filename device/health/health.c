@@ -32,6 +32,13 @@
 #define MAX_ZONES 4
 /* A clock before this (2023-11-14) was never set: the reading has no time. */
 #define CLOCK_SET 1700000000L
+/* A player keeps its hardware clock in local time, which the kernel takes for UTC at its start, and
+   stock's player sets the system clock at its own start (the owner's player, 2026-10-09: the first
+   seconds of a boot ran 6 h ahead, UTC+6's offset, until stock's player set it). A reading has the
+   time once the clock moved since this start, by more than CLOCK_STEP s (it was set), or the kernel
+   has run CLOCK_SETTLE s; the step itself takes a reading again at once. */
+#define CLOCK_STEP 60
+#define CLOCK_SETTLE 300
 /* How often a reading without the card looks for it, in seconds. */
 #define CARD_LOOK 5
 /* The folders boot names: well under PATH_MAX, so a file in them always fits. */
@@ -43,7 +50,10 @@ static char data_dir[FOLDER], run_dir[FOLDER], card[FOLDER];
 /* Counted since this start: kernel lines are read up to the last time stamp seen. */
 static double kernel_seen = -1;
 static long card_errors, fatal_signals, restarts_first = -1, restarts_last = -1, samples;
-static time_t started;
+/* This start on the monotonic clock; the system clock less the monotonic one at the last reading;
+   whether the clock moved since this start, and whether the last reading had the time. */
+static double start_mono, clock_offset;
+static int clock_moved, timed;
 
 static void on_term(int sig) { (void)sig; stopping = 1; }
 
@@ -90,9 +100,24 @@ static void put_tenths(char *out, size_t cap, size_t *o, long long tenths) {
     put(out, cap, o, "%s%lld.%lld", tenths < 0 ? "-" : "", llabs(tenths) / 10, llabs(tenths) % 10);
 }
 
+/* The system clock in seconds (the fixture's moved by the seconds of fixture/clock). */
+static double clock_now(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    double t = (double)ts.tv_sec + ts.tv_nsec / 1e9;
+#ifdef DISC_HEALTH_FIXTURE
+    char p[PATH_MAX];
+    long long shift;
+    bpath(p, "/fixture/clock");
+    if (!read_long(p, &shift)) t += (double)shift;
+#endif
+    return t;
+}
+
 /* The fuel gauge: the first power supply, by name, that has a capacity (cw221X-bat on the player:
-   capacity in percent, voltage_now in microvolts, current_now in microamperes, temp in tenths of a
-   degree, cycle_count). */
+   capacity in percent, voltage_now in microvolts, temp in tenths of a degree, cycle_count). Its
+   current_now is not read: the owner's player says 1 or 0 there (2026-10-09, charging and not), not
+   microamperes. */
 static void battery(char *out, size_t cap, size_t *o) {
     char dir[PATH_MAX], p[PATH_MAX], best[64] = "";
     bpath(dir, "/sys/class/power_supply");
@@ -107,8 +132,8 @@ static void battery(char *out, size_t cap, size_t *o) {
     if (d) closedir(d);
     if (!best[0]) { put(out, cap, o, "null"); return; }
     static const struct { const char *file, *key; long long divide; int tenths; } FIELDS[] = {
-        {"capacity", "percent", 1, 0}, {"voltage_now", "mV", 1000, 0}, {"current_now", "mA", 1000, 0},
-        {"temp", "celsius", 1, 1}, {"cycle_count", "cycles", 1, 0},
+        {"capacity", "percent", 1, 0}, {"voltage_now", "mV", 1000, 0}, {"temp", "celsius", 1, 1},
+        {"cycle_count", "cycles", 1, 0},
     };
     put(out, cap, o, "{\"name\":\"");
     for (const char *c = best; *c; c++) put(out, cap, o, "%c", (*c >= 0x20 && *c < 0x7f && *c != '"' && *c != '\\') ? *c : '_');
@@ -242,15 +267,18 @@ static long pair_restarts(void) {
 static size_t reading(char *out, size_t cap) {
     size_t o = 0;
     char p[PATH_MAX], text[128], data[PATH_MAX];
-    time_t now = time(NULL);
+    double now = clock_now();
+    long uptime = -1;
+    bpath(p, "/proc/uptime");
+    if (!read_text(p, text, sizeof(text))) uptime = atol(text);
+    timed = now >= CLOCK_SET && (clock_moved || uptime >= CLOCK_SETTLE);
     put(out, cap, &o, "{");
-    if (now >= CLOCK_SET) put(out, cap, &o, "\"t\":%lld", (long long)now);
+    if (timed) put(out, cap, &o, "\"t\":%lld", (long long)now);
     else put(out, cap, &o, "\"t\":null");
     bpath(p, "/proc/sys/kernel/random/boot_id");
     if (!read_text(p, text, sizeof(text)) && strlen(text) >= 8 && strspn(text, "0123456789abcdef-") == strlen(text))
         put(out, cap, &o, ",\"boot\":\"%.8s\"", text);
-    bpath(p, "/proc/uptime");
-    if (!read_text(p, text, sizeof(text))) put(out, cap, &o, ",\"uptime\":%ld", atol(text));
+    if (uptime >= 0) put(out, cap, &o, ",\"uptime\":%ld", uptime);
     bpath(p, "/proc/loadavg");
     double l1, l5, l15;
     if (!read_text(p, text, sizeof(text)) && sscanf(text, "%lf %lf %lf", &l1, &l5, &l15) == 3)
@@ -296,7 +324,8 @@ static void report(const char *line, size_t len) {
     if (!lstat(p, &s)) bytes += s.st_size;
     size_t o = 0;
     put(buf, sizeof(buf), &o, "{\"schema\":1,\"interval\":%.0f,\"samples\":%ld,", interval, samples);
-    if (started >= CLOCK_SET) put(buf, sizeof(buf), &o, "\"started\":%lld,", (long long)started);
+    /* The start's time on the clock as it is now: one set after the start moves it too. */
+    if (timed) put(buf, sizeof(buf), &o, "\"started\":%lld,", (long long)(clock_now() - (mono() - start_mono)));
     else put(buf, sizeof(buf), &o, "\"started\":null,");
     put(buf, sizeof(buf), &o, "\"journalBytes\":%lld,\"sinceStart\":{\"cardErrors\":%ld,\"fatalSignals\":%ld", bytes, card_errors, fatal_signals);
     if (restarts_first >= 0 && restarts_last >= restarts_first) put(buf, sizeof(buf), &o, ",\"pairRestarts\":%ld", restarts_last - restarts_first);
@@ -326,11 +355,12 @@ int main(void) {
     if (env_path("DISC_BOOT_CARD", card)) card[0] = 0;
     signal(SIGTERM, on_term);
     signal(SIGINT, on_term);
-    started = time(NULL);
+    start_mono = mono();
     char line[LINE_BYTES], ready[PATH_MAX];
     snprintf(ready, sizeof(ready), "%s/ready", run_dir);
     while (!stopping) {
         int card_seen = card_mounted();
+        clock_offset = clock_now() - mono();
         size_t len = reading(line, sizeof(line));
         if (len) { samples++; journal(line, len); report(line, len); }
         if (samples == 1 && !exists(ready)) { int fd = open(ready, O_WRONLY | O_CREAT | O_CLOEXEC, 0644); if (fd >= 0) close(fd); }
@@ -340,6 +370,9 @@ int main(void) {
         while (!stopping && mono() < until) {
             pause_s(until - mono() < 1 ? until - mono() : 1);
             if (!card_seen && card[0] && mono() >= look) { if (card_mounted()) break; look = mono() + CARD_LOOK; }
+            /* The clock was set: a reading at once, with its time. */
+            double moved = clock_now() - mono() - clock_offset;
+            if (moved > CLOCK_STEP || moved < -CLOCK_STEP) { clock_moved = 1; break; }
         }
     }
     return 0;

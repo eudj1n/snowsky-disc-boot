@@ -224,6 +224,9 @@ class Installer:
             raise Stop('stopped before ' + title.lower())
 
     def done(self, name, **facts):
+        # The player's step names the restart's outcome after the write (plan, stage 7), not only its run folder.
+        if name == 'player' and getattr(self, 'restart_outcome', None) and 'restart' not in facts:
+            facts['restart'] = self.restart_outcome
         self.report['steps'].append(dict(step=name, **facts))
         self.step += 1
 
@@ -578,11 +581,15 @@ class Installer:
         True when it left the bus. Otherwise (a release without the restart payload, no restart observed, an
         error) the cable is the way, as before; the write is done either way."""
         if not reviewed.can_restart():
+            self.restart_outcome = dict(outcome='not available', why='the release carries no restart payload')
             return False
         try:
-            return reviewed.restart() == 'player-restarted'
-        except usbboot.ReviewedError:
+            status = reviewed.restart()
+        except usbboot.ReviewedError as error:
+            self.restart_outcome = dict(outcome='failed', why=str(error))
             return False
+        self.restart_outcome = dict(outcome=status, run=str(reviewed.work/'restart'))
+        return status == 'player-restarted'
 
     def start_answer(self, title, what, then=None, words=True, restarted=False):
         """The owner's look at a new system's first start: (started normally, words, time UTC), or None. words:

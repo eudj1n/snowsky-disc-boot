@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "version": "2.57.7",
+  "firmware": "2.57",
+  "tag": "v2.57.7",
+  "buildId": "8eb15a998d85",
+  "files": {
+    "disc-menu-2.57.7.zip": {
+      "bytes": 173023,
+      "sha256": "6e26ad9da214ac89db68282c96d4f4c209f0380a0ac61abd12d135b227cfde37"
+    },
+    "disc-boot-2.57.7-mips.tar.gz": {
+      "bytes": 343789,
+      "sha256": "79c679fc472ee11c1315850568a52053adda223ae96fb2d7d8e3ca12c2ebfb41"
+    },
+    "disc-usb-payloads-2.57.7.tar.gz": {
+      "bytes": 61077,
+      "sha256": "ebe2961a9c9fd8de14770eef0ebbd512845be0b30dc1e08f9b9e1a94282732bc"
+    },
+    "disc-health-2.57.7.zip": {
+      "bytes": 136406,
+      "sha256": "d7bd884ebcf9d4f076fd3a8ad05c52bbbd6b70a4ddf8c1e81c8a6e3275ac0d31"
+    },
+    "disc-installer-2.57.7.tar.gz": {
+      "bytes": 2312175,
+      "sha256": "092bf9ed6692c93c7539013e1f8d14f4223992b6b4f07743fef0be5cfcedb7d7"
+    }
+  },
+  "accepted": "on the emulator's guest at f1d5e33 with FiiO 2.57, 2026-10-10: an image from release-2.57.7 (device sources of 8eb15a9, build 8eb15a998d85) holding this disc-boot and disc-usb-console (image 9e6448dd), boot_guest.py 16 of 16, roles_guest.py 5 of 5 (services beside the controller, the server of boot API 1 moved to controller/); this disc-menu package, menu_guest.py 7 of 7 (its three screens, kept while used beyond 60 s, a service installed over the running one started at once); this disc-health package, health_guest.py 3 of 3; the installer's archive unpacked outside the repository with an empty home, install.py --guest: the image built on the computer, the archive's own packages (this menu, disc-server 2.57.5, disc-health), installed by Play, the menu answered, the controller and the service confirmed. On the owner's player, 2026-10-10: the first build of 2.57.7 known by its first blocks, this image written in the same USB Boot entry, the player restarted by the installer, the first start's check matched 9e6448dd, no history; the menu, disc-health and disc-network 2.57.8 installed from the menu and confirmed",
+  "urls": {
+    "disc-menu-2.57.7.zip": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.7/disc-menu-2.57.7.zip",
+    "disc-boot-2.57.7-mips.tar.gz": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.7/disc-boot-2.57.7-mips.tar.gz",
+    "disc-usb-payloads-2.57.7.tar.gz": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.7/disc-usb-payloads-2.57.7.tar.gz",
+    "disc-health-2.57.7.zip": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.7/disc-health-2.57.7.zip",
+    "disc-installer-2.57.7.tar.gz": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.7/disc-installer-2.57.7.tar.gz"
+  },
+  "image": {
+    "name": "disc-boot-v257-review-only.bin",
+    "bytes": 100663296,
+    "sha256": "9e6448ddc429e3e156a862abf1e5cf5547f6f7294850b1233609a7edfc880c77",
+    "first_blocks_bytes": 262144,
+    "first_blocks_sha256": "68c9da0ed3a62c3dfccff5f650326dc06e8c6b68881e997598f18411e0c25632"
+  }
+}

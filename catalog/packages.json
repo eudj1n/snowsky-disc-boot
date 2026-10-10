@@ -6,12 +6,12 @@
         {
             "name": "disc-menu",
             "role": "menu",
-            "version": "2.57.6",
+            "version": "2.57.7",
             "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.6/disc-menu-2.57.6.zip",
-                "sha256": "fc0521587c53dd5d552dd63f0bb0c4e5bd50043eb3ebeb5b143a5e17c01e7ddf",
-                "size": 158904
+                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.7/disc-menu-2.57.7.zip",
+                "sha256": "6e26ad9da214ac89db68282c96d4f4c209f0380a0ac61abd12d135b227cfde37",
+                "size": 173023
             },
             "profiles": [
                 "2.57"
@@ -21,10 +21,35 @@
             "default": true,
             "verified": {
                 "date": "2026-10-09",
-                "boot": "b5e9add",
+                "boot": "8eb15a9",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "menu_guest.py 3 of 3 (FiiO first); boot_guest.py 16 of 16; release 2.57.6"
+                "acceptance": "menu_guest.py 7 of 7 (three screens, everything ours, kept while used beyond 60 s); boot_guest.py 16 of 16; release 2.57.7"
+            }
+        },
+        {
+            "name": "disc-health",
+            "role": "service",
+            "version": "2.57.7",
+            "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
+            "source": {
+                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.7/disc-health-2.57.7.zip",
+                "sha256": "d7bd884ebcf9d4f076fd3a8ad05c52bbbd6b70a4ddf8c1e81c8a6e3275ac0d31",
+                "size": 136406
+            },
+            "profiles": [
+                "2.57"
+            ],
+            "bootApi": 2,
+            "license": "MIT",
+            "default": true,
+            "notes": "A read-only, offline journal of the player's health; its report shows in the server's diagnostics",
+            "verified": {
+                "date": "2026-10-09",
+                "boot": "8eb15a9",
+                "emulator": "f1d5e33",
+                "firmware": "2.57",
+                "acceptance": "health_guest.py 3 of 3 (this binary): installed by Play, confirmed, the emulator's gauge and the card read, no time before the clock is believed; release 2.57.7"
             }
         },
         {

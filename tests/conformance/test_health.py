@@ -40,10 +40,11 @@ class HealthTests(unittest.TestCase):
         self.addCleanup(self.stop)
 
     def player(self):
-        """What a V2.57 player shows of itself (the gauge as snowsky-disc-qemu's device profile)."""
+        """What a V2.57 player shows of itself (the gauge as the owner's player has it, 2026-10-09: its
+        current_now says 1 or 0)."""
         files = {
             'sys/class/power_supply/cw221X-bat/capacity': '87\n', 'sys/class/power_supply/cw221X-bat/voltage_now': '4012000\n',
-            'sys/class/power_supply/cw221X-bat/current_now': '-120000\n', 'sys/class/power_supply/cw221X-bat/temp': '251\n',
+            'sys/class/power_supply/cw221X-bat/current_now': '1\n', 'sys/class/power_supply/cw221X-bat/temp': '251\n',
             'sys/class/power_supply/cw221X-bat/cycle_count': '3\n', 'sys/class/power_supply/cw221X-bat/type': 'Mains\n',
             'sys/class/power_supply/usb/online': '1\n',
             'sys/class/thermal/thermal_zone0/temp': '45250\n', 'sys/class/thermal/thermal_zone0/type': 'cpu-thermal\n',
@@ -84,7 +85,7 @@ class HealthTests(unittest.TestCase):
         report = self.report()
         self.assertTrue((self.run/'ready').exists(), 'ready after the first reading')
         latest = report['latest']
-        self.assertEqual(latest['battery'], dict(name='cw221X-bat', percent=87, mV=4012, mA=-120, celsius=25.1, cycles=3))
+        self.assertEqual(latest['battery'], dict(name='cw221X-bat', percent=87, mV=4012, celsius=25.1, cycles=3))
         self.assertEqual(latest['thermal'], [dict(zone='cpu-thermal', celsius=45.2)])
         self.assertEqual((latest['boot'], latest['uptime'], latest['load']), ('1a2b3c4d', 3600, [0.12, 0.3, 0.25]))
         self.assertEqual(latest['memory'], dict(totalKB=120000, availableKB=60000))
@@ -92,6 +93,7 @@ class HealthTests(unittest.TestCase):
         self.assertGreater(latest['space']['card']['totalKB'], 0, 'the card is mounted where boot says')
         self.assertEqual((latest['kernel'], latest['pairRestarts']), (dict(cardErrors=2, fatalSignals=1), 2))
         self.assertIsInstance(latest['t'], int)
+        self.assertAlmostEqual(report['started'], time.time(), delta=10)
         self.assertEqual((report['schema'], report['interval']), (1, 0))
         self.assertLessEqual(len((self.run/'status.json').read_bytes()), 4096)
         # Only what the kernel and stock's loop said since: counted once, summed since the start.
@@ -125,6 +127,35 @@ class HealthTests(unittest.TestCase):
         mounts.write_text('/dev/root / squashfs ro 0 0\n/dev/mmcblk0p1 /tmp/sdcard exfat rw 0 0\n')
         second = self.report(lambda r: r['samples'] == 2, timeout=15)
         self.assertGreater(second['latest']['space']['card']['totalKB'], 0, 'read again once the card is there, not in 10 minutes')
+
+    def test_the_time_once_the_clock_is_set(self):
+        """The hardware clock in local time, taken for UTC by the kernel, until stock's player sets the
+        clock at its start (the owner's player, 2026-10-09: 6 h ahead for the boot's first seconds): a
+        reading before has no time, the clock's step takes one at once, and the start's time follows it."""
+        self.player()
+        (self.root/'proc/uptime').write_text('5.00 9.00\n')
+        (self.root/'fixture/clock').write_text(f'{6 * 3600}\n')
+        self.env['DISC_HEALTH_INTERVAL'] = '600'
+        self.start()
+        first = self.report()
+        self.assertEqual((first['latest']['t'], first['started'], first['latest']['uptime']), (None, None, 5))
+        (self.root/'proc/uptime').write_text('20.00 30.00\n')
+        (self.root/'fixture/clock').write_text('0\n')
+        second = self.report(lambda r: r['samples'] == 2, timeout=15)
+        self.assertAlmostEqual(second['latest']['t'], time.time(), delta=10)
+        self.assertAlmostEqual(second['started'], time.time(), delta=20)
+        self.assertEqual(second['latest']['uptime'], 20)
+        lines = [json.loads(line) for line in (self.data/'journal.jsonl').read_text().splitlines()]
+        self.assertEqual([line['t'] is None for line in lines], [True, False])
+
+    def test_a_clock_that_never_moves_is_believed_after_five_minutes(self):
+        self.player()
+        (self.root/'proc/uptime').write_text('299.00 400.00\n')
+        self.start()
+        self.assertIsNone(self.report()['latest']['t'])
+        (self.root/'proc/uptime').write_text('300.00 401.00\n')
+        report = self.report(lambda r: r['latest']['t'] is not None)
+        self.assertAlmostEqual(report['started'], time.time(), delta=10)
 
     def test_the_journal_stays_within_256_kib(self):
         self.player()

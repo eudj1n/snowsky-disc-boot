@@ -569,6 +569,27 @@ fi
             self.assertEqual(self.early()['mode'], 'platform')
         self.assertEqual(self.global_state()['unconfirmed'], 0)
 
+    def test_a_version_installed_over_the_running_one_starts_at_once_and_confirms_itself(self):
+        """The menu's installation of a running service (the owner's player, 2026-10-09: the version
+        before ran on, and its confirmation, 150 s later, confirmed the new one, which had not run)."""
+        self.env['DISC_BOOT_FIXTURE_TIMING'] = self.env['DISC_BOOT_FIXTURE_TIMING'].replace('confirm=1,', 'confirm=3,')
+        runs = self.data/'data/disc-health/runs'
+        self.install('controller', 'a', GOOD, confirmed=True)
+        self.service('disc-health', f'echo a >> "{runs}"\n' + GOOD, confirmed=True)
+        self.early()
+        self.boot('start', check=True)
+        self.wait_for(lambda s: s['state'] == 'ready' and s['slot'] == 'a', 'service/disc-health')
+        # As boot's installation leaves it: the other slot, current and tentative.
+        self.package(self.data/'service/disc-health/b', f'echo b >> "{runs}"\n' + GOOD, role='service', name='disc-health', version='2')
+        self.state('service/disc-health', 'b', False, 'a')
+        self.wait_for(lambda s: s['state'] == 'ready' and s['slot'] == 'b', 'service/disc-health')
+        self.assertFalse(self.role_state('service/disc-health')['confirmed'], 'tentative until it ran its own time')
+        self.assertEqual(runs.read_text().split(), ['a', 'b'])
+        self.wait_for(lambda s: s['state'] == 'confirmed' and s['slot'] == 'b', 'service/disc-health')
+        self.assertTrue(self.role_state('service/disc-health')['confirmed'])
+        self.assertIn('service/disc-health slot b installed over slot a: started', self.boot_log() + self.log())
+        self.boot('stop', check=True)
+
     def test_a_service_with_autostart_off_does_not_start(self):
         self.service('disc-network', 'echo ran > "$DISC_BOOT_DATA/ran"\n' + GOOD)
         state = self.role_state('service/disc-network')
@@ -1374,6 +1395,23 @@ exit 0
         self.assertEqual(self.choice()['note'], 'the menu did not answer in time')
         self.launch().wait(timeout=10)
         self.assertEqual(self.runs(), ['menu', 'beta'])
+
+    def test_a_menu_in_use_keeps_its_time(self):
+        """Its time runs from the owner's last use, which the menu counts in menu/active, not from its
+        start (owner, 2026-10-09: the menu was stopped while its screens were being read)."""
+        self.env['DISC_BOOT_FIXTURE_TIMING'] = self.env['DISC_BOOT_FIXTURE_TIMING'].replace('menu=20,', 'menu=2,')
+        self.stock_ui()
+        self.two_uis()
+        self.set_global(ui='beta')
+        self.menu('n=0\nwhile [ $n -lt 25 ]; do n=$((n + 1)); echo $n > "$DISC_BOOT_RUN/active"; sleep 0.2; done\n'
+                  'printf \'{"ui":"alpha"}\' > "$DISC_BOOT_RUN/choice"\n')
+        self.early()
+        started = time.monotonic()
+        self.assertEqual(self.launch().wait(timeout=20), 0)
+        self.assertGreater(time.monotonic() - started, 4.5, 'used for 5 s, beyond its 2 s')
+        self.launch().wait(timeout=10)
+        self.assertEqual(self.runs(), ['menu', 'alpha'])
+        self.assertEqual((self.choice()['ui'], self.choice()['by']), ('alpha', 'menu'))
 
     def test_stock_chosen_in_the_menu_clears_the_boot_count(self):
         self.stock_ui()

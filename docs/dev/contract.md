@@ -387,7 +387,14 @@ unreadable state runs nothing for that role and says so.
    seconds, or boot stops it and counts a failure.
 3. **Confirmed:** ready and still running 180 s later; a tentative slot
    becomes the confirmed one and, once the controller and the chosen UI are
-   confirmed, the boot-loop count clears. A service's failures never count
+   confirmed, the boot-loop count clears. Only the slot that ran is
+   confirmed: a version installed over a running one (the menu's
+   installation) is not confirmed by the run of the one before. The
+   supervisor looks at the role's state each second; when another slot has
+   become the current one, it stops the running package and starts that slot
+   at once, as the recovery's installation would have, under its own
+   confirmation (the owner's player, 2026-10-09: two services installed from
+   the menu ran their previous version on, which then confirmed them). A service's failures never count
    for the boot-loop guard: a failing service stops alone, with the reason in
    its status, and the player, the server and the UI run on.
 4. **Failures:** a tentative slot gives way to the previous confirmed one at
@@ -590,7 +597,7 @@ menu's `stock` entry is stock's UI with the controller and the services running.
   page once it has answered.
 - At the boot's first start of the pair no player has run yet, so no
   watchdog runs (stock's player starts it): `/sbin/mq_player` waits for
-  the choice (at most the menu's 60 s and 10 more) and then starts the
+  the choice (at most the menu's time and 10 s more) and then starts the
   chosen UI's `player`, or stock's. The pair is never restarted: the
   screen stays lit, Wi-Fi and Bluetooth stay up. Once a player has run in
   the boot (`/run/disc-boot/player-ran`, marked by every start of a player,
@@ -602,7 +609,12 @@ menu's `stock` entry is stock's UI with the controller and the services running.
 - A menu that exits after answering, rather than hand over, gets the pair
   restarted by stock's loop the same way; the answer stands.
 - It may answer at once (a remembered choice, a timeout of its own). Boot
-  stops it after 60 s and takes the default; an exit without a valid answer
+  stops it 60 s after its start or the owner's last use, and takes the
+  default: the menu counts each key, each touch and each second of an
+  installation it shows in `/run/disc-boot/menu/active`, and each change
+  gives it 60 s again (the owner's player, 2026-10-09: the menu was stopped
+  while its screens were being read); the player's wait for the choice
+  follows the same count; an exit without a valid answer
   counts as a menu failure, and after 2 in one boot the default runs
   without it. Its exits are never counted against a `ui` package; a valid
   answer confirms a tentative menu version (it does not run 180 s), and
@@ -655,9 +667,9 @@ screens; the second and the third are rows at the end of the first list
   (the menu's hand-over), a service at the next start before the services
   run; last "Everything ours", with two questions: at the next start, before
   anything of ours runs, boot removes everything in `/usr/data/disc-boot` and
-  the card's `.disc` folder (music and `Apps` stay). The networks disc-network
-  gave to stock stay in stock's configuration until stock's next connection
-  removes them. The controller and the menu are removed only with everything
+  the card's `.disc` folder (music and `Apps` stay). The network disc-network
+  last put in stock's place stays in stock's configuration, as one stock
+  connected to would (it keeps one network). The controller and the menu are removed only with everything
   ours or by the installer.
 - Play at power-on stays the recovery: it installs everything staged without
   asking.
