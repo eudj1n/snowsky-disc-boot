@@ -297,7 +297,9 @@ The owner's boot confirmation (`owner-boot-confirmation.json` in the read
 capture) is for the boot after the readback, as with combined-007
 (`owner-confirmed-normal-first-reboot`, reported after the read session). The
 order of combined-008, a confirmation of the boot between the write and the
-readback, is read by the history check but kept for the public installer.
+readback, is read by the history check. The installer writes none (owner,
+2026-10-11): it reads the first start's check and asks about the start only
+when that check does not come back.
 
 ```sh
 python3 scripts/deployment/collect_rootfs.py acquire --mode rootfs \

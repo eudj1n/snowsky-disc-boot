@@ -66,8 +66,8 @@ started its system by itself with the cable connected: the menu, then stock.
 After every write (the candidate's and both ways back to stock) the installer runs the
 session in the write's entry (`usbboot.Reviewed.restart`, the payload from the release
 or built with the others) and audits it. When the player left the bus it says so and
-the cable stays connected: the user answers about the start, and the first start's
-check is read over that cable. Any other outcome, or a release without the payload, is
+the cable stays connected: the first start's check is read over that cable, and the
+user is asked about the start only when it does not come back. Any other outcome, or a release without the payload, is
 the cable as before (unplug, then plug while the new system runs); the write stands
 either way and nothing is retried (`test_usbboot`). The run's `report.json` names
 the outcome in the player's step: its `restart` field holds `outcome`

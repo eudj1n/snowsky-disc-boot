@@ -34,8 +34,8 @@ and the [contract](boot/contract.md#the-menus-screens).
 - [Build and flash](installer/build-and-flash.md): building, reviewing,
   writing and verifying the image.
 - [Installation procedure](installer/installation-procedure.md) and
-  [installation review](installer/installation-review.md): with and without
-  a history, the known image.
+  [installation review](installer/installation-review.md): the known image
+  (the installer's), and the history's review by hand.
 - [Pre-install review](installer/preinstall-review.md), [writer
   review](installer/deployment-writer-review.md): stock's acceptance, the
   writer's behaviour, diskOS's `my_write6`.

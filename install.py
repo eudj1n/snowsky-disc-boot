@@ -4,7 +4,7 @@
 It checks this computer, builds the image from FiiO's update with the boot layer (or takes
 one built before), offers the packages of catalog/packages.json and the apps of the chosen
 server's catalog, puts them on the card with the USB console's marker, writes the player
-through USB Boot with the reviewed tools (--history) and records its first boot.
+through USB Boot with the reviewed tools in one entry and records its first boot.
 
     python3 install.py                      # guided, in the terminal
     python3 install.py --dry-run            # stages into work/install-*/card, writes nothing else
@@ -37,8 +37,6 @@ def main():
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument('--simulate', nargs='?', const='run', help='Write a simulated player (a NAND file; default in the run folder)')
     modes.add_argument('--guest', action='store_true', help="The emulator's guest of the image as the player (the card staged in the run folder)")
-    modes.add_argument('--history', help="A developer's player: its installation history (history.json of its last "
-                       "installation). Without it the player is read and written in one entry into USB Boot, by the image it holds")
     parser.add_argument('--yes', action='store_true', help='No questions: the defaults and the options given')
     parser.add_argument('--plain', action='store_true', help='Plain text, no colours')
     parser.add_argument('--ota', help="The folder of FiiO's update (main_os/ota_v...)")
@@ -58,24 +56,17 @@ def main():
     parser.add_argument('--simulate-small', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--fault', action='append', help='A simulated fault: no-device, bad-blocks=N,M, write-stops=N, readback-flip=N')
     parser.add_argument('--restore', action='store_true', help="Back to stock: the restore image, the same path to the player")
-    parser.add_argument('--run', help="With --restore: back to stock with that installer run's package, whatever the player holds")
-    parser.add_argument('--resume', help="Go on with a run whose write stopped before the writer: its card and backup stand, "
-                                         'the write follows in a fresh entry (with --history)')
     parser.add_argument('--diskos', help="diskOS's checkout at the writer's pinned revision (default: its pinned files, "
                                          "fetched once and kept in work/downloads)")
     parser.add_argument('--libusb', help='The libusb library the reviewed tools load (default: where Homebrew or the '
                                          'system packages put it)')
     args = parser.parse_args()
-    if args.run and not args.restore:
-        parser.error('--run names the run whose package takes the player back to stock: give --restore too')
-    if args.resume and (args.restore or args.guest or args.simulate is not None or args.dry_run or not args.history):
-        parser.error('--resume goes on with a player\'s installation: give --history, without --restore, --guest, --simulate or --dry-run')
     if args.guest and args.restore:
         parser.error('--restore writes a player; a guest starts fresh from each image')
-    if args.packages and (args.restore or args.resume or args.run or args.guest or args.simulate is not None or args.history
-                          or args.image or args.ota or args.boot_build or args.fault):
-        parser.error('--packages only stages packages on the card: no image, no player (without --restore, --resume, --run, '
-                     '--guest, --simulate, --history, --image, --ota, --boot-build or --fault)')
+    if args.packages and (args.restore or args.guest or args.simulate is not None or args.image or args.ota or args.boot_build
+                          or args.fault):
+        parser.error('--packages only stages packages on the card: no image, no player (without --restore, --guest, '
+                     '--simulate, --image, --ota, --boot-build or --fault)')
     screen = tui.Screen(look='plain') if args.plain else None
     return flow.Installer(args, screen).run()
 

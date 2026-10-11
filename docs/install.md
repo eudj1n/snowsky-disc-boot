@@ -49,9 +49,10 @@ back](way-back.md) returns the player to stock.
 5. Type `WRITE`. The new system is written in about 10 minutes; keep the
    cable connected.
 6. The installer restarts the player into the new system itself; keep the
-   cable connected. Answer whether it started normally: the new system has
-   checked itself (every byte written, by its SHA-256), and the installer
-   reads that over the cable. (Should the restart not come, the installer
+   cable connected. The new system checks itself (every byte written, by its
+   SHA-256) a minute or two after its start, and the installer reads that
+   over the cable. Only when that check does not come back are you asked
+   whether it started normally. (Should the restart not come, the installer
    asks you to disconnect the cable and connect it again while the new system
    runs.)
 7. **The packages from the card.** The first time, switch the player off,

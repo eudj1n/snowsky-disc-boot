@@ -26,18 +26,9 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   and stock's `/usr/data/fiio/log/process_failed.txt` are out of the USB
   console's reach. It needs a reader of `userdata`'s raw pages (today's
   readers enter only the rootfs) and its UBIFS taken apart offline.
+
 ## The installer
 
-- [ ] Keep, simplify or retire the developers' `--history` path (owner,
-  2026-10-07). Since the seventh write (2026-10-08) every installation, the
-  owner's included, runs without a history and is decided by digests in one
-  USB Boot entry; only the history path still pins the transport and
-  installer profiles byte for byte, moves the review pin after each write
-  and keeps stock and boot captures.
-- [ ] No question about the first start when its check comes back (owner,
-  2026-10-08, to weigh): the system started and holds the written image. Ask
-  yes or no only when the check does not come back; the answer then decides
-  the way back to stock.
 - [ ] The installation's card after the write, over the cable (owner,
   2026-10-09). Today the card is staged before USB Boot, through a card
   reader or the player's Working mode → USB Storage (2026-10-10). The goal:
@@ -46,6 +37,7 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   check from the card. Settle on the player first that USB Storage and the
   USB console take the port in turn, and a first start's check with no
   expected digest on the card, where the installer compares the result.
+
 ## Packages and the menu
 
 - [ ] Forget one kept network from the menu's Services screen (owner,

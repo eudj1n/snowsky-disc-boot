@@ -180,10 +180,12 @@ but requires its own authorization and is never an automatic fallback.
 A player's history names the last write's target, a candidate or the restore
 (`previousTarget` in `history.json`). That target selects the image the
 player holds, its exact readback plan, its audit status and its comparison
-file, so a restore is a source state like an installed candidate; the
-installer names a readback's comparison `exact-<target>-…`, as the review
-reads it. Since 2026-10-08 the first start's check is the previous write's
-proof in place of its readback (`validate_binding`).
+file, so a restore is a source state like an installed candidate; a
+readback's comparison is named `exact-<target>-…`, as the review reads it.
+Since 2026-10-08 the first start's check is the previous write's proof in
+place of its readback (`validate_binding`). The installer no longer takes a
+history (owner, 2026-10-11); this review stays for the procedure by hand
+([build and flash](build-and-flash.md)).
 
 ## Without a history: the known image (2026-10-08)
 

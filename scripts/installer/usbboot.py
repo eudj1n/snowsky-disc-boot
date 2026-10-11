@@ -1,30 +1,27 @@
-"""The player through USB Boot with the reviewed tools (docs/dev/installer/build-and-flash.md, steps 3 to 5).
+"""The player through USB Boot with the reviewed tools (docs/dev/installer/build-and-flash.md).
 
 Nothing here touches USB itself: each step runs one of scripts/deployment/ with the arguments
 the procedure gives it, keeps its output in the run folder and checks its result the way the
-procedure does. The order:
+procedure does. The order, in one entry into USB Boot (plan, stage 6):
 
-1. prepare, offline: the RAM payloads (build_identity.py) and the installation package
-   (installation_review.py), bound to this player's history (the last installation's review,
-   image, write and readback, or the stage capture of a first one) and its boot capture;
-2. backup: a separate session collects the primary rootfs (collect_rootfs.py) and it is
-   compared, every byte, with the image the history says is installed (readback.py);
-3. write: the proposed installer profile may differ from the tracked one only in its admission
-   and review pin; it is activated, both plans are computed again and compared with the
-   package's, the writer runs once (writer_transport.py), and admission is closed again in
-   every case; only "writer-completion-observed" goes on, an unknown outcome stops everything;
-4. readback: a fresh session collects the rootfs, the exact plan must equal the package's, and
-   every byte of the image is compared (readback.py verify);
-5. audit: both USB journals are reconstructed offline (audit_usb_write.py, audit_usb_readback.py).
-
-Without a history (plan, stage 6: a user's installation) the evidence is read in the entry of the
-write instead: the metadata page (the entry's only SPL), the boot evidence and the identity probe,
-each audited; the review (installation_review.py --known) knows the image the player holds by its
-first blocks, and the write takes the admission the review computed for the run and runs in that
-entry; its first start's check proves it. No history is written.
+1. the payloads the player runs from its RAM: the release's, else built here;
+2. the evidence of the entry, each read audited offline: the metadata page (the entry's only
+   SPL), the boot evidence and the identity probe (the first rootfs blocks);
+3. the review (installation_review.py --known): the image the player holds, known by its first
+   blocks, or a refusal before anything is written; its package carries the plans and the run's
+   admission (the tracked installer profile is not touched);
+4. the write: its plan computed again and compared with the package's, the writer run once
+   (writer_transport.py); only "writer-completion-observed" goes on, an unknown outcome stops
+   everything;
+5. the restart payload (restart_player.py): the player leaves USB Boot by itself;
+6. the proof: the new system's first start's check, read by the installer over the USB console,
+   else, in a fresh entry, the readback (collect_rootfs.py, readback.py verify);
+7. the audits of the USB journals (audit_usb_write.py, audit_usb_readback.py).
 
 The installer asks for a typed word before each session with the player; nothing is retried,
-and a failed write never turns into a restore by itself.
+and a failed write never turns into a restore by itself. The path with a developer's history
+(the last installation's review and captures) left the installer (owner, 2026-10-11); the
+reviewed tools keep it for the procedure by hand.
 """
 import json
 from pathlib import Path
@@ -46,32 +43,6 @@ def load_json(path):
         return json.loads(Path(path).read_text())
     except (OSError, ValueError) as error:
         raise ReviewedError(f'{path}: {error}')
-
-
-class History:
-    """This player's installation history: its boot capture, and the last installation (review,
-    image, write and readback captures) or, before a first one, the stage capture. Each successful
-    installation writes the next one (history.json in its run folder)."""
-
-    KEYS = ('bootCapture', 'stockCapture')
-    PREVIOUS = ('previousReview', 'previousImage', 'writeCapture', 'readbackCapture')
-
-    def __init__(self, data):
-        if not all(data.get(k) for k in self.KEYS):
-            raise ReviewedError('the history names the boot capture and the stock capture')
-        if not (all(data.get(k) for k in self.PREVIOUS) or data.get('stageCapture')):
-            raise ReviewedError('the history names the last installation or the stage capture of a first one')
-        self.data = {k: str(v) for k, v in data.items()}
-
-    @classmethod
-    def load(cls, path):
-        return cls(load_json(path))
-
-    def __getitem__(self, key):
-        return self.data[key]
-
-    def get(self, key):
-        return self.data.get(key)
 
 
 def folder(kind, target):
@@ -172,22 +143,21 @@ class Progress:
 
 
 class Reviewed:
-    def __init__(self, version, work, artifacts, diskos, libusb, history, run=subprocess.run, profile=None, progress=None,
-                 payloads=None):
+    def __init__(self, version, work, artifacts, diskos, libusb, run=subprocess.run, progress=None, payloads=None):
         # payloads: the folder of the release's prebuilt payloads (plan, stage 6), else they are built here.
         self.payloads = Path(payloads) if payloads else None
         self.version, self.work, self.artifacts = version, Path(work), Path(artifacts)
-        self.diskos, self.libusb, self.history, self.run = str(diskos), str(libusb), history, run
-        self.profile = Path(profile or ROOT/'firmware/installers'/f'v{version}.json')
+        self.diskos, self.libusb, self.run = str(diskos), str(libusb), run
         self.package, self.meta, self.readback_build = self.work/'package', self.work/'build-metadata', self.work/'build-readback'
         # The identity check's probe read (plan, stage 4c): the first rootfs blocks, in place of a backup.
         self.probe_build = self.work/'build-probe'
         # The staging check (plan, stage 4c): the image region checked and the image hashed on the player.
         self.staging_build = self.work/'build-staging'
-        # Without a history (plan, stage 6): the boot evidence's payloads; the review knows the image.
+        # The boot evidence's payloads (plan, stage 6): the review knows the image by its first blocks.
         self.boot_build = self.work/'build-boot-evidence'
         # The player restarted after the write (plan, stage 7): the watchdog started from RAM.
         self.restart_build = self.work/'build-restart'
+        # The write follows the review of this entry's evidence.
         self.known = False
         self.log = self.work/'commands.log'
         # progress(label, fraction, seconds) while a USB session runs (the installer's screen).
@@ -260,9 +230,9 @@ class Reviewed:
 
     # 1. Offline
 
-    def builds(self, evidence=False):
+    def builds(self):
         """The payloads: the release's builds, by its digest (the tools still check them against the profiles
-        and sources), else built here. evidence: the boot evidence's too, for an installation without a history."""
+        and sources), else built here."""
         for mode, out in (('metadata', self.meta), ('rootfs', self.readback_build), ('staging-check', self.staging_build),
                           ('rootfs-probe', self.probe_build), ('restart', self.restart_build)):
             if self.payloads:
@@ -270,37 +240,17 @@ class Reviewed:
                 continue
             self.need(self.tool('build_identity.py', '--version', self.version, '--mode', mode, '--diskos', self.diskos, '--output', out),
                       f'the {mode} payload')
-        if evidence:
-            if self.payloads:
-                shutil.copytree(self.payloads/'boot-evidence', self.boot_build)
-            else:
-                self.need(self.tool('boot_evidence.py', 'build', '--version', self.version, '--diskos', self.diskos,
-                                    '--output', self.boot_build), 'the boot evidence\'s payloads')
+        if self.payloads:
+            shutil.copytree(self.payloads/'boot-evidence', self.boot_build)
+        else:
+            self.need(self.tool('boot_evidence.py', 'build', '--version', self.version, '--diskos', self.diskos,
+                                '--output', self.boot_build), 'the boot evidence\'s payloads')
 
-    def prepare(self):
-        self.builds()
-        history = (['--previous-review', self.history['previousReview'], '--previous-image', self.history['previousImage'],
-                    '--write-capture', self.history['writeCapture'], '--readback-capture', self.history['readbackCapture']]
-                   if self.history.get('previousReview') else ['--stage-capture', self.history['stageCapture']])
-        self.need(self.tool('installation_review.py', '--version', self.version, '--diskos', self.diskos, '--artifacts', self.artifacts,
-                            '--build', self.meta, '--staging-build', self.staging_build, '--readback-build', self.readback_build,
-                            '--boot-capture', self.history['bootCapture'],
-                            '--stock-capture', self.history['stockCapture'], *history, '--libusb', self.libusb, '--output', self.package),
-                  'the installation package')
-        # The history this package binds, for a way back to stock from this run (install.py --restore --run).
-        (self.work/'history-used.json').write_text(json.dumps(self.history.data, indent=2) + '\n')
-        for name in ('installation-review.json', 'proposed-installer-profile.json', 'candidate-write-plan.json', 'restore-write-plan.json',
-                     'postwrite-collection-plan.json', 'candidate-exact-readback-plan.json', 'restore-exact-readback-plan.json'):
-            if not (self.package/name).is_file():
-                raise ReviewedError(f'the installation package lacks {name}')
-        return dict(package=str(self.package), write=self.plan_sha('candidate-write-plan.json'),
-                    read=self.plan_sha('postwrite-collection-plan.json'))
-
-    # 1-2 without a history (plan, stage 6): the evidence of this entry, then the review
+    # 2-3. The evidence of this entry, then the review
 
     def metadata_page(self):
-        """The partition table's page the plans bind: the history's boot capture's, or this entry's."""
-        return Path(self.history['bootCapture'])/'metadata-main.bin' if self.history else self.work/'boot'/'metadata-main.bin'
+        """The partition table's page the plans bind: the one the boot evidence read again in this entry."""
+        return self.work/'boot'/'metadata-main.bin'
 
     def planned(self, name, *args, save, what):
         """A reviewed tool's plan, kept for its audit: (plan, its SHA-256)."""
@@ -383,7 +333,7 @@ class Reviewed:
                       'the audit of the restart')
         return status
 
-    # 2, 4. A collection of the primary rootfs, compared with an image
+    # 6. A collection of the primary rootfs, compared with the image
 
     def collect(self, output, metadata_page, label='Reading the player'):
         calls = expected_calls(load_json(self.package/'postwrite-collection-plan.json')['plan'])
@@ -398,7 +348,7 @@ class Reviewed:
         return result
 
     def compare(self, capture, metadata_page, image, image_sha, approved=None, name='exact'):
-        """name: exact-<target> for a readback, as the next installation's review reads it."""
+        """name: exact-<target> for a readback."""
         result = load_json(Path(capture)/'result.json')
         plan = self.tool('readback.py', 'plan', '--version', self.version, '--metadata-page', metadata_page, '--image', image,
                          '--image-sha256', image_sha, stdout=Path(capture)/f'{name}-plan.json')
@@ -419,118 +369,31 @@ class Reviewed:
         report = load_json(Path(image).parent/'report.json')
         return report['artifacts'][Path(image).name]['sha256']
 
-    def identity(self, strict=True, name='identity'):
-        """What the player holds now, by its first rootfs blocks (plan, stage 4c): the reviewed probe
-        read (2 blocks, about a minute), the first session of the installation's one entry into USB
-        Boot, compared with the image the history says is installed; before the way back to stock,
-        which any state may take, only named among the images it may be. In place of a full backup:
-        the way back is only ever stock, so a backup's bytes restore nothing."""
-        out = self.work/name
-        page = Path(self.history['bootCapture'])/'metadata-main.bin'
-        planned = self.tool('collect_rootfs.py', 'plan', '--mode', 'rootfs-probe', '--version', self.version,
-                            '--build', self.probe_build, '--diskos', self.diskos, '--metadata-page', page)
-        self.need(planned, 'the identity check\'s plan')
-        plan = json.loads(planned.stdout)
-        self.need(self.session('collect_rootfs.py', 'acquire', '--mode', 'rootfs-probe', '--version', self.version,
-                               '--build', self.probe_build, '--diskos', self.diskos, '--metadata-page', page,
-                               '--libusb', self.libusb, '--approved-plan-sha256', plan['plan_sha256'], '--output', out,
-                               output=out, calls=expected_calls(plan['plan']), label='Checking what the player holds'),
-                  'the identity check')
-        result = load_json(out/'result.json')
-        if result.get('status') != 'rootfs-probe-collected':
-            raise ReviewedError(f'the identity check ended {result.get("status")!r}')
-        blocks = (out/'logical-image.bin').read_bytes()
-
-        def holds(image):
-            with open(image, 'rb') as source:
-                return bool(blocks) and source.read(len(blocks)) == blocks
-        if strict:
-            previous = self.history.get('previousImage')
-            if previous and not holds(previous):
-                raise ReviewedError(f'the player does not hold {Path(previous).name}, the image its history names')
-            return dict(capture=str(out), matches=Path(previous).name if previous else None, bytes=len(blocks))
-        known = [self.artifacts/load_json(self.package/'candidate-write-plan.json')['plan']['image_name']]
-        if self.history.get('previousImage'):
-            known.append(Path(self.history['previousImage']))
-        return dict(capture=str(out), matches=next((Path(i).name for i in known if Path(i).is_file() and holds(i)), None),
-                    bytes=len(blocks))
-
-    def backup(self, strict=True, name='backup'):
-        """What is installed now, read in a session of its own. Before a candidate's write it must be
-        the image the history says is installed; before the way back to stock, which any state may
-        take (owner, 2026-10-05), it is only compared with the images it may be, for the record."""
-        out = self.work/name
-        page = Path(self.history['bootCapture'])/'metadata-main.bin'
-        self.collect(out, page, label='Backup: reading what the player holds')
-        if strict:
-            previous = self.history.get('previousImage')
-            if previous:
-                self.compare(out, page, previous, self.image_sha(previous))
-                return dict(capture=str(out), matches=Path(previous).name)
-            return dict(capture=str(out), matches=None)
-        return dict(capture=str(out), matches=self.known(out, page))
-
-    def known(self, capture, page):
-        """Which known image a capture holds (the run's candidate, the history's image), or None."""
-        candidates = [self.artifacts/load_json(self.package/'candidate-write-plan.json')['plan']['image_name']]
-        if self.history.get('previousImage'):
-            candidates.append(Path(self.history['previousImage']))
-        for k, image in enumerate(candidates):
-            try:
-                self.compare(capture, page, image, self.image_sha(image), name=f'exact-known-{k}')
-                return image.name
-            except (ReviewedError, OSError, KeyError):
-                continue
-        return None
-
-    # 3. The write, once
-
-    def admission(self):
-        """The proposal may change only the admission and the review pin of the tracked profile."""
-        tracked, proposed = load_json(self.profile), load_json(self.package/'proposed-installer-profile.json')
-        strip = lambda p: {k: v for k, v in p.items() if k not in ('physical_write_admitted', 'installation_review_sha256')}  # noqa: E731
-        if strip(tracked) != strip(proposed):
-            raise ReviewedError('the proposed installer profile changes more than its admission and review pin')
-        return tracked, proposed
-
-    def close_admission(self, proposed):
-        current = load_json(self.profile)
-        if current != proposed and current != dict(proposed, physical_write_admitted=False):
-            raise ReviewedError('the installer profile changed during the write: review it by hand')
-        self.profile.write_text(json.dumps(dict(proposed, physical_write_admitted=False), indent=2) + '\n')
+    # 4. The write, once
 
     def write(self, target='candidate'):
-        """The write, once. Without a history its admission is the run's (the package's proposed profile, the
-        tracked one untouched) and it runs in the entry of its evidence; with one the tracked profile is opened
-        for it and closed again."""
+        """The write, once, in the entry of its evidence: its admission is the run's (the package's proposed
+        profile; the tracked one is not touched)."""
+        if not self.known:
+            raise ReviewedError('the write follows the review of this entry\'s evidence')
         name = folder('write', target)
         plan_file = f'{target}-write-plan.json'
         args = ['--version', self.version, '--build', self.meta, '--staging-build', self.staging_build, '--diskos', self.diskos,
                 '--artifacts', self.artifacts, '--metadata-page', self.metadata_page(),
-                '--installation-review', self.package/'installation-review.json', '--readback-build', self.readback_build]
-        if self.known:
-            args += ['--installer-profile', self.package/'proposed-installer-profile.json']
-            proposed = None
-        else:
-            tracked, proposed = self.admission()
-            (self.work/f'{folder("installer-before", target)}.json').write_text(json.dumps(tracked, indent=2) + '\n')
-            self.profile.write_text(json.dumps(proposed, indent=2) + '\n')
-        try:
-            replanned = self.tool('writer_transport.py', 'plan', '--mode', 'write', '--target', target, *args,
-                                  stdout=self.work/f'{name}-replanned.json')
-            self.need(replanned, 'the write plan')
-            mine, approved = load_json(self.work/f'{name}-replanned.json'), load_json(self.package/plan_file)
-            if (mine.get('plan'), mine.get('plan_sha256')) != (approved.get('plan'), approved.get('plan_sha256')):
-                raise ReviewedError('the write plan computed now differs from the approved one')
-            out = self.work/name
-            self.session('writer_transport.py', 'acquire', '--mode', 'write', '--target', target, *args, '--confirm-reviewed-device-state',
-                         '--libusb', self.libusb, '--approved-plan-sha256', approved['plan_sha256'], '--output', out,
-                         output=out, calls=expected_calls(approved['plan']),
-                         label='Writing stock\'s rootfs' if target == 'restore' else 'Writing the image',
-                         writer=writer_wait(approved['plan']), asks=held_asks(approved['plan'], self.completion()))
-        finally:
-            if proposed is not None:
-                self.close_admission(proposed)
+                '--installation-review', self.package/'installation-review.json', '--readback-build', self.readback_build,
+                '--installer-profile', self.package/'proposed-installer-profile.json']
+        replanned = self.tool('writer_transport.py', 'plan', '--mode', 'write', '--target', target, *args,
+                              stdout=self.work/f'{name}-replanned.json')
+        self.need(replanned, 'the write plan')
+        mine, approved = load_json(self.work/f'{name}-replanned.json'), load_json(self.package/plan_file)
+        if (mine.get('plan'), mine.get('plan_sha256')) != (approved.get('plan'), approved.get('plan_sha256')):
+            raise ReviewedError('the write plan computed now differs from the approved one')
+        out = self.work/name
+        self.session('writer_transport.py', 'acquire', '--mode', 'write', '--target', target, *args, '--confirm-reviewed-device-state',
+                     '--libusb', self.libusb, '--approved-plan-sha256', approved['plan_sha256'], '--output', out,
+                     output=out, calls=expected_calls(approved['plan']),
+                     label='Writing stock\'s rootfs' if target == 'restore' else 'Writing the image',
+                     writer=writer_wait(approved['plan']), asks=held_asks(approved['plan'], self.completion()))
         result = load_json(out/'result.json')
         status = result.get('status')
         if status == 'writer-outcome-unknown':
@@ -540,9 +403,10 @@ class Reviewed:
             raise ReviewedError(f'the write ended {status!r}: the evidence is in {out}')
         return dict(capture=str(out), session=result.get('session_id'), plan=approved['plan_sha256'])
 
-    # 4, 5. The readback and the audits
+    # 6, 7. The readback and the audits
 
     def readback(self, target='candidate'):
+        """In a fresh entry, after a write its first start did not prove: every byte compared with the image."""
         write = self.work/folder('write', target)
         out = self.work/folder('read', target)
         page = write/'metadata-main.bin'
@@ -564,13 +428,3 @@ class Reviewed:
             self.need(self.tool(name, '--run', run, '--package', self.package, '--artifacts', self.artifacts, '--build', build,
                                 *extra, '--diskos', self.diskos, '--target', target, '--output', run/'offline-review.json'), name)
         return dict(write=str(write/'offline-review.json'), **({'read': str(readback/'offline-review.json')} if read else {}))
-
-    def next_history(self, image, target='candidate', proof=None):
-        """This installation, or its way back to stock, as the next one's history: its readback, or
-        (proof) its first start's check (plan, stage 4c), as the proof of its write."""
-        data = dict(self.history.data, previousReview=str(self.package/'installation-review.json'), previousImage=str(image),
-                    writeCapture=str(self.work/folder('write', target)), readbackCapture=str(proof or self.work/folder('read', target)),
-                    previousTarget=target)
-        data.pop('stageCapture', None)
-        (self.work/'history.json').write_text(json.dumps(data, indent=2) + '\n')
-        return self.work/'history.json'

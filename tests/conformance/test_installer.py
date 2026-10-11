@@ -147,7 +147,7 @@ class InstallerTests(unittest.TestCase):
         args = argparse.Namespace(dry_run=True, yes=False, plain=True, ota=None, image=str(self.image), emulator=None, card=None,
                                   package=None, app=None, packages_from=[str(self.local)], download=False, work=str(self.root/'run'),
                                   catalog=str(self.catalog), simulate=None, simulate_small=False, fault=None, restore=False, guest=False,
-                                  history=None, diskos=None, libusb=None)
+                                  diskos=None, libusb=None)
         screen = io.StringIO()
         installer = flow.Installer(args, tui.Screen(look='plain', stream=screen))
         installer.interactive = True
@@ -282,7 +282,7 @@ class InstallerTests(unittest.TestCase):
         args = argparse.Namespace(dry_run=True, yes=True, plain=True, ota=None, image=None, emulator=None, card=None,
                                   package=None, app=None, packages_from=[], download=False, work=str(self.root/'run'),
                                   catalog=str(self.catalog), simulate=None, simulate_small=False, fault=None, restore=False,
-                                  guest=False, history=None, diskos=None, libusb=None, boot_build=False)
+                                  guest=False, diskos=None, libusb=None, boot_build=False)
         calls = []
         installer = flow.Installer(args, tui.Screen(look='plain', stream=io.StringIO()),
                                    runner=lambda command, **kw: calls.append(command))
@@ -331,19 +331,20 @@ class InstallerTests(unittest.TestCase):
         args = argparse.Namespace(dry_run=False, yes=True, plain=True, ota=None, image=str(self.image), emulator=None, card=None,
                                   package=None, app=None, packages_from=[str(self.local)], download=False, work=str(self.root/'run'),
                                   catalog=str(self.catalog), simulate=None, simulate_small=False, fault=None, restore=False, guest=False,
-                                  history=None, diskos=None, libusb=None)
-        for proven, expected, absent in ((False, 'restarts into the new system by itself', 'Done:'),
-                                         (True, 'Done: the image is written', 'Disconnect the cable')):
+                                  diskos=None, libusb=None)
+        for proven, expected, absent in ((False, ('restarts into the new system by itself',), 'Done:'),
+                                         (True, ('Done: the image is written', 'switch the player off, then on holding Play'),
+                                          'Disconnect the cable')):
             screen = io.StringIO()
             installer = flow.Installer(args, tui.Screen(look='plain', stream=screen))
             installer.proven_start = proven
             installer.first_boot()
             text = ' '.join(screen.getvalue().split())
             with self.subTest(proven=proven):
-                self.assertIn(expected, text)
+                for words in expected:
+                    self.assertIn(words, text)
                 self.assertNotIn(absent, text)
                 self.assertEqual(installer.report['steps'][-1], dict(step='first boot', **({'proven': True} if proven else {})))
-        self.assertIn('switch it off, then switch it on holding Play', flow.Installer.PLAY_AFTER)
 
     def test_what_an_earlier_run_staged_and_this_one_did_not_choose_leaves_the_card(self):
         """2026-10-07: a server staged by a run that stopped at its review was installed by the next
@@ -490,7 +491,7 @@ class InstallerTests(unittest.TestCase):
         args = argparse.Namespace(dry_run=False, yes=True, plain=True, ota=str(ota), image=str(self.image), emulator=str(emulator), card=None,
                                   package=None, app=None, packages_from=[str(self.local)], download=False, work=str(self.root/'run'),
                                   catalog=str(self.catalog), simulate=None, simulate_small=False, fault=None, restore=False, guest=True,
-                                  history=None, diskos=None, libusb=None)
+                                  diskos=None, libusb=None)
         installer = flow.Installer(args, tui.Screen(look='plain', stream=io.StringIO()), runner=runner)
         with mock.patch('installer.flow.shutil.which', return_value='/usr/bin/docker'), mock.patch('installer.guest.time.sleep'):
             code = installer.run()

@@ -884,7 +884,10 @@ hashes them, and writes the outcome to the card,
 "error", "build"}`, with a line in the boot log. Another root device, one
 shorter than the image or a read error is an error, never a match. The
 installer reads the outcome over the USB console; a match stands for the
-readback through USB Boot, which stays the way when it is missing or differs.
+readback through USB Boot and for the owner's look at the start, so the
+installer asks nothing (owner, 2026-10-11). When it is missing or differs the
+owner answers whether the system started: a yes is the readback through USB
+Boot, a no the way back to stock.
 
 The check guards against a faulty write, not against a deliberate
 substitution, which the reviewed write path already excludes. Any corruption
