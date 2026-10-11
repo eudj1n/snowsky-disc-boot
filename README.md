@@ -16,7 +16,7 @@ writes the player's system memory over USB; read [the risk](docs/install.md#the-
 <p align="center">
   <img src="docs/assets/menu/choose.png" width="240" alt="The boot menu on the player's round screen: Start with FiiO 2.57 or diskOS 1.2.0, starting in 4 seconds">
   &nbsp;&nbsp;
-  <img src="docs/assets/menu/packages.png" width="240" alt="The boot menu's Packages screen: diskOS Disco! waiting on the card to install, diskOS installed">
+  <img src="docs/assets/menu/packages.png" width="240" alt="The boot menu's Packages screen: a newer disc-network waiting on the card to install, diskOS and the services installed">
 </p>
 
 _The boot menu, drawn by its own code: choosing the interface at power-on,

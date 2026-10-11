@@ -100,8 +100,10 @@ def main():
                            dict(role='service', name='disc-health', title='disc-health', version='2.57.7', removing=False),
                            dict(role='service', name='disc-network', title='disc-network', version='2.57.7', removing=False)],
                  staged=[])
-    waiting = dict(offer, staged=[dict(folder='ui/diskos-disco', role='ui', name='diskos-disco', title='diskOS Disco!',
-                                       version='0.3.0', refused=None)])
+    # A newer disc-network waiting on the card, as install.py --packages leaves it (no placeholder of a package a user
+    # cannot get: owner, 2026-10-11).
+    waiting = dict(offer, staged=[dict(folder='service/disc-network', role='service', name='disc-network', title='disc-network',
+                                       version='2.57.8', refused=None)])
     scene('waiting', args.output, installed, offer=waiting, wait=1.0, countdown=5000)
     scene('services', args.output, installed, offer=offer, keys=(VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN))
     scene('packages', args.output, installed, offer=waiting, keys=(VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN))
