@@ -26,12 +26,6 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   and stock's `/usr/data/fiio/log/process_failed.txt` are out of the USB
   console's reach. It needs a reader of `userdata`'s raw pages (today's
   readers enter only the rootfs) and its UBIFS taken apart offline.
-- [ ] The restart payload's fallback bounded by a clock that runs in USB
-  Boot (2026-10-11): it waits on CP0 Count, which stands still in the
-  payloads' context, so if the watchdog's restart never came it might not
-  return to the ROM ([restart](usb-boot/restart.md#the-payload)). Bound the
-  wait by an iteration count or the SoC's OST, with `restart_test.c`.
-
 ## The installer
 
 - [ ] Keep, simplify or retire the developers' `--history` path (owner,

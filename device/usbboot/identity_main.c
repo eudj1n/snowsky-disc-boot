@@ -1,8 +1,9 @@
 #include "identity_layout.h"
 #ifdef RESTART
-/* The player's restart (plan, stage 7): the watchdog started, then a bounded wait for it. Should no
+/* The player's restart (2026-10-09): the watchdog started, then a bounded wait for it. Should no
    restart come (its clock not running in USB Boot), the watchdog is stopped and the payload returns,
-   so the ROM answers and the host reports it, rather than a player left looping. */
+   so the ROM answers and the host reports it, rather than a player left looping; the wait is bounded
+   by its own turns too, since CP0 Count may stand still there (restart.h). */
 #include "restart.h"
 static void write32(uint32_t address, uint32_t value) {
     *(volatile uint32_t *)(uintptr_t)address = value;
@@ -14,12 +15,9 @@ static uint32_t count(void) {
     return value;
 }
 void identity_main(void) {
-    const struct restart_io io = {write32};
+    const struct restart_io io = {write32, count};
     restart_start(&io);
-    /* CP0 Count runs at half the core's clock: 2^28 ticks are a quarter to half a second at the
-       SPL's clocks and some seconds at the ROM's; the watchdog fires after about 4 ms. */
-    uint32_t start = count();
-    while ((uint32_t)(count() - start) < RESTART_WAIT_TICKS) {}
+    restart_wait(&io);
     restart_cancel(&io);
 }
 #elif defined(STAGING_CHECK)
