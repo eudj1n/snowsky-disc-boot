@@ -108,16 +108,6 @@ class Tools:
             previous = self.test.history.data.get('previousImage')
             blocks = Path(previous).read_bytes()[:262144] if previous else b'stock blocks'
             (out/'logical-image.bin').write_bytes(b'other' + blocks[5:] if 'identity-differs' in self.faults else blocks)
-        elif tool == 'collect_rootfs.py' and self.value(command, '--mode') == 'rootfs-digest':
-            # The read by digest beside a full read: the digests of the pages the full read left.
-            out.mkdir(parents=True)
-            (out/'result.json').write_text(json.dumps(dict(status='rootfs-digest-collected', nonce_hex='n2', logical_to_physical=[80, 81],
-                                                           session_id=f'digest-{len(self.calls)}')))
-            (out/'records.bin').write_bytes(b'digest records')
-            digests = b''.join(hashlib.sha256(page).digest() for page in self.pages)
-            if 'digest-differs' in self.faults:
-                digests = bytes(32) + digests[32:]
-            (out/'logical-digests.bin').write_bytes(digests)
         elif tool == 'collect_rootfs.py':
             out.mkdir(parents=True)
             (out/'result.json').write_text(json.dumps(dict(status='rootfs-collected', nonce_hex='n1', capture_sha256='c1',
@@ -176,7 +166,7 @@ class ReviewedTests(unittest.TestCase):
     def test_the_releases_payloads_are_taken_rather_than_built(self):
         """Plan, stage 6: with the release's prebuilt payloads nothing is compiled on the computer."""
         payloads = self.root/'payloads'
-        for mode in ('metadata', 'rootfs', 'rootfs-digest', 'staging-check', 'rootfs-probe', 'restart'):
+        for mode in ('metadata', 'rootfs', 'staging-check', 'rootfs-probe', 'restart'):
             (payloads/mode).mkdir(parents=True)
             (payloads/mode/'identity.bin').write_bytes(mode.encode())
         tools = Tools(self, ())
@@ -196,7 +186,7 @@ class ReviewedTests(unittest.TestCase):
         reviewed.audit()
         # Five payloads: the metadata read, the readback, the read by digest, the staging check and the
         # identity check's probe (plan, stage 4c); the probe read in place of a backup.
-        self.assertEqual(tools.calls, ['build_identity.py']*6 + ['installation_review.py',
+        self.assertEqual(tools.calls, ['build_identity.py']*5 + ['installation_review.py',
                                        'collect_rootfs.py plan', 'collect_rootfs.py acquire',
                                        'writer_transport.py plan', 'writer_transport.py acquire',
                                        'collect_rootfs.py acquire', 'readback.py plan', 'readback.py verify',
@@ -534,7 +524,7 @@ class KnownPathTests(ReviewedTests):
         decision = reviewed.review_known()
         reviewed.write()
         reviewed.audit(read=False)
-        self.assertEqual(tools.calls, ['build_identity.py']*6 + ['boot_evidence.py build',
+        self.assertEqual(tools.calls, ['build_identity.py']*5 + ['boot_evidence.py build',
                          'ram_transport.py plan', 'ram_transport.py acquire',
                          'boot_evidence.py plan', 'boot_evidence.py acquire', 'audit_usb_boot.py',
                          'collect_rootfs.py plan', 'collect_rootfs.py acquire', 'audit_usb_probe.py',

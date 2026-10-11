@@ -26,7 +26,6 @@ entry; its first start's check proves it. No history is written.
 The installer asks for a typed word before each session with the player; nothing is retried,
 and a failed write never turns into a restore by itself.
 """
-import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -181,7 +180,6 @@ class Reviewed:
         self.diskos, self.libusb, self.history, self.run = str(diskos), str(libusb), history, run
         self.profile = Path(profile or ROOT/'firmware/installers'/f'v{version}.json')
         self.package, self.meta, self.readback_build = self.work/'package', self.work/'build-metadata', self.work/'build-readback'
-        self.digest_build = self.work/'build-digest'
         # The identity check's probe read (plan, stage 4c): the first rootfs blocks, in place of a backup.
         self.probe_build = self.work/'build-probe'
         # The staging check (plan, stage 4c): the image region checked and the image hashed on the player.
@@ -265,9 +263,8 @@ class Reviewed:
     def builds(self, evidence=False):
         """The payloads: the release's builds, by its digest (the tools still check them against the profiles
         and sources), else built here. evidence: the boot evidence's too, for an installation without a history."""
-        # The digest payload (plan, stage 4b) is built beside the reviewed ones; it runs only beside a full read.
-        for mode, out in (('metadata', self.meta), ('rootfs', self.readback_build), ('rootfs-digest', self.digest_build),
-                          ('staging-check', self.staging_build), ('rootfs-probe', self.probe_build), ('restart', self.restart_build)):
+        for mode, out in (('metadata', self.meta), ('rootfs', self.readback_build), ('staging-check', self.staging_build),
+                          ('rootfs-probe', self.probe_build), ('restart', self.restart_build)):
             if self.payloads:
                 shutil.copytree(self.payloads/mode, out)
                 continue
@@ -399,44 +396,6 @@ class Reviewed:
         if result.get('status') != 'rootfs-collected':
             raise ReviewedError(f'the collection ended {result.get("status")!r}')
         return result
-
-    def digest(self, output, metadata_page, full, image=None):
-        """The rootfs read again by digest, right after a full read in the same entry into USB Boot
-        (plan, stage 4b): its first runs go beside the full read, which stays the evidence. Every
-        page's SHA-256 must equal the full read's (full: that read's capture) and, given an image,
-        the image's. Nothing here stops an installation: the outcome is only recorded."""
-        out, started = Path(output), time.monotonic()
-        try:
-            planned = self.tool('collect_rootfs.py', 'plan', '--mode', 'rootfs-digest', '--version', self.version,
-                                '--build', self.digest_build, '--diskos', self.diskos, '--metadata-page', metadata_page)
-            self.need(planned, 'the digest plan')
-            plan = json.loads(planned.stdout)
-            self.need(self.session('collect_rootfs.py', 'acquire', '--mode', 'rootfs-digest', '--version', self.version,
-                                   '--build', self.digest_build, '--diskos', self.diskos, '--metadata-page', metadata_page,
-                                   '--libusb', self.libusb, '--approved-plan-sha256', plan['plan_sha256'], '--output', out,
-                                   output=out, calls=expected_calls(plan['plan']), label='Reading again, by digest'),
-                      'the digest read')
-            result = load_json(out/'result.json')
-            if result.get('status') != 'rootfs-digest-collected':
-                raise ReviewedError(f'the digest read ended {result.get("status")!r}')
-            digests, pages = (out/'logical-digests.bin').read_bytes(), Path(full)/'logical-image.bin'
-            with open(pages, 'rb') as source:
-                agrees = all(hashlib.sha256(source.read(2048)).digest() == digests[k:k+32] for k in range(0, len(digests), 32)) \
-                    and len(digests) * 64 == pages.stat().st_size
-            mapping = load_json(Path(full)/'result.json').get('logical_to_physical') == result.get('logical_to_physical')
-            outcome = dict(status=result['status'], capture=str(out), seconds=round(time.monotonic() - started),
-                           agreesWithFullRead=agrees and mapping)
-            outcome['pageTicks'] = result.get('page_ticks')   # what a page takes, for the portions' wait
-            if image is not None:
-                verified = self.tool('readback.py', 'verify', '--digest', '--version', self.version, '--metadata-page', metadata_page,
-                                     '--image', image, '--image-sha256', self.image_sha(image), '--records', out/'records.bin',
-                                     '--nonce-hex', result['nonce_hex'], stdout=out/'exact-digest-review.json')
-                outcome['matchesImage'] = verified.returncode == 0 and \
-                    load_json(out/'exact-digest-review.json').get('status') == 'saved-logical-digest-matches'
-            (out/'beside-full-read.json').write_text(json.dumps(outcome, indent=2) + '\n')
-            return outcome
-        except (ReviewedError, OSError, ValueError, KeyError) as error:
-            return dict(status='failed', capture=str(out), seconds=round(time.monotonic() - started), error=str(error))
 
     def compare(self, capture, metadata_page, image, image_sha, approved=None, name='exact'):
         """name: exact-<target> for a readback, as the next installation's review reads it."""

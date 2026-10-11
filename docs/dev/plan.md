@@ -46,11 +46,6 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   check from the card. Settle on the player first that USB Storage and the
   USB console take the port in turn, and a first start's check with no
   expected digest on the card, where the installer compares the result.
-- [ ] The read by digest's leftovers in the installer: `Reviewed.digest()`
-  in `scripts/installer/usbboot.py` and its payload build are unused since
-  2026-10-06 (the payload itself still ships in `disc-usb-payloads`); remove
-  them, or keep them as a developer's check, and say which.
-
 ## Packages and the menu
 
 - [ ] Forget one kept network from the menu's Services screen (owner,
