@@ -46,7 +46,7 @@ def frame(fb):
     return bytes(out)
 
 
-def scene(name, output, choices, install=None, keys=(), wait=0.6, countdown=60000, offer=None):
+def scene(name, output, choices, install=None, keys=(), wait=0.6, countdown=60000, offer=None, networks=None):
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
         (root/'status/ui').mkdir(parents=True)
@@ -64,6 +64,10 @@ def scene(name, output, choices, install=None, keys=(), wait=0.6, countdown=6000
         program.chmod(0o755)
         if install:
             (root/'status/install.json').write_text(json.dumps(dict(schema=1, **install)))
+        if networks:
+            # disc-network's report, as the menu reads it on its Wi-Fi networks screen.
+            (root/'status/service/disc-network').mkdir(parents=True)
+            (root/'status/service/disc-network/status.json').write_text(json.dumps(dict(schema=1, **networks)))
         env = dict(DISC_BOOT_STATUS=str(root/'status'), DISC_BOOT_RUN=str(root/'run'), DISC_MENU_FB=str(root/'fb0'),
                    DISC_MENU_KEYS=str(root/'keys'), DISC_MENU_TOUCH=str(root/'touch'), DISC_MENU_COUNTDOWN_MS=str(countdown),
                    DISC_BOOT_PROGRAM=str(program))
@@ -110,6 +114,14 @@ def main():
     scene('remove', args.output, installed, offer=offer, keys=(VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN, PLAY))
     scene('everything-goes', args.output, installed, offer=offer,
           keys=(VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY) + (VOLUME_DOWN,) * 4 + (PLAY, PLAY, PLAY))
+    # disc-network's networks under Services (owner, 2026-10-11), and the question that forgets one.
+    report = dict(wifi='connected', connected='Home', lastChange=None, networks=[
+        dict(id='3f1c2a9b', name='Home', open=False, held=True, inRange=True),
+        dict(id='9a40c3d7', name='Office', open=False, held=False, inRange=True),
+        dict(id='51e7b20c', name='Cafe Lumiere', open=True, held=False, inRange=False)])
+    to_networks = (VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY)
+    scene('networks', args.output, installed, offer=offer, networks=report, keys=to_networks + (VOLUME_DOWN,))
+    scene('forget-network', args.output, installed, offer=offer, networks=report, keys=to_networks + (VOLUME_DOWN, VOLUME_DOWN, PLAY))
     print(json.dumps(sorted(p.name for p in args.output.glob('*.png'))))
 
 

@@ -2,7 +2,8 @@
 """disc-network on the guest (plan, stage 7), inside the emulator's container.
 
     python3 scripts/guest.py run -- python3 -B /boot/tests/integration/network_guest.py \\
-        --package /boot/work/<run>/disc-network-<version>.zip --output /work/network-guest.json
+        --package /boot/work/<run>/disc-network-<version>.zip --menu /boot/work/<run>/disc-menu-<version>.zip \\
+        --output /work/network-guest.json
 
 The emulator has no Wi-Fi: at each power-on it puts a guard of its own in wpa_cli's place (the
 original kept in /emu/original-commands); after it, the run puts the stand-in there
@@ -10,8 +11,10 @@ original kept in /emu/original-commands); after it, the run puts the stand-in th
 package is staged as the installer stages it and installed with Play; the MIPS build then runs the
 stand-in as it would run stock's wpa_cli: stock's connection to Home, then to Office (stock's
 configuration keeps Office alone), Office out of reach and Home in range (Home takes its place, a
-minute after Office's connection), the confirmation after 180 s, and a new start with Home out of
-reach joining Office. The report names the networks and never a key.
+minute after Office's connection), the confirmation after 180 s, a new start with Home out of
+reach joining Office, and at another start Office forgotten from the boot menu (installed with the
+package): Services, Wi-Fi networks, Office and two Plays, Home then in its place. The report names
+the networks and never a key.
 """
 import argparse
 import json
@@ -19,9 +22,11 @@ from pathlib import Path
 import shutil
 import sys
 import tempfile
+import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import boot_guest as bg  # noqa: E402
+import menu_guest as mg  # noqa: E402
 
 RUN = '/run/disc-boot/service/disc-network'
 CLI = bg.ROOTFS/'usr/sbin/wpa_cli'
@@ -65,7 +70,15 @@ def saved():
     return blocks
 
 
-def run(archive, output, guard):
+def net_id(name):
+    """A network's id in the report: FNV-1a over its SSID's bytes."""
+    h = 2166136261
+    for byte in name.encode():
+        h = ((h ^ byte) * 16777619) & 0xffffffff
+    return f'{h:08x}'
+
+
+def run(archive, menu, output, guard):
     bg.evidence.clear()
     bg.evidence.update(profile=bg.PROFILE, steps=[])
     folder = bg.package.unpack(archive, Path(tempfile.mkdtemp())/'disc-network')
@@ -74,6 +87,7 @@ def run(archive, output, guard):
     bg.power('off')
     with bg.card() as root:
         staged = bg.package.stage(folder, root, profile=bg.PROFILE)
+        bg.package.stage(menu, root, profile=bg.PROFILE)
     bg.power('on', hold='play')
     stand_in(guard)
     ready = bg.wait(status, lambda s: s['state'] in ('ready', 'confirmed'), 'disc-network ready', 300)
@@ -109,6 +123,41 @@ def run(archive, output, guard):
     joined = report(lambda r: r['connected'] == 'Office' and len(r['networks']) == 2, 'Office joined at the next start', 240)
     assert [b['ssid'] for b in saved()] == ['"Office"']
     bg.step('the next start joins the network in range', report=joined, asked=bg.guest('tail -n 8 /run/wpa-stand-in/log').splitlines())
+    # Another start, the boot menu asking (owner, 2026-10-11): Services, Wi-Fi networks, Office (the network stock
+    # holds) and two Plays have disc-network forget it; Home, in range, takes its place.
+    bg.power('off')
+    booted = mg.power_on()
+    mg.asking()
+    buttons = mg.Buttons(bg.ROOTFS, mg.Device(bg.ROOTFS))
+    mg.press(buttons, mg.VOLUME_DOWN)                       # the countdown stops: FiiO, Services (selected), Packages
+    stand_in(guard)
+    wpa('_up')
+    wpa('_range', '"Office"', '"Home"')
+    listed, until = None, time.monotonic() + 120
+    while listed is None and time.monotonic() < until:
+        try:
+            listed = report(lambda r: len(r['networks']) == 2, 'disc-network reports both', 20)
+        except AssertionError:
+            mg.press(buttons, mg.VOLUME_UP, mg.VOLUME_DOWN)  # the menu in use keeps its time
+    assert listed, 'disc-network reports both networks while the menu asks'
+    names = [n['name'] for n in listed['networks']]
+    ids = {n['name']: n['id'] for n in listed['networks']}
+    assert ids == {'Home': net_id('Home'), 'Office': net_id('Office')}, ids
+    mg.press(buttons, mg.PLAY)                              # Services: Back, disc-network, Wi-Fi networks
+    mg.press(buttons, mg.VOLUME_DOWN, mg.VOLUME_DOWN, mg.PLAY)
+    mg.press(buttons, *([mg.VOLUME_DOWN] * (names.index('Office') + 1)), mg.PLAY, mg.PLAY)   # Office: asked, then forgotten
+    forgot = report(lambda r: [n['name'] for n in r['networks']] == ['Home'] and r['connected'] == 'Home', 'Office forgotten', 120)
+    assert [b['ssid'] for b in saved()] == ['"Home"'], saved()
+    assert bg.guest(f'[ -e {RUN}/forget.json ] && echo there || echo taken').strip() == 'taken'
+    seen = mg.frame('networks')
+    mg.press(buttons, mg.VOLUME_UP, mg.PLAY, mg.PLAY, pause=0.5)      # Back to Services, Back to the start
+    mg.press(buttons, mg.PLAY, pause=0.2)                   # FiiO
+    mg.keys_taken()
+    booted()
+    choice = bg.guest_json('/run/disc-boot/ui/choice.json')
+    assert (choice['ui'], choice['by']) == ('stock', 'menu'), choice
+    bg.step('a network forgotten from the boot menu', report=forgot, saved=saved(), choice=choice,
+            screen=mg.pixel(seen, 70, 180))
     bg.power('off')
     bg.evidence['status'] = 'passed'
     Path(output).write_text(json.dumps(bg.evidence, indent=2) + '\n')
@@ -118,11 +167,12 @@ def run(archive, output, guard):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--package', type=Path, required=True)
+    parser.add_argument('--menu', type=Path, required=True, help='The disc-menu package (zip or folder)')
     parser.add_argument('--output', required=True)
     args = parser.parse_args()
     guard = Path(tempfile.mkdtemp())/'wpa_cli'
     try:
-        run(args.package, args.output, guard)
+        run(args.package, args.menu, args.output, guard)
     except BaseException as error:
         bg.evidence['status'] = f'failed: {error}'
         bg.evidence['network'] = status()

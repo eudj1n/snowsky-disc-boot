@@ -76,14 +76,35 @@ begins with `-` for one):
   before the player is sold, its networks go with the rest of its settings);
   a file emptied while Wi-Fi is on gets one back as above. Removing
   disc-network with its data (the menu's Packages screen), or everything
-  ours, forgets them all; forgetting a single network is open work.
+  ours, forgets them all; the menu forgets one (below).
 
 `$DISC_BOOT_RUN/status.json` (at most 4 KiB): `{"schema": 1, "wifi": "off" |
 "searching" | "connecting" | "connected", "connected": <name> | null,
-"networks": [{"name", "open", "held", "inRange"}], "lastChange": {"what", "t"}
-| null}`: `held` when it is the network in stock's configuration, `inRange`
-when the last scan heard it; names only, never a key (a PSK in hex works as
-the password, so neither form may appear).
+"networks": [{"id", "name", "open", "held", "inRange"}], "lastChange": {"what",
+"t"} | null}`: `id` 8 hex digits, FNV-1a over the SSID's bytes, `held` when it
+is the network in stock's configuration, `inRange` when the last scan heard
+it; names only, never a key (a PSK in hex works as the password, so neither
+form may appear).
+
+## Forgetting one network
+
+The boot menu's Services screen lists the networks of the report under "Wi-Fi
+networks" and, on a second Play, asks disc-network to forget one (owner,
+2026-10-11): it writes `{"forget": "<id>"}` to `$DISC_BOOT_RUN/forget.json`.
+disc-network takes the ask at once (it looks for the file each second between
+its looks), removes the file, and forgets the one kept network with that id,
+if there is exactly one:
+
+- it leaves the store at once (`lastChange` "forgot <name>");
+- when stock's configuration holds it, it leaves that too, by stock's own
+  sequence, at the next look where Wi-Fi is on and steady: another kept
+  network takes its place (the strongest in range, else the most recently
+  used), or, with none kept, `remove_network all` and `save_config`. Until
+  then it waits in the store's `forget` list, so Wi-Fi off at the time or a
+  restart loses nothing; the file itself is never edited.
+
+The menu shows the font's ASCII and a question mark for any other character
+of a name; the id, not the name, says which network goes.
 
 ## Tests
 
@@ -95,7 +116,8 @@ range with signals, and the tests' own `_up`, `_down`, `_stock_connect`,
 (`-DDISC_NETWORK_FIXTURE`: the player under `DISC_BOOT_FIXTURE_ROOT`,
 `DISC_NETWORK_INTERVAL`, the looks above scaled to it) against it;
 `tests/integration/network_guest.py` puts it in the guest's tree in stock's
-`wpa_cli` place for the run (the emulator has no Wi-Fi) and installs the
-package with Play. The player is the acceptance that counts: two networks
+`wpa_cli` place for the run (the emulator has no Wi-Fi), installs the
+package and the menu with Play, and at a later start forgets a network from
+the menu's Wi-Fi networks screen with the emulator's buttons. The player is the acceptance that counts: two networks
 joined in turn, each joined again by itself when the other is out of reach,
 and a password typed in stock's Wi-Fi screen without its UI failing.

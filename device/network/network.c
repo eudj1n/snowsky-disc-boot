@@ -11,8 +11,10 @@
    keeps one network. A network that does not connect after that waits 10 minutes. It acts only when
    wpa_supplicant's networks are those saved in the file and both stayed so for two looks, never in the
    middle of stock's own sequence. A configuration with no network at all when Wi-Fi comes on (stock's
-   reset; S43wifi writes a new one) makes it forget its own too. Its report ($DISC_BOOT_RUN/status.json)
-   names the networks, never a key. */
+   reset; S43wifi writes a new one) makes it forget its own too. The boot menu asks it to forget one
+   ($DISC_BOOT_RUN/forget.json, by the id its report gives): it leaves the store at once, and stock's
+   configuration once Wi-Fi is on and steady, another kept network taking its place (owner, 2026-10-11).
+   Its report ($DISC_BOOT_RUN/status.json) names the networks, never a key. */
 #define _XOPEN_SOURCE 700
 #define _DARWIN_C_SOURCE
 #include "boot_util.h"
@@ -59,6 +61,9 @@ typedef struct { char ssid[VALUE], psk[VALUE], key_mgmt[40]; int scan_ssid; long
 static kept store[MAX_KEPT];
 static int nstore;
 static long last_used;
+/* Networks forgotten while stock's configuration held them: they leave it at the next steady look. */
+static char pending[MAX_KEPT][VALUE];
+static int npending;
 
 /* A network block of the configuration: the values kept, and whether it has others (EAP and the like,
    which this service does not copy). */
@@ -133,6 +138,13 @@ static void printed_bytes(const char *v, unsigned char out[32], size_t *len) {
 }
 
 static int same(const unsigned char *a, size_t la, const unsigned char *b, size_t lb) { return la == lb && !memcmp(a, b, la); }
+
+/* A network's id in the report, for the menu's ask: FNV-1a over its SSID's bytes, 8 hex digits. */
+static void net_id(char out[9], const unsigned char *s, size_t len) {
+    unsigned long h = 2166136261UL;
+    for (size_t k = 0; k < len; k++) h = ((h ^ s[k]) * 16777619UL) & 0xffffffffUL;
+    snprintf(out, 9, "%08lx", h);
+}
 
 /* A name for a change's words: printable ASCII as it is, else "a network". */
 static void ascii_name(char *out, size_t cap, const unsigned char *s, size_t len) {
@@ -309,7 +321,7 @@ static void store_load(void) {
     char p[PATH_MAX], *buf = malloc(SMALL_FILE * 2);
     size_t len;
     bjson j;
-    nstore = 0; last_used = 0;
+    nstore = 0; last_used = 0; npending = 0;
     store_path(p);
     if (!buf || read_small(p, buf, SMALL_FILE * 2, &len) || bjson_parse(&j, buf, len, 256)) { free(buf); return; }
     int a = bjson_find(&j, 0, "networks");
@@ -327,6 +339,10 @@ static void store_load(void) {
         if (s->used > last_used) last_used = s->used;
         nstore++;
     }
+    int f = bjson_find(&j, 0, "forget");
+    npending = 0;
+    for (int k = 0; f >= 0 && bjson_type(&j, f) == 'a' && k < bjson_size(&j, f) && npending < MAX_KEPT; k++)
+        if (!bjson_string(&j, bjson_item(&j, f, k), pending[npending], VALUE)) npending++;
     bjson_free(&j);
     free(buf);
 }
@@ -342,6 +358,11 @@ static void store_save(void) {
         if (store[k].key_mgmt[0]) json_str(c, sizeof(c), store[k].key_mgmt); else snprintf(c, sizeof(c), "null");
         put(buf, sizeof(buf), &o, "%s{\"ssid\":%s,\"psk\":%s,\"keyMgmt\":%s,\"scanSsid\":%d,\"used\":%ld}", k ? "," : "", a, b, c,
             store[k].scan_ssid, store[k].used);
+    }
+    put(buf, sizeof(buf), &o, "],\"forget\":[");
+    for (int k = 0; k < npending; k++) {
+        json_str(a, sizeof(a), pending[k]);
+        put(buf, sizeof(buf), &o, "%s%s", k ? "," : "", a);
     }
     put(buf, sizeof(buf), &o, "]}\n");
     if (o >= sizeof(buf)) return;
@@ -430,7 +451,9 @@ static void report(int on, const char *state, const unsigned char *ssid, size_t 
         int here = 0, near = 0;
         for (int m = 0; m < npresent; m++) here |= same(name, nl, present[m].ssid, present[m].len);
         for (int m = 0; m < nrange; m++) near |= same(name, nl, range[m].ssid, range[m].len);
-        put(buf, sizeof(buf), &o, "%s{\"name\":", k ? "," : "");
+        char id[9];
+        net_id(id, name, nl);
+        put(buf, sizeof(buf), &o, "%s{\"id\":\"%s\",\"name\":", k ? "," : "", id);
         put_name(buf, sizeof(buf), &o, name, nl);
         put(buf, sizeof(buf), &o, ",\"open\":%s,\"held\":%s,\"inRange\":%s}", !strcmp(store[k].key_mgmt, "NONE") ? "true" : "false",
             here ? "true" : "false", near ? "true" : "false");
@@ -447,6 +470,68 @@ static void report(int on, const char *state, const unsigned char *ssid, size_t 
     if (o >= sizeof(buf)) return;
     snprintf(p, sizeof(p), "%s/status.json", run_dir);
     write_atomic(p, buf, o, 0644);
+}
+
+/* A kept network to take the place of one that goes: the strongest in range, else the most recently
+   used; other than the one at skip. -1 when there is none. */
+static int successor(int skip, const heard *range, int nrange) {
+    int best = -1, signal = 0, inrange = 0;
+    for (int k = 0; k < nstore; k++) {
+        unsigned char name[32];
+        size_t nl;
+        if (k == skip || kept_bytes(&store[k], name, &nl)) continue;
+        int heard_at = -1;
+        for (int m = 0; m < nrange; m++) if (same(name, nl, range[m].ssid, range[m].len)) heard_at = m;
+        if (heard_at >= 0 && (!inrange || range[heard_at].signal > signal)) { best = k; signal = range[heard_at].signal; inrange = 1; }
+        else if (!inrange && (best < 0 || store[k].used > store[best].used)) best = k;
+    }
+    return best;
+}
+
+static void forget_path(char out[PATH_MAX]) { snprintf(out, PATH_MAX, "%s/forget.json", run_dir); }
+
+/* The menu's ask ({"forget": "<id>"}, the id of the report): the network leaves the store at once and,
+   when stock's configuration holds it, waits there to leave it too. Returns whether it forgot one. */
+static int forget_asked(char *change, size_t cap) {
+    char p[PATH_MAX], buf[256], id[16] = "";
+    size_t len;
+    forget_path(p);
+    if (read_small(p, buf, sizeof(buf), &len)) return 0;
+    unlink(p);
+    bjson j;
+    if (bjson_parse(&j, buf, len, 8)) return 0;
+    int bad = bjson_string(&j, bjson_find(&j, 0, "forget"), id, sizeof(id));
+    bjson_free(&j);
+    if (bad) return 0;
+    int found = -1, matches = 0;
+    for (int k = 0; k < nstore; k++) {
+        unsigned char name[32];
+        size_t nl;
+        char mine[9];
+        if (kept_bytes(&store[k], name, &nl)) continue;
+        net_id(mine, name, nl);
+        if (!strcmp(mine, id)) { found = k; matches++; }
+    }
+    if (matches != 1) return 0;
+    unsigned char name[32];
+    size_t nl;
+    char words[40];
+    if (kept_bytes(&store[found], name, &nl)) nl = 0;
+    ascii_name(words, sizeof(words), name, nl);
+    static block blocks[MAX_LISTED];
+    struct stat st;
+    int nblocks = conf(blocks, MAX_LISTED, &st), held = 0;
+    for (int k = 0; k < nblocks; k++) {
+        unsigned char b[32];
+        size_t bl;
+        held |= !conf_bytes(blocks[k].ssid, b, &bl) && same(b, bl, name, nl);
+    }
+    if (held && npending < MAX_KEPT) snprintf(pending[npending++], VALUE, "%.71s", store[found].ssid);
+    memmove(&store[found], &store[found + 1], (size_t)(nstore - found - 1) * sizeof(store[0]));
+    nstore--;
+    store_save();
+    snprintf(change, cap, "forgot %s", words);
+    return 1;
 }
 
 static int env_path(const char *name, char out[FOLDER]) {
@@ -487,6 +572,7 @@ int main(void) {
         char state[32] = "";
         unsigned char ssid[32];
         size_t slen = 0;
+        if (forget_asked(change, sizeof(change))) changed = time(NULL);
         int on = wifi_on(), npresent = 0, nrange = 0;
         look++;
         if (on) {
@@ -525,8 +611,33 @@ int main(void) {
                 else if (look - placed_look >= QUIET_LOOKS) { miss(placed, look); placed[0] = 0; }
             }
             if (steady >= STEADY && saved && strcmp(word, "connecting")) {
-                int store_changed = 0, removed = 0, failed = 0;
-                if (nblocks == 0 && fresh) {
+                int store_changed = 0, removed = 0, failed = 0, gone = -1;
+                /* A network the menu forgot while stock's configuration held it leaves it now, another kept
+                   network taking its place (or none, when no other is kept). */
+                for (int k = 0; npending && k < nblocks && gone < 0; k++)
+                    for (int m = 0; m < npending; m++) {
+                        unsigned char a[32], b[32];
+                        size_t al, bl;
+                        if (!conf_bytes(blocks[k].ssid, a, &al) && !conf_bytes(pending[m], b, &bl) && same(a, al, b, bl)) gone = k;
+                    }
+                if (npending) { npending = 0; store_changed = 1; }
+                if (gone >= 0) {
+                    unsigned char name[32];
+                    size_t nl;
+                    char words[40], answer[64];
+                    if (conf_bytes(blocks[gone].ssid, name, &nl)) nl = 0;
+                    ascii_name(words, sizeof(words), name, nl);
+                    int next = successor(-1, range, nrange);
+                    if (next >= 0) {
+                        if (take_place(&store[next])) { failed++; snprintf(change, sizeof(change), "could not remove %s from stock's configuration", words); }
+                        else snprintf(change, sizeof(change), "forgot %s: another kept network in its place", words);
+                    } else if (wpa(answer, sizeof(answer), "remove_network", "all", NULL) || !ok(answer)
+                               || wpa(answer, sizeof(answer), "save_config", NULL) || !ok(answer)) {
+                        failed++;
+                        snprintf(change, sizeof(change), "could not remove %s from stock's configuration", words);
+                    } else snprintf(change, sizeof(change), "forgot %s: stock keeps no network now", words);
+                    removed++;
+                } else if (nblocks == 0 && fresh) {
                     if (nstore) {
                         snprintf(change, sizeof(change), "forgot %d networks: the player has none saved (reset)", nstore);
                         nstore = 0; last_used = 0; store_changed = 1;
@@ -597,8 +708,11 @@ int main(void) {
         } else { steady = 0; nbefore = -1; seen[0] = 0; fresh = 1; away = 0; }
         report(on, state, ssid, slen, present, npresent > 0 ? npresent : 0, range, nrange, change, changed);
         if (first) { first = 0; int fd = open(ready, O_WRONLY | O_CREAT | O_CLOEXEC, 0644); if (fd >= 0) close(fd); }
+        /* The menu's ask is taken at once, not at the next look. */
+        char asked[PATH_MAX];
+        forget_path(asked);
         double until = mono() + interval;
-        while (!stopping && mono() < until) pause_s(until - mono() < 1 ? until - mono() : 1);
+        while (!stopping && mono() < until && !exists(asked)) pause_s(until - mono() < 1 ? until - mono() : 1);
     }
     return 0;
 }

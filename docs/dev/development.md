@@ -59,9 +59,11 @@ bash scripts/build.sh reader   # the NAND reader's MIPS tests and freestanding c
 `DISC_TOOLCHAIN_IMAGE=<image>` selects a reviewed copy of the toolchain image. Its recipe
 pins the Debian base by digest and the musl.cc compiler by SHA-256, and `disc-boot` carries
 as its build id the last commit that changed its sources (`device/boot`, `device/console`,
-`device/common`, `device/menu`, `device/vendor`, `device/Makefile`), so the same sources give the same bytes in any later
-commit and on GitHub's runners. The services (`device/health`, `device/network`) are packages known by
-their digests and carry no build id: a change of theirs leaves the image as it was.
+`device/common`, `device/vendor`, `device/Makefile`), so the same sources give the same bytes in any later
+commit and on GitHub's runners. The menu and the services (`device/menu`, `device/health`,
+`device/network`) are packages known by their digests and carry no build id: a change of theirs
+leaves the image as it was (the menu since 2026-10-11; its last change with the image's programs,
+`8eb15a9`, is the build id either way).
 
 The host build also makes `disc-boot-fixture` (`-DDISC_BOOT_FIXTURE`): it
 reads `DISC_BOOT_FIXTURE_ROOT` (every absolute path is taken under it, the
@@ -147,6 +149,13 @@ services, the packages, a removal's question, and everything of ours going:
 | Waiting | Services | Packages | Remove | Everything |
 | --- | --- | --- | --- | --- |
 | ![](../assets/menu/waiting.png) | ![](../assets/menu/services.png) | ![](../assets/menu/packages.png) | ![](../assets/menu/remove.png) | ![](../assets/menu/everything-goes.png) |
+
+With disc-network installed, Services leads to its Wi-Fi networks, where a second Play forgets one
+([disc-network](packages/network.md#forgetting-one-network)):
+
+| Wi-Fi networks | Forget |
+| --- | --- |
+| ![](../assets/menu/networks.png) | ![](../assets/menu/forget-network.png) |
 
 Its look (owner, 2026-10-03, chosen from three mockups): every entry shown at once in a list,
 the selected one in a pill with an accent dot and its version at the right; always in English,
@@ -374,7 +383,8 @@ from the framebuffer page the menu panned to and kept as raw pages in `/work`, t
 (the emulator serves a static program's screen and input only since `690a55c`, snowsky-disc-qemu
 #54, #55). Its steps wait for the UI's confirmation where the next start would otherwise be the
 fourth short one, which the boot-loop guard takes. `health_guest.py` and `network_guest.py`
-install the services' packages with Play and check them there.
+install the services' packages with Play and check them there; `network_guest.py` installs the
+menu too (`--menu`) and has disc-network forget a network from the menu's Wi-Fi networks screen.
 
 Where the guest differs from the player:
 

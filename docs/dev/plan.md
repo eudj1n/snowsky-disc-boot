@@ -40,9 +40,6 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
 
 ## Packages and the menu
 
-- [ ] Forget one kept network from the menu's Services screen (owner,
-  2026-10-09). Today only removing disc-network with its data, or
-  everything ours, forgets the networks.
 - [ ] Updates over Wi-Fi from the server's page (owner, 2026-10-09). The
   controller asks boot to install a package it staged on the card, as the
   menu does (`disc-boot install <folder>`), and boot starts a new service or
