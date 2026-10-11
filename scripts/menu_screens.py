@@ -46,7 +46,7 @@ def frame(fb):
     return bytes(out)
 
 
-def scene(name, output, choices, install=None, keys=(), wait=0.6, countdown=60000, offer=None):
+def scene(name, output, choices, install=None, keys=(), wait=0.6, countdown=60000, offer=None, networks=None):
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
         (root/'status/ui').mkdir(parents=True)
@@ -64,6 +64,10 @@ def scene(name, output, choices, install=None, keys=(), wait=0.6, countdown=6000
         program.chmod(0o755)
         if install:
             (root/'status/install.json').write_text(json.dumps(dict(schema=1, **install)))
+        if networks:
+            # disc-network's report, as the menu reads it on its Wi-Fi networks screen.
+            (root/'status/service/disc-network').mkdir(parents=True)
+            (root/'status/service/disc-network/status.json').write_text(json.dumps(dict(schema=1, **networks)))
         env = dict(DISC_BOOT_STATUS=str(root/'status'), DISC_BOOT_RUN=str(root/'run'), DISC_MENU_FB=str(root/'fb0'),
                    DISC_MENU_KEYS=str(root/'keys'), DISC_MENU_TOUCH=str(root/'touch'), DISC_MENU_COUNTDOWN_MS=str(countdown),
                    DISC_BOOT_PROGRAM=str(program))
@@ -100,14 +104,24 @@ def main():
                            dict(role='service', name='disc-health', title='disc-health', version='2.57.7', removing=False),
                            dict(role='service', name='disc-network', title='disc-network', version='2.57.7', removing=False)],
                  staged=[])
-    waiting = dict(offer, staged=[dict(folder='ui/diskos-disco', role='ui', name='diskos-disco', title='diskOS Disco!',
-                                       version='0.3.0', refused=None)])
+    # A newer disc-network waiting on the card, as install.py --packages leaves it (no placeholder of a package a user
+    # cannot get: owner, 2026-10-11).
+    waiting = dict(offer, staged=[dict(folder='service/disc-network', role='service', name='disc-network', title='disc-network',
+                                       version='2.57.8', refused=None)])
     scene('waiting', args.output, installed, offer=waiting, wait=1.0, countdown=5000)
     scene('services', args.output, installed, offer=offer, keys=(VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN))
     scene('packages', args.output, installed, offer=waiting, keys=(VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN))
     scene('remove', args.output, installed, offer=offer, keys=(VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN, PLAY))
     scene('everything-goes', args.output, installed, offer=offer,
           keys=(VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY) + (VOLUME_DOWN,) * 4 + (PLAY, PLAY, PLAY))
+    # disc-network's networks under Services (owner, 2026-10-11), and the question that forgets one.
+    report = dict(wifi='connected', connected='Home', lastChange=None, networks=[
+        dict(id='3f1c2a9b', name='Home', open=False, held=True, inRange=True),
+        dict(id='9a40c3d7', name='Office', open=False, held=False, inRange=True),
+        dict(id='51e7b20c', name='Cafe Lumiere', open=True, held=False, inRange=False)])
+    to_networks = (VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY)
+    scene('networks', args.output, installed, offer=offer, networks=report, keys=to_networks + (VOLUME_DOWN,))
+    scene('forget-network', args.output, installed, offer=offer, networks=report, keys=to_networks + (VOLUME_DOWN, VOLUME_DOWN, PLAY))
     print(json.dumps(sorted(p.name for p in args.output.glob('*.png'))))
 
 

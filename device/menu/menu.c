@@ -1,8 +1,9 @@
 /* disc-menu: the boot menu (contract, "Several UIs and the boot menu" and "The menu's screens";
    plan, stages 3b and 7). Runs in the UI's place at power-on, on three screens: the UIs boot offers,
    counting 5 s down to the default (it stands while packages wait on the card); the services and
-   their autostart; the packages, those staged on the card to install and the ui and service
-   packages to remove, a removal of everything of ours last. It takes Volume +/- and Play (or a
+   their autostart, with disc-network's Wi-Fi networks, one of which it forgets on two Plays; the
+   packages, those staged on the card to install and the ui and service packages to remove, a removal
+   of everything of ours last. It takes Volume +/- and Play (or a
    touch), changes what boot keeps through the boot program's commands ($DISC_BOOT_PROGRAM), answers
    in $DISC_BOOT_RUN/choice and hands over to the UI launcher in its own process. Everything it opens
    closes on that exec. While boot installs (a start with Play, or an installation it asked for) it
@@ -11,6 +12,9 @@
 #define _DARWIN_C_SOURCE
 #include "boot_util.h"
 #include "draw.h"
+/* The parser's tokens, for the report's names in UTF-8 (bjson_string takes ASCII only); the parser is boot_util's. */
+#define JSMN_HEADER
+#include "jsmn.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -67,14 +71,24 @@ typedef struct { char ui[33], title[48], version[65]; } entry;
 typedef struct { char name[33], title[48], version[65], role[12], folder[48], refused[160]; int autostart, removing; } item;
 #define MAX_ITEMS 34
 #define MAX_ROWS 64
-enum { SCREEN_START, SCREEN_SERVICES, SCREEN_PACKAGES, SCREEN_GONE };
+enum { SCREEN_START, SCREEN_SERVICES, SCREEN_PACKAGES, SCREEN_NETWORKS, SCREEN_GONE };
 /* A row of the screen: what Play (or a touch) on it does, and what it shows. */
-enum { ROW_UI, ROW_WAITING, ROW_SERVICES, ROW_PACKAGES, ROW_BACK, ROW_SERVICE, ROW_STAGED, ROW_INSTALLED, ROW_EVERYTHING };
+enum { ROW_UI, ROW_WAITING, ROW_SERVICES, ROW_PACKAGES, ROW_BACK, ROW_SERVICE, ROW_STAGED, ROW_INSTALLED, ROW_EVERYTHING,
+       ROW_NETWORKS, ROW_NETWORK };
+/* disc-network's networks, from its report (contract, "The menu's screens"; docs/dev/packages/network.md):
+   the id it is asked by, the name as the menu's font shows it, connected or in range. */
+#define NETWORK_SERVICE "disc-network"
+#define MAX_NETS 16
+typedef struct { char id[9], name[48]; int connected, in_range; } net;
 typedef struct { int kind, index; char label[64], value[48]; int hot, warn; } row;
 
 static entry entries[MAX_ENTRIES];
 static item services[MAX_ITEMS], packages[MAX_ITEMS], staged[MAX_ITEMS];
 static int count, nservices, npackages, nstaged, waiting;
+static net nets[MAX_NETS];
+/* reporting: disc-network's report is there (it runs); forgetting: the id the menu asked it to forget. */
+static int nnets, reporting;
+static char forgetting[9];
 static row rows[MAX_ROWS];
 static int nrows, screen = SCREEN_START, selected, chosen = -1, counting = 1, held[8], nheld;
 /* A removal to confirm: its row's kind and index, and when the question goes away; everything of ours
@@ -163,6 +177,77 @@ static int load_choices(const char *status) {
     return count ? 0 : -1;
 }
 
+/* A string of the report as its bytes (its escapes \" \\ and \/ undone), any other escape refused. */
+static int json_text(const bjson *j, int i, char *out, size_t cap) {
+    if (i < 0 || i >= j->n || j->t[i].type != JSMN_STRING) return -1;
+    size_t o = 0;
+    for (int p = j->t[i].start; p < j->t[i].end; p++) {
+        char c = j->js[p];
+        if (c == '\\') {
+            if (++p >= j->t[i].end) return -1;
+            c = j->js[p];
+            if (c != '"' && c != '\\' && c != '/') return -1;
+        }
+        if (o + 1 >= cap) return -1;
+        out[o++] = c;
+    }
+    out[o] = 0;
+    return 0;
+}
+
+/* A name in the menu's font: ASCII as it is, any other character a question mark. */
+static void shown_name(char *out, size_t cap, const char *s) {
+    size_t o = 0;
+    for (const unsigned char *c = (const unsigned char *)s; *c && o + 1 < cap; c++) {
+        if (*c >= 0x80 && (*c & 0xc0) == 0x80) continue;   /* a UTF-8 sequence's continuation */
+        out[o++] = *c >= 0x20 && *c < 0x7f ? (char)*c : '?';
+    }
+    out[o] = 0;
+}
+
+static int has_network_service(void) {
+    for (int k = 0; k < nservices; k++) if (!strcmp(services[k].name, NETWORK_SERVICE)) return 1;
+    return 0;
+}
+
+/* disc-network's report ($DISC_BOOT_STATUS/service/disc-network/status.json, written while it runs). */
+static void load_networks(const char *status) {
+    char p[PATH_MAX], buf[4200], connected[100] = "", raw[100];
+    size_t len;
+    nnets = 0; reporting = 0;
+    if (snprintf(p, sizeof(p), "%s/service/" NETWORK_SERVICE "/status.json", status) >= (int)sizeof(p)
+        || read_small(p, buf, sizeof(buf), &len)) return;
+    bjson j;
+    if (bjson_parse(&j, buf, len, 256)) return;
+    reporting = 1;
+    json_text(&j, bjson_find(&j, 0, "connected"), connected, sizeof(connected));
+    int list = bjson_find(&j, 0, "networks"), still = 0;
+    for (int k = 0; list >= 0 && k < bjson_size(&j, list) && nnets < MAX_NETS; k++) {
+        int at = bjson_item(&j, list, k);
+        net *n = &nets[nnets];
+        memset(n, 0, sizeof(*n));
+        if (bjson_string(&j, bjson_find(&j, at, "id"), n->id, sizeof(n->id)) || strspn(n->id, "0123456789abcdef") != 8
+            || json_text(&j, bjson_find(&j, at, "name"), raw, sizeof(raw))) continue;
+        shown_name(n->name, sizeof(n->name), raw);
+        n->connected = connected[0] && !strcmp(raw, connected);
+        bjson_bool(&j, bjson_find(&j, at, "inRange"), &n->in_range);
+        still |= !strcmp(n->id, forgetting);
+        nnets++;
+    }
+    bjson_free(&j);
+    if (!still) forgetting[0] = 0;
+}
+
+/* The ask disc-network takes at once: {"forget": "<id>"} in its run folder. */
+static int forget_network(const char *status, const char *id) {
+    char p[PATH_MAX], buf[64];
+    int n = snprintf(buf, sizeof(buf), "{\"forget\":\"%s\"}\n", id);
+    if (snprintf(p, sizeof(p), "%s/service/" NETWORK_SERVICE "/forget.json", status) >= (int)sizeof(p)) return -1;
+    if (write_atomic(p, buf, (size_t)n, 0644)) return -1;
+    fprintf(stderr, "disc-menu: forget network %s\n", id);
+    return 0;
+}
+
 /* Whether boot is still installing from the card: the progress while it is, 0 once it is done. */
 static int read_install(const char *status) {
     char p[PATH_MAX], buf[400];
@@ -223,6 +308,16 @@ static void build_rows(void) {
         for (int k = 0; k < nservices; k++)
             add_row(ROW_SERVICE, k, services[k].title, services[k].removing ? "removing" : services[k].autostart ? "On" : "Off",
                     !services[k].removing && services[k].autostart);
+        if (has_network_service()) add_row(ROW_NETWORKS, 0, "Wi-Fi networks", "\xe2\x80\xba", 0);
+    } else if (screen == SCREEN_NETWORKS) {
+        add_row(ROW_BACK, 0, "\xe2\x80\xb9 Back", "", 0);
+        for (int k = 0; k < nnets; k++) {
+            if (confirming(ROW_NETWORK, k)) {
+                add_row(ROW_NETWORK, k, nets[k].name, "\xe2\x96\xb6 forget", 1);
+                rows[nrows - 1].warn = 1;
+            } else add_row(ROW_NETWORK, k, nets[k].name, !strcmp(nets[k].id, forgetting) ? "forgetting" : nets[k].connected ? "connected"
+                           : nets[k].in_range ? "in range" : "", nets[k].connected && strcmp(nets[k].id, forgetting));
+        }
     } else if (screen == SCREEN_PACKAGES) {
         add_row(ROW_BACK, 0, "\xe2\x80\xb9 Back", "", 0);
         for (int k = 0; k < nstaged; k++) {
@@ -278,7 +373,8 @@ static void render(long now) {
     build_rows();
     long left = counting && chosen < 0 && screen == SCREEN_START ? deadline - now : 0;
     draw_ring(&frame, LINE, ACCENT, left > 0 && countdown_ms > 0 ? (unsigned)(left * 65536 / countdown_ms) : 0);
-    draw_text(&frame, FACE_LABEL, 180, 74, ALIGN_MIDDLE, screen == SCREEN_SERVICES ? "SERVICES" : screen == SCREEN_PACKAGES ? "PACKAGES" : "START WITH", MUTED);
+    draw_text(&frame, FACE_LABEL, 180, 74, ALIGN_MIDDLE, screen == SCREEN_SERVICES ? "SERVICES" : screen == SCREEN_PACKAGES ? "PACKAGES"
+              : screen == SCREEN_NETWORKS ? "WI-FI NETWORKS" : "START WITH", MUTED);
     int top = first_row();
     for (int k = top; k < nrows && k < top + ROWS; k++) {
         row *r = &rows[k];
@@ -310,6 +406,11 @@ static void render(long now) {
     } else if (screen == SCREEN_SERVICES) {
         if (!nservices) draw_text(&frame, FACE_NOTE, 180, 230, ALIGN_MIDDLE, "No service is installed", MUTED);
         hint = "\xe2\x96\xb6 on/off  \xc2\xb7  from the next start";
+    } else if (screen == SCREEN_NETWORKS) {
+        if (!reporting) draw_text(&frame, FACE_NOTE, 180, 230, ALIGN_MIDDLE, "disc-network is not running", MUTED);
+        else if (!nnets) draw_text(&frame, FACE_NOTE, 180, 230, ALIGN_MIDDLE, "No network is kept yet", MUTED);
+        hint = confirm_kind == ROW_NETWORK && now < confirm_until ? "\xe2\x96\xb6 again: the player forgets it"
+                                                                   : "\xe2\x96\xb6 twice to forget a network";
     } else if (confirm_kind == ROW_INSTALLED && now < confirm_until) hint = "\xe2\x96\xb6 again: it goes with its data";
     else if (confirm_kind == ROW_EVERYTHING && now < confirm_until) hint = confirm_step ? "\xe2\x96\xb6 once more: all of ours goes" : "\xe2\x96\xb6 again to remove everything";
     else hint = "\xe2\x96\xb6 install or remove";
@@ -482,7 +583,14 @@ static void play(const char *status) {
     case ROW_UI: chosen = r->index; break;
     case ROW_WAITING: case ROW_PACKAGES: screen = SCREEN_PACKAGES; selected = 0; break;
     case ROW_SERVICES: screen = SCREEN_SERVICES; selected = 0; break;
-    case ROW_BACK: screen = SCREEN_START; selected = 0; confirm_kind = -1; break;
+    case ROW_BACK: screen = screen == SCREEN_NETWORKS ? SCREEN_SERVICES : SCREEN_START; selected = 0; confirm_kind = -1; break;
+    case ROW_NETWORKS: screen = SCREEN_NETWORKS; selected = 0; load_networks(status); break;
+    case ROW_NETWORK:
+        if (!strcmp(nets[r->index].id, forgetting)) break;
+        if (!confirming(ROW_NETWORK, r->index)) { confirm_kind = ROW_NETWORK; confirm_index = r->index; confirm_until = now_ms() + CONFIRM_MS; break; }
+        confirm_kind = -1;
+        if (!forget_network(status, nets[r->index].id)) snprintf(forgetting, sizeof(forgetting), "%s", nets[r->index].id);
+        break;
     case ROW_SERVICE:
         if (!services[r->index].removing && !ask_boot("autostart", services[r->index].name, services[r->index].autostart ? "off" : "on"))
             load_choices(status);
@@ -585,7 +693,7 @@ int main(void) {
     recovery_start = started_with_play(status);
     setvbuf(stderr, NULL, _IONBF, 0);
     deadline = now_ms() + countdown_ms;
-    long shown = -1, polled = 0, used_at = 0;
+    long shown = -1, polled = 0, used_at = 0, nets_read = 0;
     int last_selected = -1, last_counting = -1, last_screen = -1, last_rows = -1, was_installing = read_install(status), last_done = -1;
     for (;;) {
         read_events();
@@ -608,6 +716,12 @@ int main(void) {
                 deadline = now + countdown_ms;
                 last_selected = -1;
             }
+        }
+        /* disc-network's report, again each second while its screen shows (it may start meanwhile). A
+           question to confirm keeps the list as it was, so the row asked about stays the one. */
+        if (screen == SCREEN_NETWORKS && now - nets_read >= 1000 && confirm_kind != ROW_NETWORK) {
+            nets_read = now;
+            load_networks(status);
         }
         /* An installation is a use too: each second of it, the menu's own or the recovery's. */
         if ((installing || installer > 0) && now - used_at >= 1000) { in_use(); used_at = now; }

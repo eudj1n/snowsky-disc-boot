@@ -6,12 +6,12 @@
         {
             "name": "disc-menu",
             "role": "menu",
-            "version": "2.57.8",
+            "version": "2.57.9",
             "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.8/disc-menu-2.57.8.zip",
-                "sha256": "2f225bf7902727fa6681f193d30b7d1435b1379db0e966cee69a6a30eb03b882",
-                "size": 173024
+                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.9/disc-menu-2.57.9.zip",
+                "sha256": "e6cb8b473a2dfd457fd89a70da89767a0c7cb66ede78abc541bd2e127494a592",
+                "size": 177630
             },
             "profiles": [
                 "2.57"
@@ -20,21 +20,21 @@
             "license": "MIT; Inter (SIL OFL 1.1) as rasterised masks",
             "default": true,
             "verified": {
-                "date": "2026-10-10",
+                "date": "2026-10-11",
                 "boot": "8eb15a9",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "the binary of 2.57.7's menu (menu_guest.py 7 of 7, on the owner's player since 2026-10-10); install.py --guest from 2.57.8's archive; release 2.57.8"
+                "acceptance": "menu_guest.py 7 of 7 and network_guest.py 6 of 6 with this package (its Wi-Fi networks screen forgetting a network); release 2.57.9"
             }
         },
         {
             "name": "disc-health",
             "role": "service",
-            "version": "2.57.8",
+            "version": "2.57.9",
             "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.8/disc-health-2.57.8.zip",
-                "sha256": "8a98477f8a939de3ec4fedbcf5977111b5e08c434fdf6c71540b5e24808492de",
+                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.9/disc-health-2.57.9.zip",
+                "sha256": "3b363b060821db9c151358b4b62e9ad86e89d3f5fb34f95e10e94c6e7fe9e6ca",
                 "size": 136406
             },
             "profiles": [
@@ -45,22 +45,22 @@
             "default": true,
             "notes": "A read-only, offline journal of the player's health; its report shows in the server's diagnostics",
             "verified": {
-                "date": "2026-10-10",
+                "date": "2026-10-11",
                 "boot": "8eb15a9",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "the binary of 2.57.7's disc-health (health_guest.py 3 of 3, on the owner's player); install.py --guest from 2.57.8's archive; release 2.57.8"
+                "acceptance": "the binary of 2.57.7's disc-health (health_guest.py 3 of 3, on the owner's player); release 2.57.9"
             }
         },
         {
             "name": "disc-network",
             "role": "service",
-            "version": "2.57.8",
+            "version": "2.57.9",
             "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.8/disc-network-2.57.8.zip",
-                "sha256": "cef7a2e4a7466bf0f83206d78216e9433ee1dfccf8d3e3a674f33093e630384d",
-                "size": 133500
+                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.9/disc-network-2.57.9.zip",
+                "sha256": "c2e516e0457d94088d78f061f247db5b75474fd38e7368640a5e9d3c2a538429",
+                "size": 138839
             },
             "profiles": [
                 "2.57"
@@ -70,36 +70,36 @@
             "default": true,
             "notes": "Several Wi-Fi networks; one in stock's configuration, a kept one in range put in its place",
             "verified": {
-                "date": "2026-10-10",
+                "date": "2026-10-11",
                 "boot": "8eb15a9",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "network_guest.py 5 of 5 (this package); on the owner's player 2026-10-10: switched by itself, stock's UI ran on; release 2.57.8"
+                "acceptance": "network_guest.py 6 of 6 (this package; a network forgotten from the boot menu); the design on the owner's player since 2026-10-10; release 2.57.9"
             }
         },
         {
             "name": "disc-server",
-            "role": "service",
-            "version": "2.57.7",
+            "role": "controller",
+            "version": "2.57.8",
             "homepage": "https://github.com/eudj1n/snowsky-disc-server",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-server/releases/download/v2.57.7/disc-server-2.57.7.zip",
-                "sha256": "a93bfa034fe14443687787a7b6ab4a7c86a65ec1cc87586fbf6957d31a348946",
-                "size": 840075
+                "url": "https://github.com/eudj1n/snowsky-disc-server/releases/download/v2.57.8/disc-server-2.57.8.zip",
+                "sha256": "0f0f630156b96fdcccb9d5d03bdc1e07373ac2d93f835e9aca9cf81253c69610",
+                "size": 840226
             },
             "profiles": [
                 "2.57"
             ],
-            "bootApi": 1,
+            "bootApi": 2,
             "license": "MIT",
             "default": true,
             "notes": "snowsky-disc-server's release variant; its catalog/apps.json offers Disc Player 1.0.0 by default",
             "verified": {
-                "date": "2026-10-10",
+                "date": "2026-10-11",
                 "boot": "8eb15a9",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "the controller of boot 2.57.7's image on the guest: installed by Play, confirmed, integration.py --about, manager_guest.py; release 2.57.7 (2.57.6's work, a clean build)"
+                "acceptance": "the controller of boot 2.57.7's image on the guest (role controller, bootApi 2): installed by Play, confirmed, integration.py --about, manager_guest.py; release 2.57.8"
             }
         },
         {

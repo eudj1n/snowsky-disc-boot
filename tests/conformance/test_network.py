@@ -2,7 +2,8 @@
 stock's wpa_cli and wpa_supplicant (tests/integration/wpa_cli_stand_in.sh, the same on the guest):
 stock's configuration keeps one network, as stock's UI needs (the owner's player, 2026-10-09); the
 service keeps each network stock connected to and, out of reach, puts a kept one in range in its
-place, never in the middle of stock's sequence; it forgets them after a reset and shows no key."""
+place, never in the middle of stock's sequence; it forgets them after a reset, and one when the menu
+asks, and shows no key."""
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,14 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 NETWORK = Path(os.environ.get('DISC_NETWORK_FIXTURE_BINARY', ROOT/'build/host/disc-network-fixture'))
 STAND_IN = ROOT/'tests/integration/wpa_cli_stand_in.sh'
+
+
+def net_id(name):
+    """A network's id in the report: FNV-1a over its SSID's bytes."""
+    h = 2166136261
+    for byte in name.encode():
+        h = ((h ^ byte) * 16777619) & 0xffffffff
+    return f'{h:08x}'
 
 
 class NetworkTests(unittest.TestCase):
@@ -115,7 +124,7 @@ class NetworkTests(unittest.TestCase):
         self.assertTrue((self.run_dir/'ready').exists())
         self.wpa('_up')
         report = self.connected('"Home"', '"home secret"', 'Home')
-        self.assertEqual(report['networks'], [dict(name='Home', open=False, held=True, inRange=True)])
+        self.assertEqual(report['networks'], [dict(id=net_id('Home'), name='Home', open=False, held=True, inRange=True)])
         self.assertEqual(stat.S_IMODE((self.data/'networks.json').stat().st_mode), 0o600, 'it holds the keys')
         self.assertEqual(self.store()[0]['psk'], '"home secret"')
         # Stock's next connection removes Home: the service keeps it in its store, never in stock's configuration.
@@ -237,7 +246,7 @@ class NetworkTests(unittest.TestCase):
         self.wpa('_up')
         home = 'Дом'.encode().hex()
         report = self.connected(home, 'NONE', 'Дом')
-        self.assertEqual(report['networks'], [dict(name='Дом', open=True, held=True, inRange=True)])
+        self.assertEqual(report['networks'], [dict(id=net_id('Дом'), name='Дом', open=True, held=True, inRange=True)])
         self.assertEqual((self.store()[0]['ssid'], self.store()[0]['keyMgmt'], self.store()[0]['psk']), (home, 'NONE', None))
         self.connected('"Office"', '"office pass"', 'Office')
         self.wpa('_range', home)
@@ -249,6 +258,71 @@ class NetworkTests(unittest.TestCase):
         self.wpa('save_config')
         report = self.report(lambda r: r['connected'] == 'Work' and (r['lastChange'] or {}).get('what', '').startswith('not kept'))
         self.assertNotIn('Work', self.names(report))
+
+
+    # Forgetting one network, as the boot menu asks (owner, 2026-10-11)
+
+    def forget(self, name):
+        (self.run_dir/'forget.json').write_text(json.dumps(dict(forget=net_id(name))))
+
+    def test_the_menu_forgets_a_kept_network(self):
+        self.start()
+        self.wpa('_up')
+        self.connected('"Home"', '"home secret"', 'Home')
+        self.connected('"Office"', '"office pass"', 'Office')
+        self.report(lambda r: len(r['networks']) == 2)
+        self.forget('Home')
+        report = self.report(lambda r: self.names(r) == ['Office'], timeout=3)
+        self.assertEqual(report['lastChange']['what'], 'forgot Home')
+        self.assertFalse((self.run_dir/'forget.json').exists(), 'the ask is taken once')
+        self.assertEqual([n['ssid'] for n in self.store()], ['"Office"'])
+        time.sleep(1.0)
+        self.assertEqual(self.ssids(), ['"Office"'], 'stock\'s network stays')
+        # An id it does not keep changes nothing.
+        self.forget('Cafe')
+        time.sleep(1.0)
+        self.assertEqual(self.names(self.report()), ['Office'])
+
+    def test_forgetting_the_network_stock_holds_puts_another_in_its_place(self):
+        self.start()
+        self.wpa('_up')
+        self.connected('"Home"', '"home secret"', 'Home')
+        self.connected('"Office"', '"office pass"', 'Office')
+        self.wpa('_range', '"Home"', '"Office"')
+        self.report(lambda r: len(r['networks']) == 2)
+        self.forget('Office')
+        report = self.report(lambda r: r['connected'] == 'Home')
+        self.assertEqual(self.ssids(), ['"Home"'])
+        self.assertEqual(self.names(report), ['Home'])
+        self.assertEqual(report['lastChange']['what'], 'forgot Office: another kept network in its place')
+        self.assertEqual(json.loads((self.data/'networks.json').read_text())['forget'], [])
+
+    def test_forgetting_the_only_network_leaves_stock_none(self):
+        self.start()
+        self.wpa('_up')
+        self.connected('"Home"', '"home secret"', 'Home')
+        self.forget('Home')
+        self.report(lambda r: r['networks'] == [] and 'stock keeps no network' in (r['lastChange'] or {}).get('what', ''))
+        self.assertEqual(self.conf(), [])
+        self.report(lambda r: r['connected'] is None and r['wifi'] == 'searching')
+
+    def test_with_wi_fi_off_stock_s_network_leaves_once_it_is_on(self):
+        self.start()
+        self.wpa('_up')
+        self.connected('"Home"', '"home secret"', 'Home')
+        self.connected('"Office"', '"office pass"', 'Office')
+        self.report(lambda r: len(r['networks']) == 2)
+        self.wpa('_down')
+        self.report(lambda r: r['wifi'] == 'off')
+        self.forget('Office')
+        self.report(lambda r: self.names(r) == ['Home'], timeout=3)
+        self.assertEqual(json.loads((self.data/'networks.json').read_text())['forget'], ['"Office"'], 'kept until Wi-Fi is on')
+        self.assertEqual(self.ssids(), ['"Office"'], 'the file is never edited')
+        self.wpa('_range', '"Home"', '"Office"')
+        self.wpa('_up')
+        self.report(lambda r: r['connected'] == 'Home')
+        self.assertEqual(self.ssids(), ['"Home"'])
+        self.assertEqual(json.loads((self.data/'networks.json').read_text())['forget'], [])
 
 
 if __name__ == '__main__':

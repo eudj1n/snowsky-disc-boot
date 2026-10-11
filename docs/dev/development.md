@@ -59,9 +59,11 @@ bash scripts/build.sh reader   # the NAND reader's MIPS tests and freestanding c
 `DISC_TOOLCHAIN_IMAGE=<image>` selects a reviewed copy of the toolchain image. Its recipe
 pins the Debian base by digest and the musl.cc compiler by SHA-256, and `disc-boot` carries
 as its build id the last commit that changed its sources (`device/boot`, `device/console`,
-`device/common`, `device/menu`, `device/vendor`, `device/Makefile`), so the same sources give the same bytes in any later
-commit and on GitHub's runners. The services (`device/health`, `device/network`) are packages known by
-their digests and carry no build id: a change of theirs leaves the image as it was.
+`device/common`, `device/vendor`, `device/Makefile`), so the same sources give the same bytes in any later
+commit and on GitHub's runners. The menu and the services (`device/menu`, `device/health`,
+`device/network`) are packages known by their digests and carry no build id: a change of theirs
+leaves the image as it was (the menu since 2026-10-11; its last change with the image's programs,
+`8eb15a9`, is the build id either way).
 
 The host build also makes `disc-boot-fixture` (`-DDISC_BOOT_FIXTURE`): it
 reads `DISC_BOOT_FIXTURE_ROOT` (every absolute path is taken under it, the
@@ -148,6 +150,13 @@ services, the packages, a removal's question, and everything of ours going:
 | --- | --- | --- | --- | --- |
 | ![](../assets/menu/waiting.png) | ![](../assets/menu/services.png) | ![](../assets/menu/packages.png) | ![](../assets/menu/remove.png) | ![](../assets/menu/everything-goes.png) |
 
+With disc-network installed, Services leads to its Wi-Fi networks, where a second Play forgets one
+([disc-network](packages/network.md#forgetting-one-network)):
+
+| Wi-Fi networks | Forget |
+| --- | --- |
+| ![](../assets/menu/networks.png) | ![](../assets/menu/forget-network.png) |
+
 Its look (owner, 2026-10-03, chosen from three mockups): every entry shown at once in a list,
 the selected one in a pill with an accent dot and its version at the right; always in English,
 each package by its `title`, else its name, and stock's UI as "FiiO" with the firmware's
@@ -195,8 +204,8 @@ nothing else; `--yes` answers nothing and takes the defaults and the options giv
 report is `work/install-*/report.json`.
 
 `--packages` stages packages only: no FiiO update, no image and no player. It checks Python
-alone (3.11 or later), refuses the player's options (`--restore`, `--resume`, `--run`,
-`--guest`, `--simulate`, `--history`, `--image`, `--ota`, `--boot-build`, `--fault`), offers
+alone (3.11 or later), refuses the player's options (`--restore`, `--guest`, `--simulate`,
+`--image`, `--ota`, `--boot-build`, `--fault`), offers
 the catalog's packages and the chosen server's apps, takes each by its digest and stages them
 on the card. The player then installs them from the menu's Packages screen, or with Play at
 power-on while the menu is not installed yet; a service or the server starts its new version at
@@ -211,65 +220,50 @@ beside the image the same way (`RESTORE`). `--fault no-device`, `bad-blocks=N,M`
 `write-stops=N` and `readback-flip=N` show how each failure stops the run with the backup's place
 and nothing retried.
 
-Without `--history` (a user's installation, 2026-10-08), in a terminal and not a dry run, the
-player is read and written in one entry into USB Boot, and no history is kept. After `CHECK`,
-three reads, each a session of its own: the partition table's page (`ram_transport.py --mode
-metadata`, the entry's only SPL), the boot evidence (`boot_evidence.py`, the bootloader and the
-OTA selector) and the identity probe (the first rootfs blocks), the last two audited offline
-(`audit_usb_boot.py`, `audit_usb_probe.py`). The review (`installation_review.py --known`, seconds,
-offline) knows what the player holds by its first blocks, stock or one of ours (`firmware/images`
-and the releases' images), or stops before anything is written and names FiiO's Local upgrade as
-the way back; `decision.json` says what it found. The write (`WRITE`) takes the admission the
-review computed for the run (`--installer-profile`, the tracked profile untouched) and runs only
-in that entry, then restarts the player from USB Boot itself ([restart](usb-boot/restart.md)), so the
-cable stays connected; its first start's check proves it as below, the readback following only when
-the check does not come back. The user answers yes or no about the start, without the words a
-history keeps for the developers. A no takes the player back to stock with the evidence of a new entry
-(`usb-back/`, where the review knows this run's own image); `--restore` writes stock's rootfs the
-same way. Without a terminal (`--yes`) the card is staged and the player is not written.
-The payloads come from the boot release (`disc-usb-payloads-<v>.tar.gz`, the boot evidence's
-among them) or are built here with `--boot-build`.
+In a terminal and not a dry run, the player is read and written in one entry into USB Boot
+through the reviewed tools (`scripts/installer/usbboot.py`, the steps of [build and
+flash](installer/build-and-flash.md) as an installation runs them), with diskOS's pinned files
+(`--diskos`, or fetched) and libusb (found, or `--libusb`). After `CHECK`, three reads, each a
+session of its own: the partition table's page (`ram_transport.py --mode metadata`, the entry's
+only SPL), the boot evidence (`boot_evidence.py`, the bootloader and the OTA selector) and the
+identity probe (the first rootfs blocks), the last two audited offline (`audit_usb_boot.py`,
+`audit_usb_probe.py`). The review (`installation_review.py --known`, seconds, offline) knows what
+the player holds by its first blocks, stock or one of ours (`firmware/images` and the releases'
+images), or stops before anything is written and names FiiO's Local upgrade as the way back;
+`decision.json` says what it found. The write (`WRITE`) takes the admission the review computed
+for the run (`--installer-profile`, the tracked profile untouched) and runs only in that entry:
+its session finds the clean DDR diagnostic the reads' SPL left and runs none (a second SPL's DDR
+training fails too often). Its plan is computed again and compared with the review's, the writer
+is called once, and an unknown outcome stops everything. The installer then restarts the player
+from USB Boot itself ([restart](usb-boot/restart.md)), so the cable stays connected; without a
+restart the cable is the way out, connected again once the new system runs.
 
-With `--history` (this player's `history.json`: its boot and stock captures, and the last
-installation's review, image, write and readback, or the stage capture of a first one),
-diskOS's pinned files (`--diskos`, or fetched) and libusb (found, or `--libusb`), the step runs the
-reviewed tools in `scripts/installer/usbboot.py`, the order of
-[build and flash](installer/build-and-flash.md) steps 3 to 5 as the owner runs it: the package offline,
-then, in one entry into USB Boot, the identity check (`CHECK`: the first rootfs blocks by the
-reviewed probe read, about a minute, which must be the history's image's; a full backup restored
-nothing, the way back being stock) and the write (`WRITE`: the profile's admission, only it and
-the review pin may change, both plans computed again and compared, one writer call, the admission
-closed in every case; an unknown writer outcome stops everything). The SPL runs once an entry: the
-write's session finds the clean DDR diagnostic the check's SPL left and runs none (a second SPL's
-DDR training fails too often). A write that stopped before the writer ran
-(`failed-before-writer`) goes on with `install.py --resume <run> --history …`:
-that run's card stands, the same package is prepared again, and in a fresh entry the first blocks
-are checked again and the write follows. The player then starts the new system once
-and the owner answers yes or no. The card carries the written image's SHA-256
-(`.disc/boot/expected-rootfs.json`); with the cable connected again while the new system runs,
-the installer reads its boot layer's check of the root device over the USB console
-(`.disc/boot/rootfs-check.json`, a minute or two after its start) and keeps it with the owner's
-word in `usb/first-start/`: a match stands for the readback (the write's journal audited alone,
-the history naming that folder, 2026-10-07). Without it, or when it differs, a fresh entry
-(`READ`) reads it back and compares every byte by the approved exact plan, both USB journals
-are audited, and a yes is kept with its time in the readback's `owner-boot-confirmation.json`,
-between the write and the readback, where the next installation's review looks for it. A no takes
-the player back to stock (owner, 2026-10-05: the way back is stock, from any state): the player
-holds this run's own image, known from the writer's completion, so a fresh entry writes stock's
-rootfs straight away (`RESTORE`, no readback of the failed image), the owner looks at stock's start
-and a fresh entry reads it back. Each session shows a bar, the
-percentage and the time gone and left, counting its journal (two lines a call) against the
-plan's call limit (`expected_calls`). The write checks the image region on the player with the `staging-check`
-payload (built beside the metadata payload and passed as `--staging-build` to the review, the
-transport and the audit), reads the image back, hashes a 1 MiB sample of it on the player, and
-holds one request to the ROM until the writer returns instead of waiting 15 minutes
-([writer transport](usb-boot/writer-transport.md#the-hash-on-the-player)). The read by digest
-no longer runs with an installation (owner, 2026-10-06; [rootfs
-collector](nand/rootfs-collector.md#the-read-by-digest-rootfs-digest)). The run writes the next `history.json` (its `previousTarget` says candidate or
-restore) and keeps `usb/history-used.json`: `install.py --restore --run <run>`
-takes the player back to stock with that run's package whatever it holds now: straight to stock
-when the player holds that run's own image (its write observed complete), else after a backup that
-is only compared with the images it may be. diskOS's files the tools read (its writer, its SPL and the
+The card carries the written image's SHA-256 (`.disc/boot/expected-rootfs.json`), and the
+installer reads the new system's check of its root device over the USB console
+(`.disc/boot/rootfs-check.json`, a minute or two after its start; it waits five minutes at most)
+into `usb/first-start/`. A match proves the write and the start: nobody is asked whether the
+system started (owner, 2026-10-11), and the write's journal is audited alone. Only when the check
+does not come back or differs does the owner answer yes or no about the start. A yes is the
+readback: a fresh entry (`READ`) reads the rootfs back and compares every byte by the approved
+exact plan, and both USB journals are audited. A no takes the player back to stock (owner,
+2026-10-05: the way back is stock, from any state) with the evidence of a new entry (`usb-back/`,
+where the review knows this run's own image), without reading the failed image back.
+`--restore` writes stock's rootfs the same way and asks about stock's start, which has no check of
+its own; an image the review does not know admits the restore only, after the word `STOCK`.
+Without a terminal (`--yes`) the card is staged and the player is not written. The payloads come
+from the boot release (`disc-usb-payloads-<v>.tar.gz`, the boot evidence's among them) or are
+built here with `--boot-build`.
+
+Each session shows a bar, the percentage and the time gone and left, counting its journal (two
+lines a call) against the plan's call limit (`expected_calls`). The write checks the image region
+on the player with the `staging-check` payload (built beside the metadata payload and passed as
+`--staging-build` to the review, the transport and the audit), reads the image back, hashes a
+1 MiB sample of it on the player, and holds one request to the ROM until the writer returns
+instead of waiting 15 minutes ([writer transport](usb-boot/writer-transport.md#the-hash-on-the-player)).
+The developers' path with a player's history (`--history`, with `--resume` and `--restore --run`)
+left the installer (owner, 2026-10-11): since the seventh write (2026-10-08) every installation,
+the owner's included, ran in one entry. The reviewed tools keep the history's review
+(`installation_review.py` without `--known`) for the procedure by hand. diskOS's files the tools read (its writer, its SPL and the
 sources they are checked by) are those of the revision `firmware/sources/diskos.json` names
 (`646212d`), each by the digest the reader, writer and probe profiles pin (`scripts/sources.py`):
 `--diskos` gives a checkout, otherwise a copy kept in `work/downloads/diskos-<rev>` or, once, the six
@@ -389,7 +383,8 @@ from the framebuffer page the menu panned to and kept as raw pages in `/work`, t
 (the emulator serves a static program's screen and input only since `690a55c`, snowsky-disc-qemu
 #54, #55). Its steps wait for the UI's confirmation where the next start would otherwise be the
 fourth short one, which the boot-loop guard takes. `health_guest.py` and `network_guest.py`
-install the services' packages with Play and check them there.
+install the services' packages with Play and check them there; `network_guest.py` installs the
+menu too (`--menu`) and has disc-network forget a network from the menu's Wi-Fi networks screen.
 
 Where the guest differs from the player:
 
@@ -447,8 +442,8 @@ services' `disc-health-<version>.zip` (from 2.57.7) and `disc-network-<version>.
 `disc-boot-<version>-mips.tar.gz` (`disc-boot` and `disc-usb-console` for the image
 `install.py` builds from FiiO's update), from 2.57.5 `disc-usb-payloads-<version>.tar.gz` (the
 programs the installer runs from the player's RAM in USB Boot: the metadata read, the readback, the
-read by digest, the staging check, the identity probe, the restart (from 2.57.6) and the boot
-evidence's two, each with its
+staging check, the identity probe, the restart (from 2.57.6) and the boot evidence's two (the read
+by digest until 2.57.8: a developer's check since, `collect_rootfs.py --mode rootfs-digest`), each with its
 `build.json`, built with the boot layer's own toolchain, `disc-native-toolchain`, whose compiler gives
 diskOS's toolchain's payloads byte for byte; `build.json` names the compiler, not the image's id, so a
 build is the same on any computer; diskOS's pinned files are fetched for it unless `--diskos` names

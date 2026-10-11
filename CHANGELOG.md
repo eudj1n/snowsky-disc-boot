@@ -7,6 +7,22 @@ files on the [releases page](https://github.com/eudj1n/snowsky-disc-boot/release
 Entries stay short; why is in the developer documents (`docs/dev/`), how in
 the commits.
 
+## [2.57.9] — 2026-10-11
+
+- The boot menu forgets a Wi-Fi network: with disc-network installed,
+  Services → Wi-Fi networks, then Play twice on the network. When FiiO's
+  interface holds that network, another one the player keeps takes its place.
+- After writing the player, the installer asks whether the new system started
+  only when the system's own check does not come back; a check that matches
+  answers it.
+- The installer's developer options `--history`, `--resume` and
+  `--restore --run` are gone; `--restore` takes the player back to stock from
+  any state, as before.
+- The program that restarts the player after a write stops waiting by itself
+  even where the player's clock stands still.
+- The server 2.57.8 by default: it is now the boot layer's controller; a boot
+  layer before 2.57.7 cannot install it.
+
 ## [2.57.8] — 2026-10-10
 
 - disc-network, offered by default: the player remembers up to 8 Wi-Fi

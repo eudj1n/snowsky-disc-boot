@@ -290,6 +290,46 @@ echo '{{"ok":true,"note":"done"}}'
         self.assertEqual(menu.wait(timeout=10), 0)
         self.assertEqual(self.answer(), 'diskos')
 
+    def network_report(self, names, connected=None):
+        folder = self.root/'status/service/disc-network'
+        folder.mkdir(parents=True, exist_ok=True)
+        networks = [dict(id=f'{k:08x}', name=n, open=False, held=n == connected, inRange=n in ('Home', 'Cafe'))
+                    for k, n in enumerate(names, start=0xa0)]
+        (folder/'status.json').write_text(json.dumps(dict(schema=1, wifi='connected' if connected else 'searching',
+                                                           connected=connected, networks=networks, lastChange=None),
+                                                      ensure_ascii=False))
+        return {n['name']: n['id'] for n in networks}
+
+    def test_a_wi_fi_network_is_forgotten_on_two_plays(self):
+        """Owner, 2026-10-11: Services lists disc-network's networks; the menu asks it to forget one by the id of
+        its report, on a second Play as with a removal."""
+        self.three_screens()
+        menu = self.start(countdown=60000, **self.program())
+        time.sleep(0.2)
+        # Services (the third row): Back, disc-health, disc-network, Wi-Fi networks.
+        self.keys(VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY)
+        # disc-network has not reported yet: Back alone, which leads to Services.
+        self.keys(VOLUME_DOWN, PLAY)
+        ids = self.network_report(['Home', 'Cafe', '\u0414\u043e\u043c'], connected='Home')
+        self.keys(VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY)
+        # Back, Home, Cafe, the Cyrillic name: Cafe is the third row.
+        self.keys(VOLUME_DOWN, VOLUME_DOWN, PLAY)
+        time.sleep(0.3)
+        ask = self.root/'status/service/disc-network/forget.json'
+        self.assertFalse(ask.exists(), 'the first Play asks')
+        self.assertEqual(self.pixel(70, 180), (0x4a, 0x2a, 0x22), 'the question in its warmer colour')
+        self.keys(PLAY)
+        time.sleep(0.3)
+        self.assertEqual(json.loads(ask.read_text()), dict(forget=ids['Cafe']))
+        self.assertEqual(self.asked(), [], 'disc-network is asked, not boot')
+        # disc-network forgot it: the next report lists the others.
+        ask.unlink()
+        self.network_report(['Home', '\u0414\u043e\u043c'], connected='Home')
+        time.sleep(1.3)
+        self.keys(VOLUME_UP, VOLUME_UP, PLAY, PLAY, PLAY)    # Back to Services, Back to the start, diskOS
+        self.assertEqual(menu.wait(timeout=10), 0)
+        self.assertEqual(self.answer(), 'diskos')
+
     def test_the_production_build_has_no_fixture_switches(self):
         data = PRODUCTION.read_bytes()
         for switch in (b'DISC_MENU_FB', b'DISC_MENU_KEYS', b'DISC_MENU_HELD', b'DISC_MENU_COUNTDOWN_MS'):

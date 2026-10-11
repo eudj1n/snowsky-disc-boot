@@ -708,7 +708,11 @@ screens; the second and the third are rows at the end of the first list
   and a row "N on the card" opens Packages.
 - **Services**: each installed service with its autostart, which Play turns
   on or off, from the next start on (boot reads it when it starts the
-  services).
+  services). With disc-network installed, a row "Wi-Fi networks ›" opens its
+  networks (owner, 2026-10-11): those its report names, each connected, in
+  range or neither; Play asks and a second Play within 5 s has disc-network
+  forget one. Before disc-network runs (it starts after the controller), the
+  screen says so and holds only "‹ Back", which returns to Services.
 - **Packages**: the packages staged on the card, each installed by Play as the
   recovery installs it (its progress in `install.json`, on the menu's ring);
   then the `ui` and `service` packages: Play asks and a second Play within
@@ -737,7 +741,12 @@ changes things through the boot program (`$DISC_BOOT_PROGRAM`), whose
 commands answer `{"ok", "note"}` and write `ui/choices.json` again:
 `autostart <service> on|off`, `remove ui|service <name>`, `install <folder>`
 (a folder `staged` names, such as `service/disc-network`) and
-`remove-everything`.
+`remove-everything`. The networks are disc-network's, not boot's: the menu
+reads its report (`service/disc-network/status.json` under
+`$DISC_BOOT_STATUS`, again each second while the screen shows) and asks it
+directly, writing `{"forget": "<id>"}` (the report's id) to
+`service/disc-network/forget.json`, which disc-network takes at once
+([disc-network](../packages/network.md#forgetting-one-network)).
 
 ### Failures and the boot-loop guard
 
@@ -884,7 +893,10 @@ hashes them, and writes the outcome to the card,
 "error", "build"}`, with a line in the boot log. Another root device, one
 shorter than the image or a read error is an error, never a match. The
 installer reads the outcome over the USB console; a match stands for the
-readback through USB Boot, which stays the way when it is missing or differs.
+readback through USB Boot and for the owner's look at the start, so the
+installer asks nothing (owner, 2026-10-11). When it is missing or differs the
+owner answers whether the system started: a yes is the readback through USB
+Boot, a no the way back to stock.
 
 The check guards against a faulty write, not against a deliberate
 substitution, which the reviewed write path already excludes. Any corruption

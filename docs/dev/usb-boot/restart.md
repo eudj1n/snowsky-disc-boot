@@ -22,17 +22,16 @@ the pinned SPL source's `_machine_restart` (diskOS's u-boot-xburst,
 | `0xb000200c` WDT `TCSR` | `0x1a` | prescale 64, the RTC's 32768 Hz |
 | `0xb0002004` WDT `TCER` | `0`, then `1` | enabled: the reset about 4 ms later |
 
-Then it waits on CP0 Count for 2^28 ticks (a fraction of a second at the SPL's
-clocks). Should no restart come, it stops the watchdog and returns to the ROM, so
+Then it waits until CP0 Count has advanced 2^28 ticks (a fraction of a second at
+the SPL's clocks) or the loop has turned 2^26 times, whichever comes first: Count
+stands still in the payloads' context on the player (the read by digest found
+every page's ticks to be 0: [rootfs
+collector](../nand/rootfs-collector.md#the-read-by-digest-rootfs-digest)), so the turns bound
+the wait on their own there, a fraction of a second to some seconds (owner,
+2026-10-11). Should no restart come, it stops the watchdog and returns to the ROM, so
 the player is never left looping and the host can tell (`device/tests/restart_test.c`
-checks the sequence; the other payloads' bytes do not change with it). A limit
-of that fallback: CP0 Count may stand still in the payloads' context (the read
-by digest found every page's ticks to be 0 on the player: [rootfs
-collector](../nand/rootfs-collector.md#the-read-by-digest-rootfs-digest)). So far the restart
-has always come within its 4 ms; if it ever does not, the payload may not
-return, the held request ends `restart-uncertain`, and the player has to be
-switched off before it starts its system. Bounding the wait by another clock
-is open work ([plan](../plan.md)).
+checks the sequence and the wait with a running and a standing Count; the other
+payloads' bytes do not change with it).
 
 ## The session and its audit
 
@@ -67,8 +66,8 @@ started its system by itself with the cable connected: the menu, then stock.
 After every write (the candidate's and both ways back to stock) the installer runs the
 session in the write's entry (`usbboot.Reviewed.restart`, the payload from the release
 or built with the others) and audits it. When the player left the bus it says so and
-the cable stays connected: the user answers about the start, and the first start's
-check is read over that cable. Any other outcome, or a release without the payload, is
+the cable stays connected: the first start's check is read over that cable, and the
+user is asked about the start only when it does not come back. Any other outcome, or a release without the payload, is
 the cable as before (unplug, then plug while the new system runs); the write stands
 either way and nothing is retried (`test_usbboot`). The run's `report.json` names
 the outcome in the player's step: its `restart` field holds `outcome`

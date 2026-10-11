@@ -513,23 +513,21 @@ class Installer:
                 self.frame(lambda: self.screen.label(title), lambda: self.screen.progress(label, fraction))
         return show
 
-    # The player through the reviewed tools (installer/usbboot.py), the owner's procedure:
-    # the backup in one entry into USB Boot, the write in a fresh one (each session loads the SPL,
-    # whose DDR training a second time in an entry failed in 4 of 7 recorded runs, the last the
-    # fourth write's on 2026-10-06, before the writer), the owner's look at the new system's start,
-    # then a fresh entry for the readback. After a "no" the way back is stock, from any state
-    # (owner, 2026-10-05).
+    # The player through the reviewed tools (installer/usbboot.py), in one entry into USB Boot (plan, stage 6):
+    # what it holds read and reviewed, then the write in that entry, whose SPL is not run again; the new
+    # system's first start proves the write, else the owner's look and a fresh entry for the readback. After
+    # a "no" the way back is stock, from any state (owner, 2026-10-05).
 
     ENTER = 'Power the player off, hold Volume Down and connect the cable to this computer (USB Boot).'
     STUCK = ('If the player cannot be powered off (its system restarts without end), unplug it and let the battery '
              'run down; then hold Volume Down and connect the cable.')
 
-    def reviewed_tools(self, image, history, work=None):
+    def reviewed_tools(self, image, work=None):
         libusb = self.libusb()
         if not libusb:
             raise Stop('the player is written through libusb, which was not found: ' + LIBUSB_HINT)
         return usbboot.Reviewed(load_profile()['version'], work or self.work/'usb', Path(image).parent, self.diskos(),
-                                libusb, history, run=self.runner, progress=self.session_progress(),
+                                libusb, run=self.runner, progress=self.session_progress(),
                                 payloads=self.release_payloads())
 
     def release_payloads(self):
@@ -558,8 +556,7 @@ class Installer:
 
     def libusb(self):
         """The libusb library the reviewed tools load (plan, stage 6): --libusb, else where its packages put it on
-        macOS (Homebrew) and Linux; None when it is not there. A history pins the file's digest, so a developer's
-        player keeps the one it was written with."""
+        macOS (Homebrew) and Linux; None when it is not there."""
         # The file itself: the places are links to it (Homebrew's lib, the .so.0 names), and the reviewed tools pin
         # only regular files (a link is refused by the review, after the player's reads).
         if self.args.libusb:
@@ -602,14 +599,6 @@ class Installer:
                        lambda: self.screen.text(f'{gone} gone' + (f'  ·  {left}' if left else ''), tui.MUTED))
         return show
 
-    # Leaving USB Boot restarts the player by itself into what was written (owner, 2026-10-08): a start
-    # with Play is possible only after that start, switched off and on again. Once the boot menu is installed
-    # it offers the packages on the card itself (owner, 2026-10-10), so Play is for the first installation.
-    PLAY_AFTER = ('To install the packages on the card: once the boot menu is installed, it offers them at a start '
-                  '(its row "on the card", then Packages). The first time, once the player has started, switch it off, '
-                  'then switch it on holding Play (press the power key briefly and let Play go once the logo shows); '
-                  'the menu shows Installing.')
-
     def restart(self, reviewed, title):
         """The player restarted by the installer after the write (plan, stage 7), so the cable stays connected:
         True when it left the bus. Otherwise (a release without the restart payload, no restart observed, an
@@ -625,40 +614,41 @@ class Installer:
         self.restart_outcome = dict(outcome=status, run=str(reviewed.work/'restart'))
         return status == 'player-restarted'
 
-    def start_answer(self, title, what, then=None, words=True, restarted=False):
-        """The owner's look at a new system's first start: (started normally, words, time UTC), or None. words:
-        a few words of what was seen, the developers' evidence for the next review with a history; a user
-        without one answers yes or no only (owner, 2026-10-08)."""
+    LOOK = 'Is the interface steady, do the volume and playback work, does the power key switch it off?'
+
+    @staticmethod
+    def leaving(what, restarted):
+        """How the player leaves USB Boot after a write: restarted by the installer, or by the cable."""
+        return (f'Written, and the player is restarting into {what} by itself: keep the cable connected. ' if restarted else
+                f'Written. Disconnect the cable: leaving USB Boot, the player restarts into {what} by itself. ') + \
+            'Let it start without holding a key.'
+
+    def start_answer(self, title, lines):
+        """The owner's look at a system's start, yes or no (owner, 2026-10-08): (started normally, the word,
+        time UTC), or None without a terminal."""
         if not self.interactive:
             return None
-        leaving = (f'Written, and the player is restarting into {what} by itself: keep the cable connected. ' if restarted else
-                   f'Written. Disconnect the cable: leaving USB Boot, the player restarts into {what} by itself. ')
-        self.say(title, [leaving + 'Let it start without holding a key: is the interface steady, do the volume and playback work, '
-                         'does the power key switch it off?'] + ([then] if then else []) +
-                 ['Did it start normally? Type yes or no.'])
+        self.say(title, list(lines) + [self.LOOK, 'Did it start normally? Type yes or no.'])
         word = self.input().strip().lower()
         while word not in ('yes', 'no'):
             self.say(title, ['Type yes or no.'])
             word = self.input().strip().lower()
-        reported = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-        if not words:
-            return word == 'yes', word, reported
-        self.say(title, ['Describe what you saw, in a few words.'])
-        return word == 'yes', self.input().strip() or word, reported
+        return word == 'yes', word, time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
 
-    def first_start_check(self, reviewed, title, written, answer, connected=False):
+    def first_start_check(self, reviewed, title, written, restarted=False):
         """The new system's own check of what was written (plan, stage 4c): the outcome its boot layer
-        left on the card, read over the USB console while it runs. The folder of that proof, or None
-        when it does not come back or differs (the readback through USB Boot follows)."""
+        left on the card, read over the USB console while it runs. (the folder of that proof, None), or
+        (None, why there is none) when it does not come back or differs."""
+        leaving = self.leaving('the new system', restarted)
         if not self.expected:
-            return None
-        self.say(title, ['The new system\'s boot layer checks the written image a minute or two after its start, and the installer '
-                         'reads that over the USB console' + (', the cable still connected.' if connected else
-                         ': connect the cable to this computer again while the new system runs.')])
+            return None, leaving
+        self.say(title, [leaving, 'Its boot layer checks the written image a minute or two after its start, and the installer '
+                         'reads that over the USB console' + (', the cable still connected (it waits five minutes at most).'
+                                                              if restarted else ': once it runs, connect the cable to this '
+                                                              'computer again (the installer waits five minutes at most).')])
         raw = self.fetch_check(self.expected['sha256'], load_usb_profile(load_profile())['sd_mount'])
         if raw is None:
-            self.say(title, ['The check did not come back over the cable: the readback through USB Boot follows.'])
-            return None
+            return None, 'The new system\'s check did not come back over the cable.'
         record = json.loads(raw)
         folder = reviewed.work/'first-start'
         folder.mkdir(parents=True, exist_ok=True)
@@ -666,112 +656,41 @@ class Installer:
         fetched = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
         (folder/'fetch.json').write_text(json.dumps(dict(via='usb-console', fetched_at=fetched, write_session_id=written['session'],
                                          rootfs_check_sha256=hashlib.sha256(raw).hexdigest()), indent=2) + '\n')
-        (folder/'owner-boot-confirmation.json').write_text(json.dumps(dict(
-            observation='owner-confirmed-normal-first-boot', reported_at=answer[2], owner_answer=answer[1],
-            reported_via='install.py, after the write, with the first start\'s check', write_session_id=written['session'],
-            automated_boot_test=False, native_process_verified=False), indent=2, ensure_ascii=False) + '\n')
         if record.get('match') is not True:
-            self.say(title, [f'The new system\'s check differs: {record.get("error") or "another image on its root device"}. '
-                             'The readback through USB Boot follows.'])
-            return None
-        return folder
+            return None, f'The new system\'s check differs: {record.get("error") or "another image on its root device"}.'
+        return folder, None
 
-    def confirmation(self, read, written, answer):
-        """The owner's word, between the write and the readback, in the readback's capture."""
-        if not answer or not answer[0]:
-            return
-        session = load_json_safe(Path(read['capture'])/'result.json').get('session_id')
-        record = dict(observation='owner-confirmed-normal-first-boot', reported_at=answer[2], owner_answer=answer[1],
-                      reported_via='install.py, after the write and before the readback', write_session_id=written['session'],
-                      readback_session_id=session, automated_boot_test=False, native_process_verified=False)
-        (Path(read['capture'])/'owner-boot-confirmation.json').write_text(json.dumps(record, indent=2, ensure_ascii=False) + '\n')
-
-    def stock_back(self, reviewed, title, facts):
-        """The way back to stock: the write of stock's rootfs in a fresh entry into USB Boot, the
-        owner's look at it, a fresh entry for its readback, the audits."""
-        stock = reviewed.artifacts/load_json_safe(reviewed.package/'restore-write-plan.json')['plan']['image_name']
-        self.confirm(title, [self.ENTER, self.STUCK, 'Next: stock\'s rootfs, written once.'], 'RESTORE')
-        written = reviewed.write('restore')
-        answer = self.start_answer(title, 'stock', restarted=self.restart(reviewed, title))
-        self.confirm(title, [self.ENTER, 'Next: read stock back in a fresh session and compare every byte.'], 'READ')
-        read = reviewed.readback('restore')
-        audits = reviewed.audit('restore')
-        self.confirmation(read, written, answer)
-        history = reviewed.next_history(stock, 'restore')
-        self.say(title, ['Stock is back: written, read back and every byte compared, both USB journals audited.',
-                         f'The player\'s history: {history}'] + ([] if answer and answer[0] else
-                         ['Stock\'s start was not confirmed: tell the developers what you saw.']))
-        self.done('player', image=str(stock), written=True, simulated=False, target='restore', restore=dict(write=written, read=read,
-                  audits=audits, history=str(history), ownerAnswer=answer[1] if answer else None, startedNormally=bool(answer and answer[0])),
-                  **facts)
-        self.report['status'] = 'restored'
-
-    def player_reviewed(self, image, restore):
-        """The candidate's installation, or (--restore with --history) the way back to stock."""
-        title = 'The player (USB Boot)'
-        target = 'restore' if restore else 'candidate'
-        try:
-            reviewed = self.reviewed_tools(image, usbboot.History.load(self.args.history))
-            self.say(title, ['Preparing the installation package (offline: payloads, the review, the plans).'])
-            prepared = reviewed.prepare()
-            self.confirm(title, [f'The package is ready: write plan {prepared["write"][:12]}…, readback plan {prepared["read"][:12]}….',
-                                 self.ENTER, 'Next, in this one entry: a check of what the player holds (about a minute), '
-                                 'then the write.'], 'CHECK')
-            # The first blocks in place of a full backup (owner, 2026-10-07): the way back is only ever
-            # stock, so a backup's bytes restore nothing; the write follows in the same entry, whose
-            # SPL is not run again (ram_transport.bring_up).
-            backup = reviewed.identity(strict=not restore)
-            if restore:
-                return self.stock_back(reviewed, title, dict(backup=backup))
-            self.write_and_read(reviewed, title, image, backup)
-        except usbboot.ReviewedError as error:
-            raise Stop(f'{error}. The run\'s evidence is in {self.work/"usb"}; nothing was retried. '
-                       f'The way back to stock: install.py --restore --run {self.work}')
-
-    def write_and_read(self, reviewed, title, image, backup, holds=None):
-        """After the backup: the write in a fresh entry, the owner's look at the new system's start,
-        the readback in a fresh entry, the audits and the next history. Without a history (holds: what the
-        review knows the player holds, plan, stage 6) the same, and no history is written."""
-        known = holds is not None
-        self.confirm(title, [f'The player holds {holds}.' if known else
-                             f'The player holds {backup["matches"]}, as its history says.' if backup.get('matches') else
-                             f'What the player holds is in {backup["capture"]}.',
-                             'Next, in the same entry (stay connected): the image with the boot layer, written once. '
-                             'Its outcome is never retried.'], 'WRITE')
+    def write_and_read(self, reviewed, title, image, backup, holds):
+        """After the review, in the same entry: the write and the new system's first start, whose check proves
+        the write. Without that proof the owner's yes or no decides (owner, 2026-10-11): a no is the way back to
+        stock, a yes the readback in a fresh entry."""
+        self.confirm(title, [f'The player holds {holds}.', 'Next, in the same entry (stay connected): the image with the boot '
+                             'layer, written once. Its outcome is never retried.'], 'WRITE')
         written = reviewed.write('candidate')
         restarted = self.restart(reviewed, title)
-        answer = self.start_answer(title, 'the new system', self.PLAY_AFTER, words=not known, restarted=restarted)
+        proof, why = self.first_start_check(reviewed, title, written, restarted)
+        if proof:
+            audits = reviewed.audit('candidate', read=False)
+            self.proven_start = True
+            self.say(title, ['Written; the new system read its root device and found the written image, every byte by its '
+                             'SHA-256; the USB journal of the write audited.'])
+            self.done('player', image=str(image), written=True, simulated=False, target='candidate', backup=backup, write=written,
+                      firstStart=str(proof), audits=audits)
+            return
+        answer = self.start_answer(title, [why])
         if answer is not None and not answer[0]:
             # Straight back to stock (owner, 2026-10-05): the player holds this run's own image,
             # known from the writer's completion; reading it back would only cost time.
             self.say(title, ['The new system did not start normally: the way back is stock.'])
-            if known:
-                return self.known_back(image, dict(backup=backup, write=written, candidateAnswer=answer[1]))
-            return self.stock_back(reviewed, title, dict(backup=backup, write=written, candidateAnswer=answer[1]))
-        proof = self.first_start_check(reviewed, title, written, answer, connected=restarted) if answer else None
-        if proof:
-            audits = reviewed.audit('candidate', read=False)
-            history = None if known else reviewed.next_history(image, proof=proof)
-            self.proven_start = True
-            self.say(title, ['Written; the new system read its root device and found the written image, every byte by its '
-                             'SHA-256; the USB journal of the write audited.'] +
-                     ([f'This installation\'s history: {history}'] if history else []))
-            self.done('player', image=str(image), written=True, simulated=False, target='candidate', backup=backup, write=written,
-                      firstStart=str(proof), audits=audits, history=history and str(history), ownerAnswer=answer[1])
-            return
+            return self.known_back(image, dict(backup=backup, write=written, candidateAnswer=answer[1]))
         self.confirm(title, [self.ENTER, 'Next: read it back in a fresh session and compare every byte.'], 'READ')
         read = reviewed.readback('candidate')
         audits = reviewed.audit('candidate')
-        self.confirmation(read, written, answer)
-        history = None if known else reviewed.next_history(image)
-        self.say(title, ['Written, read back and every byte compared; both USB journals audited.'] +
-                 ([f'This installation\'s history: {history}'] if history else []) +
-                 ([] if answer or known else ['No answer about the new system\'s start was recorded: the next installation\'s review '
-                                              'needs one (owner-boot-confirmation.json in the readback capture).']))
+        self.say(title, ['Written, read back and every byte compared; both USB journals audited.'])
         self.done('player', image=str(image), written=True, simulated=False, target='candidate', backup=backup, write=written, read=read,
-                  audits=audits, history=history and str(history), ownerAnswer=answer[1] if answer else None)
+                  audits=audits, ownerAnswer=answer[1] if answer else None)
 
-    # A user's installation, without a history (plan, stage 6)
+    # One entry into USB Boot (plan, stage 6)
 
     @staticmethod
     def holds(decision):
@@ -796,10 +715,10 @@ class Installer:
                              'each step: run install.py in a terminal, without --yes.'])
             self.done('player', image=str(image), written=False)
             return
-        reviewed = self.reviewed_tools(image, None, work=work)
+        reviewed = self.reviewed_tools(image, work=work)
         try:
             self.say(title, ['Preparing the payloads the player runs from its RAM (offline).'])
-            reviewed.builds(evidence=True)
+            reviewed.builds()
             self.confirm(title, [self.ENTER, self.STUCK, 'Next, in this one entry: the player\'s partition table, bootloader and '
                                  'first rootfs blocks are read (about three minutes), each read checked here; nothing is written '
                                  'yet.'], 'CHECK')
@@ -827,7 +746,7 @@ class Installer:
         self.confirm(title, [f'The player holds {self.holds(decision)}.', 'Next, in the same entry (stay connected): stock\'s '
                              'rootfs, written once. Its outcome is never retried.'], 'RESTORE')
         written = reviewed.write('restore')
-        answer = self.start_answer(title, 'stock', words=False, restarted=self.restart(reviewed, title))
+        answer = self.start_answer(title, [self.leaving('stock', self.restart(reviewed, title))])
         audits = reviewed.audit('restore', read=False)
         self.say(title, ['Stock\'s rootfs is written: the writer finished, after the image was checked in the player\'s RAM; '
                          'the USB journal of the write audited.'] + ([] if answer and answer[0] else
@@ -842,67 +761,6 @@ class Installer:
         review knows this run's image), then stock's rootfs."""
         self.report.setdefault('wayBack', facts)
         return self.player_known(image, True, work=self.work/'usb-back')
-
-    def resume_write(self):
-        """install.py --resume RUN: a candidate's installation whose write stopped before the writer
-        ran (the SPL's DDR check failed in a later session of the backup's entry, 2026-10-06): the
-        player still holds what it held; this run prepares the same package and, in a fresh entry, checks
-        the player's first blocks again (plan, stage 4c) and goes on with the write."""
-        title = 'The player (USB Boot)'
-        run = Path(self.args.resume).resolve()
-        report, used = load_json_safe(run/'report.json'), load_json_safe(run/'usb/history-used.json')
-        image = next((s.get('image') for s in report.get('steps', []) if s.get('step') == 'firmware'), None)
-        before = load_json_safe(run/'usb/identity/result.json') or load_json_safe(run/'usb/backup/result.json')
-        written = load_json_safe(run/'usb/write/result.json')
-        untouched = (written.get('status') == 'failed-before-writer' and written.get('writer_execution_attempted') is False
-                     and written.get('page_execution_attempted') is False)
-        if not image or before.get('status') not in ('rootfs-probe-collected', 'rootfs-collected') or not untouched:
-            raise Stop(f'{run} is not a run whose write stopped before the writer after its backup: start a new installation')
-        history = usbboot.History.load(self.args.history)
-        if used != json.loads(json.dumps(history.data, default=str)):
-            raise Stop(f'--history is not the history {run.name} installed with')
-        self.done('firmware', image=str(image), profile=load_profile()['version'], resumed=str(run))
-        try:
-            reviewed = self.reviewed_tools(image, history)
-            self.say(title, [f'Going on with {run.name}: its write stopped before the writer, so the player holds what it held.',
-                             'Preparing the installation package again (offline: payloads, the review, the plans).'])
-            prepared = reviewed.prepare()
-            if prepared['write'] != load_json_safe(run/'usb/package/candidate-write-plan.json').get('plan_sha256'):
-                raise usbboot.ReviewedError(f'the write plan differs from the one {run.name} prepared')
-            self.confirm(title, [self.ENTER, 'Next, in this one entry: a check of what the player holds (about a minute), '
-                                 'then the write.'], 'CHECK')
-            self.write_and_read(reviewed, title, image, dict(reviewed.identity(strict=True), resumes=str(run)))
-        except usbboot.ReviewedError as error:
-            raise Stop(f'{error}. The run\'s evidence is in {self.work/"usb"}; nothing was retried. '
-                       f'The way back to stock: install.py --restore --run {self.work}')
-
-    def restore_from_run(self):
-        """install.py --restore --run DIR: back to stock with that run's package, from whatever the player
-        holds (it may no longer start): backup and write in one entry, the owner's look, the readback."""
-        title = 'The player (USB Boot)'
-        run = Path(self.args.run).resolve()
-        used, report = run/'usb/history-used.json', load_json_safe(run/'report.json')
-        image = next((s.get('image') for s in report.get('steps', []) if s.get('step') == 'firmware'), None)
-        if not used.is_file() or not image:
-            raise Stop(f'{run} is not an installer run with a package (usb/history-used.json and its report)')
-        try:
-            reviewed = self.reviewed_tools(image, usbboot.History.load(used), work=run/'usb')
-            written = load_json_safe(run/'usb/write/result.json')
-            if written.get('status') == 'writer-completion-observed' and not (run/'usb/restore-write').exists():
-                # What the player holds is this run's own image, its write observed complete: no backup
-                # of it is needed on the way back to stock (owner, 2026-10-05).
-                self.say(title, [f'The player holds the image {run.name} wrote (write {written.get("session_id", "")[:8]}). '
-                                 'The way back to stock writes stock\'s rootfs over it.'])
-                return self.stock_back(reviewed, title, dict(run=str(run), holds='this run\'s image'))
-            self.confirm(title, [f'The way back to stock with the package of {run.name}.', self.ENTER, self.STUCK,
-                                 'Next: a check of what the player holds (its first blocks, for the record); stock\'s rootfs '
-                                 'follows in a fresh entry.'], 'CHECK')
-            backup = reviewed.identity(strict=False, name='restore-identity')
-            self.say(title, [f'The player holds {backup["matches"]}.' if backup['matches'] else
-                             'The player holds an image this run does not know.'])
-            self.stock_back(reviewed, title, dict(backup=backup, run=str(run)))
-        except usbboot.ReviewedError as error:
-            raise Stop(f'{error}. The evidence is in {run/"usb"}; nothing was retried.')
 
     def player_guest(self, image):
         """The emulator's guest of the image in the player's place, with the staged card."""
@@ -922,8 +780,6 @@ class Installer:
         title = 'The player (USB Boot)'
         if self.args.guest:
             return self.player_guest(image)
-        if self.args.history and not self.args.simulate:
-            return self.player_reviewed(image, restore)
         if not self.args.simulate and not self.args.dry_run:
             return self.player_known(image, restore)
         if not self.args.simulate:
@@ -995,8 +851,11 @@ class Installer:
     def first_boot(self):
         if self.args.guest:
             return self.first_boot_guest()
+        # Leaving USB Boot restarts the player by itself into what was written (owner, 2026-10-08): a start
+        # with Play is possible only after that start, switched off and on again. Once the boot menu is installed
+        # it offers the packages on the card itself (owner, 2026-10-10), so Play is for the first installation.
         if getattr(self, 'proven_start', False):
-            # The first start was seen and its check fetched: nothing is left to do but what the card holds.
+            # The first start's check was fetched: nothing is left to do but what the card holds.
             self.say('First boot', ['Done: the image is written, and its first start found it on the root device.',
                                     'The packages on the card: once the boot menu is installed, it offers them at a start '
                                     '(Packages); the first time, switch the player off, then on holding Play. '
@@ -1015,19 +874,6 @@ class Installer:
     def run(self):
         self.work.mkdir(parents=True, exist_ok=True)
         try:
-            if getattr(self.args, 'resume', None):
-                # The write of a run that stopped before the writer: its card and backup stand.
-                self.step = 4
-                self.resume_write()
-                if self.report.get('status') != 'restored':
-                    self.first_boot()
-                    self.report['status'] = 'prepared'
-                return 0
-            if self.args.restore and getattr(self.args, 'run', None):
-                # Back to stock with a run's own package: no build, no review, the player in any state.
-                self.step = 4
-                self.restore_from_run()
-                return 0
             self.check()
             if self.packages_only:
                 folders, apps = self.packages()
