@@ -41,6 +41,14 @@ held one network throughout. When that network went away, disc-network put a
 kept one in range in its place 36 s later (a minute after stock's
 connection), and the player joined it.
 
+## On the owner's player (2026-10-11)
+
+Release 2.57.9's packages run on the player: the menu, disc-health and
+disc-network 2.57.9 beside the server 2.57.8 as the controller, on the image
+`9e6448dd…` (build `8eb15a998d85`), as the server's `/api/about` reported
+them; disc-network connected, its report naming two kept networks, each with
+its id. The owner reported that everything works correctly.
+
 ## What it does
 
 While Wi-Fi is on (stock's wpa_supplicant answers on
