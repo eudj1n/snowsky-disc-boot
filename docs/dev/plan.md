@@ -83,6 +83,12 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   versions, then `--packages` on the live catalog, then updates over Wi-Fi).
   Updates over Wi-Fi (above) build on it.
 
+- Experiments with the SNOWSKY Echo Mini (owner, 2026-10-17; later). Nothing
+  is known of it here yet: its SoC, storage, firmware and update path, and
+  whether it has a boot ROM's USB mode, decide what of the boot layer can
+  carry over. Like the DISC, it starts with reading what it is, and would
+  enter through reviewed profiles of its own, never version checks in code.
+
 - diskOS 1.2.1 (released 2026-10-14; checked 2026-10-14, deferred by the
   owner as not a priority). Findings: the writer, its SPL and their sources
   are unchanged from the pinned `646212d` (diskOS's own installer moved to
