@@ -4,8 +4,8 @@
   "scope": "stock-before-installation",
   "firmware_profile_sha256": "9c24f384013ebd611f5527079196d8a8923453019efe354c137552774b847151",
   "page_policy_sha256": {
-    "xt26g02c": "00ade69d5015341f334a6ce837de53d536e2f0f7a39a43be02c308ec937c8c8d",
-    "hyf2gq4u": "bc657742a262a0431a080a7adaa5e5a874a9421c5e5042406324d11749cd7255"
+    "xt26g02c": "2b8fdae6499a43134972a18ae37629407253a60a5c45ae5ecb8a9baac0a89a23",
+    "hyf2gq4u": "5946dae071c5c208e8027e65d5b95a42b79e9bd93a7d5c08c2e615ab8b8159f3"
   },
   "tail_value": 255,
   "physical_qualified": false

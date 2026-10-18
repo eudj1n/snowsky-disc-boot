@@ -375,7 +375,7 @@ class WriterTransportTests(unittest.TestCase):
         since 2026-10-18, the second chip: the fingerprint the exercised record names since)."""
         contract = writer.installation_review.layout_contract(self.layout_file())
         self.assertEqual(writer.fingerprint(self.transport), '9aac8148f9d03898e74a9dcd62e16e6ee6b6f1a8b3711602b2329abc1251eb58')
-        self.assertEqual(writer.fingerprint(contract), 'de147f7eb8ebbd188d425831780e8e932b60316f1b436bdeac1b34d640f6ed07')
+        self.assertEqual(writer.fingerprint(contract), 'a7614c9fef4340129e49dadad020848542a7dd6f7d216cbf10223d642c54bc37')
         known = json.loads((ROOT/'firmware/images/v2.57.json').read_text())
         self.assertEqual(known['exercised']['xt26g02c']['installer_contract_sha256'], writer.fingerprint(contract))
 

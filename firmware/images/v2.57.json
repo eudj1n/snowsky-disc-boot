@@ -55,7 +55,7 @@
       "cpu_profile_sha256": "c36a6a5d4d479e879c9c6cb69dbd16cf9f767424fad314333e5ee5e6b2ab128f",
       "reader_profile_sha256": "9772e4c738353b8c8a51b8ad10e803ab276cf692b4c40a6030ccde8c3cb51839",
       "transport_profile_sha256": "9aac8148f9d03898e74a9dcd62e16e6ee6b6f1a8b3711602b2329abc1251eb58",
-      "page_policy_sha256": "00ade69d5015341f334a6ce837de53d536e2f0f7a39a43be02c308ec937c8c8d",
+      "page_policy_sha256": "2b8fdae6499a43134972a18ae37629407253a60a5c45ae5ecb8a9baac0a89a23",
       "completion_profile_sha256": "93c4b93f4ed7255144d0714cd0c1091118cbd2b2d8460bd727cb539205e02500",
       "image_bytes": 100663296,
       "writer_entry": 2696937520,
@@ -96,7 +96,7 @@
           "bytes": 100663296
         }
       ],
-      "installer_contract_sha256": "de147f7eb8ebbd188d425831780e8e932b60316f1b436bdeac1b34d640f6ed07"
+      "installer_contract_sha256": "a7614c9fef4340129e49dadad020848542a7dd6f7d216cbf10223d642c54bc37"
     },
     "hyf2gq4u": {
       "writer_sha256": "4f23a3c99bdba4ac9e674efe73340d73014e4d99bcfd481082b06482b87c4442",
@@ -107,7 +107,7 @@
       "cpu_profile_sha256": "c36a6a5d4d479e879c9c6cb69dbd16cf9f767424fad314333e5ee5e6b2ab128f",
       "reader_profile_sha256": "9772e4c738353b8c8a51b8ad10e803ab276cf692b4c40a6030ccde8c3cb51839",
       "transport_profile_sha256": "9aac8148f9d03898e74a9dcd62e16e6ee6b6f1a8b3711602b2329abc1251eb58",
-      "page_policy_sha256": "bc657742a262a0431a080a7adaa5e5a874a9421c5e5042406324d11749cd7255",
+      "page_policy_sha256": "5946dae071c5c208e8027e65d5b95a42b79e9bd93a7d5c08c2e615ab8b8159f3",
       "completion_profile_sha256": "93c4b93f4ed7255144d0714cd0c1091118cbd2b2d8460bd727cb539205e02500",
       "image_bytes": 100663296,
       "writer_entry": 2696937520,
@@ -148,8 +148,8 @@
           "bytes": 100663296
         }
       ],
-      "installer_contract_sha256": "de147f7eb8ebbd188d425831780e8e932b60316f1b436bdeac1b34d640f6ed07",
-      "note": "The write's ABI as the first write on this chip ran it on the owner's second player (2026-10-18, run install-20261018-193049, write session db699985-07bb-4867-bb61-4582a6749b51, the branch second-chip-heyangtek with the installer's --accept-chip): the same writer, SPL, staging payload, profiles and RAM layout as the XTX record; the metadata payload and page policy compiled for this chip. The new system's first start read its root device and found the written image (rootfs-check.json: match, /dev/mtdblock_bbt_ro2, build 8eb15a998d85)."
+      "installer_contract_sha256": "a7614c9fef4340129e49dadad020848542a7dd6f7d216cbf10223d642c54bc37",
+      "note": "The write's ABI as the first write on this chip ran it on the owner's second player (2026-10-18, run install-20261018-193049, write session db699985-07bb-4867-bb61-4582a6749b51, the branch second-chip-heyangtek with the installer's --accept-chip): the same writer, SPL, staging payload, profiles and RAM layout as the XTX record; the metadata payload and page policy compiled for this chip. The new system's first start read its root device and found the written image (rootfs-check.json: match, /dev/mtdblock_bbt_ro2, build 8eb15a998d85). The page policy's and installer contract's fingerprints follow the chip profile reviewed against its exact datasheet (2026-10-18, HY SPI 2G v2.7): the policy's constants and the payload are unchanged."
     }
   }
 }

@@ -120,23 +120,28 @@ diagnostic and the RAM round trips passed); nothing was written.
 
 ### Documented chip facts
 
-The family datasheet at hand is HeYangTek's **HY SPI 1G, v2.3 (2022-04-26)**
-(HYF1GQ4UDACAE, ID `C9 21`), a
-[manufacturer-authored document on a mirror](https://img.eecart.com/dev/file/part/spec/HYF1GQ4UDACAE-HeYangTek.pdf);
-the 2 Gbit A-series document (HYF2GQ4UAACAE / HYF2GQ4UADCAE, "HY SPI 2G") was
-not obtained. The **HY SPI 2G v1.3.8** datasheet that is easy to find describes
-the T-series (HYF2GQ4UT*CAE, ID `01 25`, 6-bit ECC, "ECC_EN must always be set
-to 1"): another die, not this chip. The profile's `review.exact_datasheet_reviewed`
-stays false until the A-series document is reviewed against it.
+Source: HeYangTek's **HY SPI 2G datasheet v2.7, 2022-04-26** (HYF2GQ4UAACAE
+and HYF2GQ4UADCAE, the A-series; SHA-256
+`b90a3edbdc57671e30495acb2e3d7a7f1c7efc1c2ecb9d60352c940ce62a8d69`, marked
+confidential by its author and not kept here). The family's HY SPI 1G v2.3
+(HYF1GQ4UDACAE, `C9 21`) agrees on the register map, the Read ID framing and
+the ECC status. The **HY SPI 2G v1.3.8** datasheet that is easy to find
+describes the T-series (HYF2GQ4UT*CAE, ID `01 25`, 6-bit ECC, "ECC_EN must
+always be set to 1"): another die, not this chip.
 
-| Fact | Source |
+| Fact | Datasheet section |
 | --- | --- |
-| Manufacturer ID `C9`; Read ID with one address byte: `00H` the manufacturer, `01H` the device | HY SPI 1G v2.3, Read ID (9FH), ID Definition Table |
-| Device `52` = HYF2GQ4U; 2,048 main + 128 spare bytes/page, 128 KiB blocks, 256 MiB | FiiO's V2.57 kernel, `yhy_midc9` chip table (below); the U-Boot `heyang` driver (`SPINAND_READID_METHOD_OPCODE_ADDR, 0x52`, `NAND_MEMORG(1, 2048, 128, 64, 2048, 40, 1, 1, 1)`, `NAND_ECCREQ(8, 512)`) |
-| B0H: OTP_PRT bit 7, OTP_EN bit 6, ECC_EN bit 4, QE bit 0 — the same bits the policy requires (`B0 & 0x50 == 0x10`) | HY SPI 1G v2.3, Feature Register Table |
-| C0H: ECCS1, ECCS0 at bits 5:4; `00` no bit errors, `01` corrected, `10` not corrected, `11` corrected at the ECC maximum "according to the extended register" | HY SPI 1G v2.3, Status Register |
-| ECC can be disabled through ECC_EN (`always_on: false`); the writer's attempt to disable it is informational as before | HY SPI 1G v2.3, ECC (Internal) |
-| Factory marker: a non-`FF` word in the first spare bytes of a block's first page | HY SPI 1G v2.3, Invalid block; the stock driver's first-spare-byte scan |
+| MID `C9`, DID `52`; Read ID with one address byte: `00H` the manufacturer, `01H` the device | Parts No. table; Read ID (9FH), ID Definition Table |
+| 2,048 main + 128 spare bytes/page, 64 pages/block, 2,048 blocks, at least 2,008 valid, the first guaranteed valid; 256 MiB | Features; Valid Blocks |
+| B0H: OTP_PRT bit 7, OTP_EN bit 6, ECC_EN bit 4, QE bit 0 — the same bits the policy requires (`B0 & 0x50 == 0x10`) | Feature Register Table |
+| C0H: ECCS1, ECCS0 at bits 5:4; `00` no bit errors, `01` corrected, `10` not corrected, `11` corrected at the ECC maximum "according to the extended register" | Status Register |
+| ECC 14 bits per 512 bytes: four sectors of 512 user + 8 meta + 24 ECC bytes, the first 4 meta bytes of each unprotected; no byte map of the spare area is given, so there is no `firmware/oob/hyf2gq4u.json` and `oob_review.py` refuses this chip | 2KB/Page and ECC |
+| ECC can be disabled through ECC_EN (`always_on: false`); the writer's attempt to disable it is informational as before | ECC (Internal) |
+| Factory marker: a non-`FF` word in the first spare bytes of a block's first page; the stock driver scans the first spare byte | Invalid block (bad block) |
+
+The U-Boot `heyang` driver agrees (`SPINAND_READID_METHOD_OPCODE_ADDR, 0x52`,
+`NAND_MEMORG(1, 2048, 128, 64, 2048, 40, 1, 1, 1)`); its `NAND_ECCREQ(8, 512)`
+understates the chip's 14 bits, which changes nothing here.
 
 ### The stock kernel's driver
 
@@ -174,11 +179,9 @@ by address and is unaffected.)
 diskOS's `my_write5` checks no chip ID and reads no ECC status (the writer
 audit, unchanged); its commands, geometry and marker scan are the same for both
 chips, and the stock kernel programs both through the same SFC path. The
-comparison's open items are the XTX ones; the OOB layout of the 128-byte spare
-(the ECC parity's place) is not documented in the 1G datasheet, so no
-`firmware/oob/hyf2gq4u.json` exists and `oob_review.py` refuses this chip.
+comparison's open items are the XTX ones.
 
 The acceptance ran the same day: [the second player's acceptance](../observations/second-player-acceptance.md)
 (the entry's reads, the write, the first start's check matching the written
-image), after which `exercised.hyf2gq4u` names what that write ran. The exact
-datasheet remains open ([plan](../plan.md)).
+image), after which `exercised.hyf2gq4u` names what that write ran; the exact
+datasheet was reviewed against the profile that evening.

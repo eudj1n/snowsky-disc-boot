@@ -7,7 +7,11 @@
   "oob_bytes": 128,
   "pages_per_block": 64,
   "blocks": 2048,
-  "factory_marker": {"page_in_block": 0, "column": 2048, "good_value": 255},
+  "factory_marker": {
+    "page_in_block": 0,
+    "column": 2048,
+    "good_value": 255
+  },
   "ecc": {
     "always_on": false,
     "status_mask": 48,
@@ -22,20 +26,35 @@
     }
   },
   "source": {
-    "title": "HeYangTek HY SPI NAND family: HY SPI 1G datasheet v2.3, 2022-04-26 (ID C9 21; the register map, the Read ID framing and the ECC status this family shares); the 2 Gbit part HYF2GQ4UAACAE (ID C9 52) by FiiO's V2.57 kernel chip table (yhy_midc9: 2048 main, 131072 block, 128 spare, 268435456 capacity) and the U-Boot heyang driver (ID method opcode+address, 0x52, 2048+128, 64 pages, 2048 blocks)",
-    "url": "https://img.eecart.com/dev/file/part/spec/HYF1GQ4UDACAE-HeYangTek.pdf",
-    "sections": ["Feature Register Table (B0H, C0H)", "Read ID (9FH), ID Definition Table", "Status Register: ECCS1, ECCS0", "Invalid block (bad block)"]
+    "title": "HeYangTek HY SPI 2G datasheet v2.7, 2022-04-26 (HYF2GQ4UAACAE / HYF2GQ4UADCAE: MID C9, DID 52, 2K+128, 64 pages/block, 2048 blocks)",
+    "sha256": "b90a3edbdc57671e30495acb2e3d7a7f1c7efc1c2ecb9d60352c940ce62a8d69",
+    "sections": [
+      "Parts No. table (page 1)",
+      "Feature Register Table (B0H, C0H; page 12)",
+      "Read ID (9FH), ID Definition Table (page 13)",
+      "Status Register: ECCS1, ECCS0 (page 32)",
+      "2KB/Page and ECC (page 33)",
+      "Invalid block (bad block), Valid Blocks (page 34)"
+    ]
   },
   "review": {
-    "exact_datasheet_reviewed": false,
-    "note": "The 2 Gbit A-series datasheet (HYF2GQ4UAACAE/HYF2GQ4UADCAE, HY SPI 2G) was not at hand; the T-series HY SPI 2G v1.3.8 (HYF2GQ4UT*CAE, ID 01 25, 6-bit ECC) is another die. Review it when obtained: the ID, geometry, marker and ECC status must agree with this profile.",
-    "kernel": "firmware/kernels/v2.57.json, chips.hyf2gq4u: the stock driver admits ECCS 00b and 01b and refuses 10b and 11b (deal_ecc_status at 0x804f12f0)."
+    "exact_datasheet_reviewed": true,
+    "reviewed_on": "2026-10-18",
+    "ecc_capability": "14 bits per 512 bytes; four sectors of 512 user + 8 meta + 24 ECC bytes, the first 4 meta bytes of each unprotected (no byte map of the spare area is given, so no OOB layout profile)",
+    "valid_blocks": "at least 2008 of 2048; the first block guaranteed valid at shipment",
+    "family": "the HY SPI 1G datasheet v2.3 (HYF1GQ4UDACAE, ID C9 21) agrees on the register map, the Read ID framing and the ECC status",
+    "kernel": "firmware/kernels/v2.57.json, chips.hyf2gq4u: the stock driver admits ECCS 00b and 01b and refuses 10b and 11b (deal_ecc_status at 0x804f12f0).",
+    "u_boot": "the heyang driver: SPINAND_READID_METHOD_OPCODE_ADDR 0x52, NAND_MEMORG(1, 2048, 128, 64, 2048, 40, 1, 1, 1)"
   },
   "writer_audit": {
     "profile_sha256": "a87d83efe61d2da00ddebf5ef0dda45feec2b374632d83b7ad6106b25550ff65",
     "page_bytes": 2048,
     "pages_per_block": 64,
-    "factory_marker": {"page_in_block": 0, "column": 2048, "good_value": 255},
+    "factory_marker": {
+      "page_in_block": 0,
+      "column": 2048,
+      "good_value": 255
+    },
     "reads_ecc_status": false,
     "checks_chip_id": false,
     "attempts_ecc_disable": true
