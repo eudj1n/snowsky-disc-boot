@@ -72,6 +72,8 @@ The chip, the kernel's view of it, and reading it through USB Boot:
 - [Firmware compatibility](firmware/firmware-compatibility.md): selecting
   and accepting a firmware through reviewed profiles.
 - [Provenance](firmware/provenance.md): the references and inputs.
+- [Player variants](firmware/player-variants.md): the chips and bootloader
+  builds players were seen with, and adding the next chip.
 - [Deployment preparation for V2.57](firmware/native-deployment.md).
 
 ## Records — `observations/`
