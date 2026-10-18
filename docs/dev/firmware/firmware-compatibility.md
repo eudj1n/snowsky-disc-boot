@@ -131,7 +131,8 @@ entry begins with the identity session, which names the player's chip by its
 Read ID, and the release's payloads carry each chip's builds (`<chip>/<mode>`).
 A new chip is a new profile, its ECC semantics reviewed in `metadata_policy.py`
 (`REVIEWED_ECC`), the kernel's entry for it, every pin, and a player's
-acceptance before the installer writes it (`exercised`).
+acceptance before the installer writes it (`exercised`). The chips seen so far,
+why they differ and the order of that work: [player variants](player-variants.md).
 
 1. Inventory the official OTA in the reference repository. Record product,
    main/recovery version, chunk count, rootfs and binary fingerprints. Keep the

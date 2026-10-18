@@ -152,9 +152,10 @@ The pinned V2.57 kernel registers manufacturer `0xC9` as `yhy_midc9_nand_init`
 part's geometry. Its `deal_ecc_status` (`0x804f12f0`) takes bits 5:4 of C0 and
 returns `-EBADMSG` for `10` **and** `11`, success for `00` and `01`, so a page
 the chip corrected at its maximum is unreadable to stock. The reader admits the
-same two values (`ecc_admitted` `0b11`): what stock refuses, we refuse. (The
-kallsyms table of this kernel is offset by one entry: a name's address is the
-one printed for the entry before it; `kernel_review.py` reads the chip table
+same two values (`ecc_admitted` `0b11`): what stock refuses, we refuse. (Decoding the
+kernel's kallsyms directly, name *i* belongs to address *i*; a listing made
+during this review printed them shifted by one entry, so check an address
+against the code before quoting it. `kernel_review.py` reads the chip table
 by address and is unaffected.)
 
 ### What changes
@@ -185,3 +186,6 @@ The acceptance ran the same day: [the second player's acceptance](../observation
 (the entry's reads, the write, the first start's check matching the written
 image), after which `exercised.hyf2gq4u` names what that write ran; the exact
 datasheet was reviewed against the profile that evening.
+
+What the two players say about the hardware FiiO ships, and how the next
+chip is added: [player variants](../firmware/player-variants.md).
