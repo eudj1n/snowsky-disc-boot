@@ -13,7 +13,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from firmware_profile import PROFILES, fingerprint, load_profile, load_reader_profile, require
 from deployment import readback
-from deployment.metadata_policy import load_metadata_policy
+from deployment.metadata_policy import load_metadata_policy, pinned_policy
 from deployment.review import check_image, regular
 
 
@@ -22,7 +22,7 @@ def validate_review(base, policy, review):
             and review.get('scope') == 'stock-before-installation'
             and review.get('physical_qualified') is False, 'Invalid pre-installation review scope')
     require(review.get('firmware_profile_sha256') == fingerprint(base)
-            and review.get('page_policy_sha256') == fingerprint(policy), 'Pre-installation audit changed')
+            and pinned_policy(review.get('page_policy_sha256'), policy), 'Pre-installation audit changed')
     require(type(review.get('tail_value')) is int and 0 <= review['tail_value'] <= 255,
             'Invalid reviewed tail byte')
 
@@ -91,13 +91,14 @@ def main():
     parser.add_argument('--restore-sha256', required=True)
     parser.add_argument('--records', type=Path)
     parser.add_argument('--nonce-hex')
+    parser.add_argument('--chip', help='The player\'s chip (required where the firmware names several)')
     args = parser.parse_args()
     if (args.action == 'verify' and (args.records is None or args.nonce_hex is None)) or (
             args.action == 'plan' and (args.records is not None or args.nonce_hex is not None)):
         parser.error('verify requires records/nonce; plan accepts neither')
     try:
         base = load_profile(args.version); reader = load_reader_profile(base)
-        policy = load_metadata_policy(base, reader); review = load_review(base, policy)
+        policy = load_metadata_policy(base, reader, chip=args.chip); review = load_review(base, policy)
         require(regular(args.metadata_page, policy['main_bytes']) == policy['main_bytes'], 'Invalid metadata page')
         metadata = args.metadata_page.read_bytes()
         plan = make_plan(base, reader, policy, review, metadata, args.restore_sha256)

@@ -18,7 +18,7 @@ class BootReviewTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)
         self.base=review.boot.ram.load_profile();self.reader=review.boot.ram.load_reader_profile(self.base)
-        self.policy=review.boot.load_policy(self.base,self.reader)
+        self.policy=review.boot.load_policy(self.base,self.reader, chip='xt26g02c')
         self.profile=review.load_bootloader(self.base,self.policy)
         # Reduce only the synthetic fixture's boot extent. Its bytes are generated here.
         self.policy['profile']['partitions'][0]['size']=131072
@@ -29,7 +29,7 @@ class BootReviewTests(unittest.TestCase):
             p=self.profile[route];s=('console=synthetic root='+p['root_device']+' ro\0').encode()
             a=p['bootargs_offset'];self.image[a:a+len(s)]=s
         self.profile.update(boot_bytes=len(self.image),boot_sha256=review.digest(self.image),
-                            boot_policy_sha256=review.fingerprint(self.policy))
+                            boot_policy_sha256=dict.fromkeys(self.policy['page_policy']['kernel']['chips'],review.fingerprint(self.policy)))
         self.nonce=bytes(range(16));self.path=self.root/'records.bin'
 
     def fixture(self,token='ota:backup',bad=(),later=None,alter=None):
@@ -121,6 +121,24 @@ class BootReviewTests(unittest.TestCase):
         self.metadata=bytes(self.image[11*2048:12*2048]);self.profile['boot_sha256']=review.digest(self.image)
         self.fixture()
         with self.assertRaises(ValueError):self.assess()
+
+    def test_several_builds_of_the_reviewed_spl_are_listed_by_their_digests(self):
+        """The owner's second player (2026-10-18) holds the same SPL built on another day: the profile
+        lists the reviewed images' digests, each saying what the build is."""
+        other=bytearray(self.image);other[0x381d:0x381d+5]=b'May07'
+        self.profile['boot_sha256']={review.digest(bytes(self.image)):'the first build',review.digest(bytes(other)):'the second'}
+        self.fixture();self.assertEqual(self.assess()['boot_sha256'],review.digest(bytes(self.image)))
+        self.image=other;self.fixture()
+        self.assertEqual(self.assess()['boot_sha256'],review.digest(bytes(other)))
+        self.image[0x100]^=1;self.fixture()
+        with self.assertRaisesRegex(ValueError,'Unreviewed bootloader bytes'):self.assess()
+        self.image[0x100]^=1;self.fixture()
+        for images in ({},{'x'*64:'bad digest'},{review.digest(bytes(other)):''},[review.digest(bytes(other))]):
+            self.profile['boot_sha256']=images
+            with self.subTest(images=images),self.assertRaisesRegex(ValueError,'Invalid reviewed boot image'):self.assess()
+        mine=json.loads((Path(__file__).resolve().parents[2]/'firmware/bootloaders/v2.57.json').read_text())
+        self.assertEqual(sorted(mine['boot_sha256']),['389703052c38dc279187a98e7a61094fd7f5c1d3103e8b929f2b11c69a68ae5a',
+                                                       'e307af01bd42eec743308cbc97936b1b74fc7c2c3ef488c8bf5ce8bb4b8d67bc'])
 
     def test_future_profile_selection_and_review_binding(self):
         base=copy.deepcopy(self.base);base['version']='9.99';p=copy.deepcopy(self.profile)

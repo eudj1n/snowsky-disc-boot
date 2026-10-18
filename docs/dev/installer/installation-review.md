@@ -232,10 +232,17 @@ python3 scripts/deployment/installation_review.py --known \
   evidence holds only for the entry it was read in.
 - The way back (`restore`) must be the stock image of the list, by its digest.
 - The write's ABI must be the one a player ran (`exercised` in
-  `firmware/images`: the sixth write's writer, SPL, metadata and staging
-  payloads, profiles, installer contract, image size, RAM regions and writer
-  entry), in place of a staging capture of the user's own player; every write
-  still runs the full staging checks before the writer.
+  `firmware/images`, by the chip of the player that ran it: the sixth write's
+  writer, SPL, metadata and staging payloads, profiles, installer contract,
+  image size, RAM regions and writer entry, on the XTX chip), in place of a
+  staging capture of the user's own player; every write still runs the full
+  staging checks before the writer. A chip no player ran the write on (the
+  HeYangTek HYF2GQ4U, 2026-10-18) is refused until a developer's acceptance:
+  `--accept-chip` (`install.py --accept-chip`) takes the ABI the chip does not
+  change (`known_images.EXERCISED_SHARED`) from another chip's record, names
+  the record in the bundle (`exercised.chip_exercised` false, `shared_from`,
+  `first_write`: the metadata payload and page policy to record), and the
+  write is that chip's acceptance, recorded in `exercised.<chip>` afterwards.
 
 The way back to stock from any state (owner, 2026-10-05/09): with
 `--allow-unknown` an image the review does not know is named so (`found`

@@ -1,13 +1,27 @@
 {
   "schema_version": 1,
   "version": "2.57",
-  "page_policy_sha256": "f9342f7f8f685ef369c3e4f2cf1db344a6eb2bff9d62e7126335c066e08b9b6a",
+  "page_policy_sha256": {
+    "xt26g02c": "2b8fdae6499a43134972a18ae37629407253a60a5c45ae5ecb8a9baac0a89a23",
+    "hyf2gq4u": "5946dae071c5c208e8027e65d5b95a42b79e9bd93a7d5c08c2e615ab8b8159f3"
+  },
   "partitions": [
-    {"name": "uboot", "offset": 0, "size": 2097152},
-    {"name": "ota", "offset": 179306496, "size": 1048576}
+    {
+      "name": "uboot",
+      "offset": 0,
+      "size": 2097152
+    },
+    {
+      "name": "ota",
+      "offset": 179306496,
+      "size": 1048576
+    }
   ],
   "selector_bytes": 256,
-  "selectors": {"ota:kernel": "rootfs", "ota:kernel2": "rootfs2"},
+  "selectors": {
+    "ota:kernel": "rootfs",
+    "ota:kernel2": "rootfs2"
+  },
   "session_budget_ms": 180000,
   "source_pins": {
     "etc/ota_bin/ota_local_method.sh": "1c739cf0e197293cd678a9bd064c5db8a4f93abec68d90529ca43c7411054394",

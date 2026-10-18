@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -30,7 +31,11 @@ class RestartRom(Rom):
         self.outcome, self.started = outcome, False
 
     def call(self, name, args):
-        if self.started and self.outcome == 'gone' and name in ('control_transfer', 'bulk_transfer', 'release_interface'):
+        if name == 'exit' and self.outcome == 'gone-stuck':
+            # libusb 1.0.30 on macOS: libusb_exit deadlocked as the player detached (2026-10-18).
+            self.events.append(name)
+            threading.Event().wait()
+        if self.started and self.outcome in ('gone', 'gone-stuck') and name in ('control_transfer', 'bulk_transfer', 'release_interface'):
             self.events.append(name)
             return LIBUSB_ERROR_NO_DEVICE
         if self.started and self.outcome == 'silent' and name == 'control_transfer':
@@ -72,7 +77,7 @@ class RestartTests(unittest.TestCase):
         sync.start()
         self.addCleanup(sync.stop)
 
-    def session(self, outcome='gone', clean=False):
+    def session(self, outcome='gone', clean=False, close_seconds=restart.CLOSE_SECONDS):
         rom = RestartRom(self.reader, self.transport, outcome)
         if clean:  # After the installation's write, in its entry: the SPL ran already.
             rom.put(self.transport['diagnostic_address'], audit.CLEAN)
@@ -82,8 +87,21 @@ class RestartTests(unittest.TestCase):
         (self.root/f'plan-{self.index}.json').write_text(json.dumps(dict(plan=plan, plan_sha256=restart.fingerprint(plan))))
         clock = FakeClock()
         result = restart.acquire(plan, restart.fingerprint(plan), self.base, self.cpu, self.reader, self.transport, self.inputs,
-                                 self.library, out, loader=lambda _: rom, clock=clock, sleep=clock.sleep)
+                                 self.library, out, loader=lambda _: rom, clock=clock, sleep=clock.sleep, close_seconds=close_seconds)
         return result, out, rom
+
+    def test_a_close_the_usb_library_never_returns_from_is_bounded(self):
+        """The second player's write (2026-10-18): the player left the bus, libusb_exit never returned, and
+        the installer waited for a result that was never written. The close has a bound; the result says so."""
+        self.addCleanup(restart.PENDING_CLOSES.clear)
+        result, out, rom = self.session('gone-stuck', clean=True, close_seconds=0.2)
+        self.assertEqual(result['status'], 'player-restarted', result.get('error'))
+        self.assertEqual(len(result['cleanup_errors']), 1)
+        self.assertIn('did not return from the close', result['cleanup_errors'][0])
+        self.assertEqual(len(restart.PENDING_CLOSES), 1)
+        self.assertTrue((out/'result.json').is_file(), 'the result is written although the close hangs')
+        self.assertEqual(json.loads((out/'result.json').read_text())['status'], 'player-restarted')
+        self.assertEqual(self.check(out)['outcome'], 'player-restarted')
 
     def check(self, out):
         return audit.audit(out, self.root/f'plan-{self.index}.json', self.build, self.diskos)

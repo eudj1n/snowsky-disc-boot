@@ -34,8 +34,13 @@ class Geometry:
         self.image_bytes = self.logical * self.block
 
     @classmethod
-    def for_profile(cls, profile):
-        chip = json.loads((ROOT/'firmware/chips/xt26g02c.json').read_text())
+    def for_profile(cls, profile, chip=None):
+        """The geometry of one of the firmware's chips (firmware/kernels/<v>.json, chips; default: the first)."""
+        kernel = json.loads((ROOT/'firmware/kernels'/f'v{profile["version"]}.json').read_text())
+        chip = chip or next(iter(kernel['chips']))
+        if chip not in kernel['chips']:
+            raise DeviceError(f'{chip} is not a chip of firmware {profile["version"]}')
+        chip = json.loads((ROOT/'firmware/chips'/f'{chip}.json').read_text())
         writer = json.loads((ROOT/'firmware/writers'/f'{profile["writer"]}.json').read_text())
         return cls(chip, writer)
 

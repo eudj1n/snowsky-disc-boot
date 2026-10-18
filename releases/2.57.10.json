@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "version": "2.57.10",
+  "firmware": "2.57",
+  "tag": "v2.57.10",
+  "buildId": "8eb15a998d85",
+  "files": {
+    "disc-menu-2.57.10.zip": {
+      "bytes": 177631,
+      "sha256": "cd07a1a39b540b8977b597ab972d055bc84c5db7f317afb4481b00c962fa270a"
+    },
+    "disc-boot-2.57.10-mips.tar.gz": {
+      "bytes": 343791,
+      "sha256": "b99190dce25408ebf8faeef13deff56bca9257e1c15fa2334285c497d4db0c3b"
+    },
+    "disc-usb-payloads-2.57.10.tar.gz": {
+      "bytes": 101315,
+      "sha256": "7248755b3db8f8e43e286b2eeaa95fb029b144408116934ac407078e5bdf3c88"
+    },
+    "disc-health-2.57.10.zip": {
+      "bytes": 136406,
+      "sha256": "47d795311e1731bc8175f8bcd3150c54f1e5018763c4bc99aa02888adf936d09"
+    },
+    "disc-network-2.57.10.zip": {
+      "bytes": 138839,
+      "sha256": "6eec51efbf1e1ebd929638217c6fee0a9b8f0932c0e6fda7881d368a2f87b185"
+    },
+    "disc-installer-2.57.10.tar.gz": {
+      "bytes": 2526737,
+      "sha256": "673175e8ea5bf3e4e697f0ad7e3b6cf2650b702bd77c6e53d990d212b75e3b8d"
+    }
+  },
+  "accepted": "no new image or binaries: build 8eb15a998d85 and image 9e6448dd as release 2.57.7's, whose guest and player acceptance stands (the menu, disc-health and disc-network byte for byte 2.57.9's). What is new ran on the owner's second player (HeYangTek HYF2GQ4U, factory-clean on FiiO's 2.57) on 2026-10-18 from this tree with install.py --boot-build --accept-chip: the identity session named the chip, the partition table, the bootloader (its SPL build admitted) and stock's first blocks read with clean ECC, the write once, the restart, and the new system's first start found the written image on its root (rootfs-check.json over the USB console); the USB payloads of the release are those builds byte for byte, the XTX ones 2.57.9's. The installer's archive unpacked outside the repository with an empty home: install.py --packages --dry-run staged its packages. The guest was not run again: nothing it runs changed",
+  "urls": {
+    "disc-menu-2.57.10.zip": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.10/disc-menu-2.57.10.zip",
+    "disc-boot-2.57.10-mips.tar.gz": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.10/disc-boot-2.57.10-mips.tar.gz",
+    "disc-usb-payloads-2.57.10.tar.gz": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.10/disc-usb-payloads-2.57.10.tar.gz",
+    "disc-health-2.57.10.zip": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.10/disc-health-2.57.10.zip",
+    "disc-network-2.57.10.zip": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.10/disc-network-2.57.10.zip",
+    "disc-installer-2.57.10.tar.gz": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.10/disc-installer-2.57.10.tar.gz"
+  },
+  "image": {
+    "name": "disc-boot-v257-review-only.bin",
+    "bytes": 100663296,
+    "sha256": "9e6448ddc429e3e156a862abf1e5cf5547f6f7294850b1233609a7edfc880c77",
+    "first_blocks_bytes": 262144,
+    "first_blocks_sha256": "68c9da0ed3a62c3dfccff5f650326dc06e8c6b68881e997598f18411e0c25632"
+  }
+}

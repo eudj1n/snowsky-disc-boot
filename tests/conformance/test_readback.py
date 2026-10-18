@@ -20,7 +20,7 @@ class ReadbackTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.base = rb.load_profile((ROOT/'firmware/active-version').read_text().strip())
         self.reader = rb.load_reader_profile(self.base)
-        self.policy = rb.load_metadata_policy(self.base, self.reader)
+        self.policy = rb.load_metadata_policy(self.base, self.reader, chip='xt26g02c')
         # Small geometry exercises the same ordering with distinct blocks/pages.
         self.policy['chip'].update(pages_per_block=2, blocks=32)
         self.policy['writer'].update(block_bytes=4096, start_block=3, logical_blocks=2, bad_block_reserve=2)

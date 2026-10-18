@@ -23,7 +23,11 @@ vendor signature. Decryption follows the reference repository's
 | Embedded DTB | 30,331 | `e7a7bbe3c43aa2c488831bab796904b97de63f710e27713274d719feb8fc0e6c` |
 
 `firmware/kernels/v2.57.json` binds the kernel to the selected firmware's rootfs
-fingerprint and writer profile. Future releases require their own reviewed
+fingerprint and writer profile, and names the chips a player of this firmware
+may hold (`chips`, each by its entry in the kernel's SPI-NAND table: the XTX
+XT26G02C and, since 2026-10-18, the HeYangTek HYF2GQ4U of the owner's second
+player, [chip review](nand-chip-review.md#a-second-chip-heyangtek-hyf2gq4u--2026-10-18)).
+The checker reads every entry. Future releases require their own reviewed
 kernel profile; the tool contains no firmware-version predicate.
 
 ```sh
@@ -62,6 +66,10 @@ merging must not be mistaken for a single function's body.
 | `xtx_mid0b_nand_init` | `0x8091ed94` | Manufacturer 0x0b registration and callbacks |
 | Chip entry / parameters | `0x808f6bc4` / `0x808f6c3c` | ID 0x12; 2048 main, 131072 block, 128 spare, 268435456 capacity |
 | `xtx_mid0b_get_cdt_params` | `0x804f0df8` | Commands for IDs 0x11/0x12 |
+| `yhy_midc9_nand_init` | `0x8091efc4` | Manufacturer 0xc9 (HeYangTek) registration: three chips at `0x808f6d50` |
+| HYF2GQ4U entry / parameters | `0x808f6d5c` / `0x808f6d98` | ID 0x52; 2048 main, 131072 block, 128 spare, 268435456 capacity |
+| `yhy_midc9_get_cdt_params` | `0x804f1358` | Commands for IDs 0x52/0xd4/0x21 |
+| HeYangTek `deal_ecc_status` | `0x804f12f0` | C0 bits 5:4: `10` and `11` are `-EBADMSG` |
 | XTX `deal_ecc_status` | `0x804f0d70` | C0 high-nibble error handling |
 | `nand_common_get_feature` | `0x804f1bf0` | C0 polling and chip ECC dispatch |
 | `ingenic_sfcnand_read_oob` | `0x804eed88` | Spare read through ordinary read path |

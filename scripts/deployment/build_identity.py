@@ -103,12 +103,16 @@ def main():
                         default='identity')
     parser.add_argument('--diskos', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--chip', help='The chip a page-reading payload is compiled for (required where the firmware '
+                        'names several: firmware/kernels/<v>.json, chips)')
     args = parser.parse_args()
     base = load_profile(args.version)
     p = load_reader_profile(base)
-    # The staging check (plan, stage 4c) reads no NAND: no page policy, no collector.
-    page_policy = load_metadata_policy(base, p) if args.mode not in ('identity', 'staging-check', 'restart') else None
-    collector = load_collector_policy(base, p, args.mode) if args.mode.startswith('rootfs') else None
+    # The staging check (plan, stage 4c) reads no NAND: no page policy, no collector. The identity
+    # payload reads the chip's ID only, for any chip.
+    page_policy = load_metadata_policy(base, p, chip=args.chip) if args.mode not in ('identity', 'staging-check', 'restart') else None
+    require(page_policy is not None or args.chip is None, 'Only a page-reading payload is compiled for a chip')
+    collector = load_collector_policy(base, p, args.mode, chip=args.chip) if args.mode.startswith('rootfs') else None
     for name, sha in p['source_pins'].items():
         require(digest(args.diskos/name) == sha, f'External input changed: {name}')
     output = args.output.resolve()
@@ -125,7 +129,8 @@ def main():
     binary = (output/'identity.bin').read_bytes()
     require(inspect_elf((output/'identity.elf').read_bytes(), p) == binary, 'ELF/raw image mismatch')
     report = {'schema_version': 1, 'version': base['version'], 'firmware_profile_sha256': fingerprint(base),
-              'purpose': args.mode, 'page_policy': page_policy, 'collector_policy': collector,
+              'purpose': args.mode, 'chip': page_policy['chip']['id'] if page_policy else None,
+              'page_policy': page_policy, 'collector_policy': collector,
               'reader_profile_sha256': fingerprint(p), 'reader_profile': p, 'toolchain': compiler,
               'source_sha256': {name: digest(ROOT/name) for name in source_paths()},
               'artifacts': {n: digest(output/n) for n in ('identity.elf', 'identity.bin', 'identity_layout.h', 'identity.ld')},

@@ -112,8 +112,8 @@ class CollectorTests(unittest.TestCase):
         self.cpu = collect.ram.load_probe_profile(self.base)
         self.reader = collect.ram.load_reader_profile(self.base)
         self.config = collect.ram.load_transport(self.base,self.reader)
-        self.policy = collect.ram.load_metadata_policy(self.base,self.reader)
-        self.scope = load_collector_policy(self.base,self.reader,'rootfs-probe')
+        self.policy = collect.ram.load_metadata_policy(self.base,self.reader, chip='xt26g02c')
+        self.scope = load_collector_policy(self.base,self.reader,'rootfs-probe', chip='xt26g02c')
         self.inputs = dict(spl=bytes(8056),payload=b'synthetic payload',build_sha256='a'*64,
                            page_policy=self.policy,collector_policy=self.scope,
                            completion=collect.ram.load_completion(self.base,self.config))
@@ -340,12 +340,12 @@ class CollectorTests(unittest.TestCase):
                   kernel_profile_sha256=collect.fingerprint(kernel))
         for folder,value in [('kernels',kernel),('pages',page)]:
             (profiles/folder/'v9.99.json').write_text(json.dumps(value))
-        policy=collect.ram.load_metadata_policy(base,reader,profiles)
-        scope=dict(self.scope['profile'],version='9.99',policy_sha256=collect.fingerprint(policy))
+        policy=collect.ram.load_metadata_policy(base,reader,profiles, chip='xt26g02c')
+        scope=dict(self.scope['profile'],version='9.99',policy_sha256=dict.fromkeys(policy['kernel']['chips'],collect.fingerprint(policy)))
         path=profiles/'collectors/v9.99.json';path.write_text(json.dumps(scope))
-        self.assertEqual(load_collector_policy(base,reader,'rootfs-probe',profiles)['first_page'],5120)
+        self.assertEqual(load_collector_policy(base,reader,'rootfs-probe',profiles, chip='xt26g02c')['first_page'],5120)
         scope['policy_sha256']=self.scope['profile']['policy_sha256'];path.write_text(json.dumps(scope))
-        with self.assertRaises(ValueError):load_collector_policy(base,reader,'rootfs-probe',profiles)
+        with self.assertRaises(ValueError):load_collector_policy(base,reader,'rootfs-probe',profiles, chip='xt26g02c')
 
     def test_deadline_and_call_budget_stop(self):
         with patch.object(collect.Journal,'begin',side_effect=collect.ram.probe.ProbeError('budget')):
@@ -364,18 +364,18 @@ class CollectorTests(unittest.TestCase):
             path=profiles/'collectors'/f'v{self.base["version"]}.json'
             path.write_text(json.dumps(dict(original,**{key:value})))
             with self.subTest(key=key),self.assertRaises(ValueError):
-                load_collector_policy(self.base,self.reader,'rootfs-probe',profiles)
+                load_collector_policy(self.base,self.reader,'rootfs-probe',profiles, chip='xt26g02c')
         prepare(self.reader,self.root,self.policy,self.scope)
         text=(self.root/'identity_layout.h').read_text()
         self.assertIn('#define ROOTFS_FIRST_PAGE 0x1400',text)
         self.assertIn('#define ROOTFS_END_PAGE 0x1480',text)
         self.assertNotIn('METADATA_PAGE',text)
         self.assertNotIn('ROOTFS_DIGEST',text,'only the digest payload links the digest batch')
-        digest_scope=load_collector_policy(self.base,self.reader,'rootfs-digest')
+        digest_scope=load_collector_policy(self.base,self.reader,'rootfs-digest', chip='xt26g02c')
         (self.root/'digest').mkdir()
         prepare(self.reader,self.root/'digest',self.policy,digest_scope)
         self.assertIn('#define ROOTFS_DIGEST 1',(self.root/'digest/identity_layout.h').read_text())
-        full=load_collector_policy(self.base,self.reader,'rootfs')
+        full=load_collector_policy(self.base,self.reader,'rootfs', chip='xt26g02c')
         self.assertEqual(full['end_page'],912*64)
 
 

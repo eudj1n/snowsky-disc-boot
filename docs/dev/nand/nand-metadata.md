@@ -34,9 +34,11 @@ For the XTX policy, the payload:
    It does not reset, unlock or change feature/protection registers.
 3. Issues one page-to-cache command `0x13` for the compiled page and polls C0
    within the existing finite readiness budget.
-4. Accepts C0's ECC nibble 0 through 8. Values 9 through E are rejected as
+4. Accepts C0's ECC nibble 0 through 8 (the XTX chip). Values 9 through E are rejected as
    unreviewed/reserved; F is uncorrectable. This is deliberately stricter than
-   the stock callback, which only rejects F.
+   the stock callback, which only rejects F. The HeYangTek chip's policy admits
+   its two status bits' `00` and `01`, as the stock callback does
+   ([chip review](nand-chip-review.md#a-second-chip-heyangtek-hyf2gq4u--2026-10-18)).
 5. Issues one `0x0b` cache read at column zero with eight dummy clocks. The SFC
    drains the exact 2,176 bytes in 32-word FIFO bursts under one poll budget.
    Early END, FIFO error and stalled progress fail without another command.

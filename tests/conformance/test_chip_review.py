@@ -46,6 +46,24 @@ class ChipReviewTests(unittest.TestCase):
             self.assertFalse(result[key])
         self.assertEqual(result['result_sha256'], hashlib.sha256(self.record()).hexdigest())
 
+    def test_the_second_chip_is_known_by_its_two_id_bytes(self):
+        """The owner's second player (2026-10-18): HeYangTek HYF2GQ4U, Read ID C9 52 C9, the XTX part's geometry,
+        the stock driver's ECC semantics (two status bits)."""
+        chip = review.load_chip('hyf2gq4u')
+        self.assertEqual((chip['id_prefix_hex'], chip['page_bytes'], chip['oob_bytes'], chip['blocks']), ('c952', 2048, 128, 2048))
+        self.assertEqual(chip['ecc'], dict(always_on=False, status_mask=0x30, status_shift=4, max_corrected=1, uncorrectable=2,
+                                           values=chip['ecc']['values']))
+        result = review.compare(self.request, self.record({13: 0xc952c9}), chip, self.writer)
+        self.assertEqual((result['chip_family'], result['id_wire_hex'], result['matched_id_bytes']), ('HeYangTek HYF2GQ4U', 'c952c9', 2))
+        for key in ('page_geometry_matches', 'factory_marker_location_matches', 'scan_fits_documented_chip',
+                    'ecc_disable_assumption_matches'):
+            self.assertTrue(result['checks'][key], key)
+        self.assertFalse(result['flash_ready'] or result['page_reads_admitted'])
+        with self.assertRaisesRegex(ValueError, 'Unknown chip ID'):
+            review.compare(self.request, self.record({13: 0xc952c9}), self.chip, self.writer)
+        with self.assertRaisesRegex(ValueError, 'Unknown chip ID'):
+            review.compare(self.request, self.record(), chip, self.writer)
+
     def test_only_two_id_bytes_are_documented(self):
         self.assertEqual(self.run_review(self.record({13: 0xab120b}))['matched_id_bytes'], 2)
         for value in (0x00e20b, 0x0012c8, 0x0100120b):

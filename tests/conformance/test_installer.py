@@ -164,18 +164,18 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(installer.run(), 1)
         self.assertIn('disc-menu 9: no local file with sha256', installer.report['status'])
 
-    def release_catalog(self, dist):
+    def release_catalog(self, dist, v='2.57.9'):
         """The test's catalog as a release names its own packages: this release's menu, disc-health and disc-network, by default."""
         import release
         catalog = json.loads(self.catalog.read_text())
         for entry in catalog['entries']:
             if entry['name'] == 'disc-menu':
-                menu = dist/'disc-menu-2.57.9.zip'
-                entry.update(version='2.57.9', source=dict(url=release.url('2.57.9', menu.name), sha256=digest(menu), size=menu.stat().st_size))
+                menu = dist/f'disc-menu-{v}.zip'
+                entry.update(version=v, source=dict(url=release.url(v, menu.name), sha256=digest(menu), size=menu.stat().st_size))
         for name in ('disc-health', 'disc-network'):
-            zipped = dist/f'{name}-2.57.9.zip'
-            catalog['entries'].append(dict(name=name, role='service', version='2.57.9', profiles=[PROFILE], bootApi=2, license='MIT',
-                                           default=True, source=dict(url=release.url('2.57.9', zipped.name), sha256=digest(zipped),
+            zipped = dist/f'{name}-{v}.zip'
+            catalog['entries'].append(dict(name=name, role='service', version=v, profiles=[PROFILE], bootApi=2, license='MIT',
+                                           default=True, source=dict(url=release.url(v, zipped.name), sha256=digest(zipped),
                                                                        size=zipped.stat().st_size),
                                            verified=dict(date='2026-10-09', acceptance='test')))
         return catalog
@@ -185,6 +185,8 @@ class InstallerTests(unittest.TestCase):
         it reads, this release's files and the default server and apps; run from where it was unpacked, its
         own packages come first (offline here) and the run is kept in the user's folder, not in the archive."""
         import release
+        # The archive's own release is its newest record: a number after every record of the repository.
+        v = '2.57.%d' % (max(int(p.stem.split('.')[2]) for p in (ROOT/'releases').glob('2.57.*.json')) + 1)
         mips = self.root/'mips'
         mips.mkdir()
         for name in ('disc-boot', 'disc-usb-console', 'disc-menu', 'disc-health', 'disc-network'):
@@ -192,31 +194,31 @@ class InstallerTests(unittest.TestCase):
         (mips/'build-id').write_text('b43034ba1e27\n')
 
         def payloads(firmware, diskos, output):
-            for name, source in release.payload_members(output):
+            for name, source in release.payload_members(output, release.firmware_chips(firmware)):
                 source.parent.mkdir(parents=True, exist_ok=True)
                 source.write_bytes(f'{firmware} {name}'.encode())
         dist = self.root/'dist'
-        release.build('2.57.9', dist, mips, diskos=self.root/'diskos', payloads=payloads)
-        catalog = self.release_catalog(dist)
+        release.build(v, dist, mips, diskos=self.root/'diskos', payloads=payloads)
+        catalog = self.release_catalog(dist, v)
         offered = self.root/'release-catalog.json'
         offered.write_text(json.dumps(catalog))
-        built = release.installer('2.57.9', dist, [self.local], False, catalog_path=offered, committed=False)
-        self.assertEqual(sorted(built['packages']), ['Disc Player-p1.zip', 'disc-boot-2.57.9-mips.tar.gz', 'disc-health-2.57.9.zip',
-                                                     'disc-menu-2.57.9.zip', 'disc-network-2.57.9.zip', 'disc-server-9.zip',
-                                                     'disc-usb-payloads-2.57.9.tar.gz'])
+        built = release.installer(v, dist, [self.local], False, catalog_path=offered, committed=False)
+        self.assertEqual(sorted(built['packages']), ['Disc Player-p1.zip', f'disc-boot-{v}-mips.tar.gz', f'disc-health-{v}.zip',
+                                                     f'disc-menu-{v}.zip', f'disc-network-{v}.zip', 'disc-server-9.zip',
+                                                     f'disc-usb-payloads-{v}.tar.gz'])
         unpacked = self.root/'unpacked'
-        with tarfile.open(dist/'disc-installer-2.57.9.tar.gz') as tar:
+        with tarfile.open(dist/f'disc-installer-{v}.tar.gz') as tar:
             names = tar.getnames()
             tar.extractall(unpacked, filter='data')
-        top = unpacked/'disc-installer-2.57.9'
+        top = unpacked/f'disc-installer-{v}'
         self.assertEqual(json.loads((top/'catalog/packages.json').read_text()), catalog)
         self.assertFalse([n for n in names if '/tests/' in n or '/docs/dev/' in n or n.endswith(('/AGENTS.md', '/scripts/test.sh'))])
-        self.assertIn('disc-installer-2.57.9/docs/install.md', names, 'the users\' guide, as the README links it')
-        self.assertIn('disc-installer-2.57.9/device/usbboot/staging.c', names, 'the payloads are checked by their sources')
+        self.assertIn(f'disc-installer-{v}/docs/install.md', names, 'the users\' guide, as the README links it')
+        self.assertIn(f'disc-installer-{v}/device/usbboot/staging.c', names, 'the payloads are checked by their sources')
         # Its own release is installer.json: the boot programs the image takes are this release's.
         found = subprocess.run([sys.executable, '-c', 'import sys; sys.path.insert(0, "scripts"); import release; '
                                 'print(release.boot_release("2.57")["version"])'], cwd=top, capture_output=True, text=True)
-        self.assertEqual(found.stdout.strip(), '2.57.9', found.stderr)
+        self.assertEqual(found.stdout.strip(), v, found.stderr)
         home = self.root/'home'
         env = {k: v for k, v in os.environ.items() if k not in ('XDG_DATA_HOME', 'DISC_EMULATOR')}
         env['HOME'] = str(home)
@@ -227,7 +229,7 @@ class InstallerTests(unittest.TestCase):
         report = next((data/'runs').glob('install-*/report.json'))
         self.assertEqual(json.loads(report.read_text())['status'], 'prepared')
         card = report.parent/'card'
-        self.assertEqual(json.loads((card/'.disc/boot/install/menu/package.json').read_text())['version'], '2.57.9')
+        self.assertEqual(json.loads((card/'.disc/boot/install/menu/package.json').read_text())['version'], v)
         self.assertTrue((card/'.disc/boot/install/controller/package.json').is_file() and (card/'Apps/Disc Player/app.json').is_file())
         self.assertEqual(json.loads((card/'.disc/boot/install/service/disc-health/package.json').read_text())['bootApi'], 2)
         self.assertEqual(json.loads((card/'.disc/boot/install/service/disc-network/package.json').read_text())['memory'], 32)
@@ -247,7 +249,7 @@ class InstallerTests(unittest.TestCase):
         (mips/'build-id').write_text('b43034ba1e27\n')
 
         def payloads(firmware, diskos, output):
-            for name, source in release.payload_members(output):
+            for name, source in release.payload_members(output, release.firmware_chips(firmware)):
                 source.parent.mkdir(parents=True, exist_ok=True)
                 source.write_bytes(f'{firmware} {name}'.encode())
         dist = self.root/'dist'

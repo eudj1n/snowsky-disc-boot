@@ -3,9 +3,15 @@
   "version": "2.57",
   "format": "ingenic-spl-ota-prefix-v1",
   "firmware_sha256": "9c24f384013ebd611f5527079196d8a8923453019efe354c137552774b847151",
-  "boot_policy_sha256": "e5f6651b937a6426a1ffb7182a12d054de935a804f31b62824563b2808daf72e",
+  "boot_policy_sha256": {
+    "xt26g02c": "ae6c0b6bd70c87315913f26352b718f3c2d996bfc10923d29c14a9f600ab8d04",
+    "hyf2gq4u": "7228574576af515270a5fad4189672d98ec4312f0c868d96b7c87f057a8bc25c"
+  },
   "boot_bytes": 2097152,
-  "boot_sha256": "389703052c38dc279187a98e7a61094fd7f5c1d3103e8b929f2b11c69a68ae5a",
+  "boot_sha256": {
+    "389703052c38dc279187a98e7a61094fd7f5c1d3103e8b929f2b11c69a68ae5a": "SPL 2013.07 (Jan 09 2026 - 15:02:40): the owner's first player (XTX XT26G02C), the reviewed bytes of 2026-09-24",
+    "e307af01bd42eec743308cbc97936b1b74fc7c2c3ef488c8bf5ce8bb4b8d67bc": "SPL 2013.07 (May 07 2026 - 17:14:17): the owner's second player (HeYangTek HYF2GQ4U), read 2026-10-18; the same bytes but the build date string at 0x381d-0x3832 and the header bytes 0x9 and 0xf"
+  },
   "image_base": 2990542848,
   "entry_offset": 2048,
   "selector_read_bytes": 128,

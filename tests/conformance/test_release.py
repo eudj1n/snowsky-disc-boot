@@ -29,7 +29,7 @@ class ReleaseTests(unittest.TestCase):
 
     def payloads(self, firmware, diskos, output):
         """A stand-in for the payloads' builds (Docker): the same bytes on every build."""
-        for name, source in release.payload_members(output):
+        for name, source in release.payload_members(output, release.firmware_chips(firmware)):
             source.parent.mkdir(parents=True, exist_ok=True)
             source.write_bytes(f'{firmware} {name}'.encode())
 
@@ -158,8 +158,11 @@ class ReleaseTests(unittest.TestCase):
                                                  sha256=hashlib.sha256(archive.read_bytes()).hexdigest()))
         self.assertEqual(chosen['payloads']['name'], 'disc-usb-payloads-2.57.2.tar.gz')
         built = release.extract_payloads(self.root/'dist-2.57.2'/chosen['payloads']['name'], '2.57.2', self.root/'payloads')
-        self.assertEqual((built/'rootfs-probe/identity.bin').read_bytes(), b'2.57 rootfs-probe/identity.bin')
-        self.assertTrue((built/'boot-evidence/uboot/identity.elf').is_file())
+        # The payloads of any chip at <mode>, each chip's at <chip>/<mode> (the second chip, 2026-10-18).
+        self.assertEqual((built/'identity/identity.bin').read_bytes(), b'2.57 identity/identity.bin')
+        self.assertEqual((built/'xt26g02c/rootfs-probe/identity.bin').read_bytes(), b'2.57 xt26g02c/rootfs-probe/identity.bin')
+        self.assertTrue((built/'hyf2gq4u/boot-evidence/uboot/identity.elf').is_file())
+        self.assertFalse((built/'rootfs-probe').exists())
         programs = release.extract_boot(archive, '2.57.2', chosen['buildId'], self.root/'boot')
         self.assertEqual(sorted(programs), ['disc-boot', 'disc-usb-console'])
         self.assertEqual(programs['disc-boot'].read_bytes(), (self.mips/'disc-boot').read_bytes())

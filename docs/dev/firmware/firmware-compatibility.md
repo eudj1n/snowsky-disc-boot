@@ -119,6 +119,20 @@ to the selected rootfs and writer profile. Re-run the
 the offline checker never admits page reads or writes, and a previous physical
 partition table must not be inferred from a new OTA kernel.
 
+A firmware names the chips its players may hold (`kernels/<v>.json`, `chips`:
+each a reviewed `chips/<id>.json` and its entry in the kernel's chip table; two
+for 2.57 since 2026-10-18, the [chip review](../nand/nand-chip-review.md)). The
+page policy (`metadata_policy.load_metadata_policy`) is built for one chip, and
+every profile that pins it (`pages`, `boot`, `collectors`, `preinstall`,
+`installers`, `bootloaders`, the `exercised` record of `images`) pins one
+fingerprint a chip. The tools that read pages take `--chip`, or the chip the
+build they are given was compiled for (`build.json`, `chip`); the installer's
+entry begins with the identity session, which names the player's chip by its
+Read ID, and the release's payloads carry each chip's builds (`<chip>/<mode>`).
+A new chip is a new profile, its ECC semantics reviewed in `metadata_policy.py`
+(`REVIEWED_ECC`), the kernel's entry for it, every pin, and a player's
+acceptance before the installer writes it (`exercised`).
+
 1. Inventory the official OTA in the reference repository. Record product,
    main/recovery version, chunk count, rootfs and binary fingerprints. Keep the
    previous profile and default intact while investigating the new release.

@@ -7,6 +7,9 @@
   "feature_mask": 80,
   "feature_value": 16,
   "reader_profile_sha256": "9772e4c738353b8c8a51b8ad10e803ab276cf692b4c40a6030ccde8c3cb51839",
-  "kernel_profile_sha256": "121a5a4fcdb9b1e7b5200992b7922f1a86f1dd45f5fa006d5306f3f1e14932d0",
-  "chip_profile_sha256": "7c42f3a4eb97dfb3dbb9d716d8364a2ef46baa712ad166e7ade0629311abcfb2"
+  "kernel_profile_sha256": "e9aaacb1b32a3489278451c080154f069d31734b8fc28f5a5a6d1b5a87669639",
+  "chip_profiles_sha256": {
+    "xt26g02c": "7c42f3a4eb97dfb3dbb9d716d8364a2ef46baa712ad166e7ade0629311abcfb2",
+    "hyf2gq4u": "5debd4040895215e8446fb0a58a332d5e64d2207e06f6f104f546ff724a28723"
+  }
 }

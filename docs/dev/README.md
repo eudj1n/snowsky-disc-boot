@@ -78,7 +78,9 @@ The chip, the kernel's view of it, and reading it through USB Boot:
 
 What happened in sessions on players: the writes to the owner's player
 ([first-write-observation](observations/first-write-observation.md), from
-2026-10-04) and the combined images' sessions of 2026-09-24.
+2026-10-04), the combined images' sessions of 2026-09-24, and the second
+player's acceptance ([second-player-acceptance](observations/second-player-acceptance.md),
+2026-10-18).
 
 Comments in the image's own sources (`device/boot`, `device/console`,
 `device/common`, `device/menu`, `device/scripts`) and in the scripts

@@ -56,7 +56,7 @@ class BootTests(unittest.TestCase):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)
         self.base=boot.ram.load_profile();self.reader=boot.ram.load_reader_profile(self.base)
         self.cpu=boot.ram.load_probe_profile(self.base);self.transport=boot.ram.load_transport(self.base,self.reader)
-        self.policy=boot.load_policy(self.base,self.reader)
+        self.policy=boot.load_policy(self.base,self.reader, chip='xt26g02c')
         self.policy['profile']['partitions'][0]['size']=2*131072
         fixture=test_kernel_review.KernelReviewTests();fixture.setUp()
         self.metadata=fixture.page({0:{1:2*131072}})
@@ -168,12 +168,12 @@ class BootTests(unittest.TestCase):
         for key,value in [('page_policy_sha256','0'*64),('session_budget_ms',True),('selector_bytes',4096),
                           ('writes_admitted',True),('selectors',{}),('partitions',[]),('source_pins',{})]:
             path.write_text(json.dumps({**original,key:value}))
-            with self.subTest(key=key),self.assertRaises(boot.ram.probe.ProbeError):boot.load_policy(base,reader,self.root/'firmware')
+            with self.subTest(key=key),self.assertRaises(boot.ram.probe.ProbeError):boot.load_policy(base,reader,self.root/'firmware', chip='xt26g02c')
         future={**base,'version':'9.99'}
         path.with_name('v9.99.json').write_text(json.dumps({**original,'version':'9.99'}))
         with patch.object(boot.ram,'load_metadata_policy',return_value=self.policy['page_policy']), \
              patch.object(boot,'load_collector_policy',return_value={'profile':self.policy['buffers']}):
-            self.assertEqual(boot.load_policy(future,reader,self.root/'firmware')['profile']['version'],'9.99')
+            self.assertEqual(boot.load_policy(future,reader,self.root/'firmware', chip='xt26g02c')['profile']['version'],'9.99')
 
     def test_synthetic_build_inputs_pins_elf_and_compiled_scope_manifest(self):
         diskos=self.root/'diskos';out=self.root/'build';out.mkdir();diskos.mkdir()
@@ -184,7 +184,8 @@ class BootTests(unittest.TestCase):
             reader['source_pins'][name]=boot.ram.sha(path.read_bytes())
         path=diskos/'src/usbboot/usbboot.c';path.parent.mkdir(parents=True);path.write_bytes(b'synthetic usb')
         cpu['reference_source_sha256']=boot.ram.sha(path.read_bytes())
-        manifest=dict(schema_version=1,purpose='boot-evidence',firmware_sha256=boot.fingerprint(self.base),
+        manifest=dict(schema_version=1,purpose='boot-evidence',chip=self.policy['page_policy']['chip']['id'],
+                      firmware_sha256=boot.fingerprint(self.base),
                       reader_sha256=boot.fingerprint(reader),policy_sha256=boot.fingerprint(self.policy),
                       sources=boot.source_pins(),scopes=boot.scopes(self.policy),nand_writes=False,artifacts={})
         for name in ('uboot','ota'):

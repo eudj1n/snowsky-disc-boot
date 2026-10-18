@@ -77,7 +77,10 @@ raw=metadata_results[0]; w=struct.unpack_from('<19I',raw)
 assert w[:4]==(0x3153524e,1,0x454e4f44,0)
 assert raw[16:32]==nonce and w[8:12]==(1,2,policy['page'],2176)
 assert w[12]==zlib.crc32(metadata+oob) and raw[76:2252]==metadata+oob and not any(raw[2252:])
-assert w[13:17]==(0x120b,0x38,0x10,0) and 2<=w[17]<=2*reader['nand_polls'] and w[18]==w[17]+8
+# The chip as the build's page policy names it (2026-10-18: two chips), its registers and ECC as that policy admits.
+assert 0<w[13]<0xffffff and w[13]&policy['id_mask']==policy['expected_id'] and max(w[14:17])<=255 and not w[16]&1
+assert w[15]&policy['feature_mask']==policy['feature_value'] and policy['ecc_admitted']>>((w[16]&policy['ecc_mask'])>>policy['ecc_shift'])&1
+assert 2<=w[17]<=2*reader['nand_polls'] and w[18]==w[17]+8
 poison=bytearray(hashlib.shake_256(nonce+b'writer-debug').digest(1024))
 for index in (0,9,16): struct.pack_into('<I',poison,index*4,0xeeeeeeee)
 poison=bytes(poison); assert poison==(run/'writer-debug-poison.bin').read_bytes()

@@ -5,8 +5,10 @@ the procedure gives it, keeps its output in the run folder and checks its result
 procedure does. The order, in one entry into USB Boot (plan, stage 6):
 
 1. the payloads the player runs from its RAM: the release's, else built here;
-2. the evidence of the entry, each read audited offline: the metadata page (the entry's only
-   SPL), the boot evidence and the identity probe (the first rootfs blocks);
+2. the evidence of the entry, each read audited offline: the player's NAND chip by its Read ID
+   (the entry's only SPL; the firmware names the chips a player may hold, and the payloads that
+   read pages are compiled for one), the metadata page, the boot evidence and the identity probe
+   (the first rootfs blocks);
 3. the review (installation_review.py --known): the image the player holds, known by its first
    blocks, or a refusal before anything is written; its package carries the plans and the run's
    admission (the tracked installer profile is not touched);
@@ -142,11 +144,28 @@ class Progress:
         return min(0.99, (calls_time + self.asked + min(current, 0.95 * expected_now)) / total)
 
 
+def chip_family(chip):
+    """The chip's name as its reviewed profile gives it (firmware/chips/<id>.json)."""
+    return load_json(ROOT/'firmware/chips'/f'{chip}.json').get('family', chip)
+
+
 class Reviewed:
-    def __init__(self, version, work, artifacts, diskos, libusb, run=subprocess.run, progress=None, payloads=None):
+    # The payloads a player of any chip runs: the identity session's, the staging check, the restart.
+    COMMON = (('identity', 'identity_build'), ('staging-check', 'staging_build'), ('restart', 'restart_build'))
+    # The payloads compiled for the player's chip (its page policy), once the identity session named it.
+    BY_CHIP = (('metadata', 'meta'), ('rootfs', 'readback_build'), ('rootfs-probe', 'probe_build'))
+
+    def __init__(self, version, work, artifacts, diskos, libusb, run=subprocess.run, progress=None, payloads=None,
+                 accept_chip=False):
         # payloads: the folder of the release's prebuilt payloads (plan, stage 6), else they are built here.
         self.payloads = Path(payloads) if payloads else None
+        # accept_chip: a developer's acceptance, the first write on a chip no player has run this write on.
+        self.accept_chip = accept_chip
         self.version, self.work, self.artifacts = version, Path(work), Path(artifacts)
+        # The player's chip (firmware/chips/<id>.json), named by the identity session (identify) from the
+        # identity payload, which reads any chip's ID and no page.
+        self.identity_build = self.work/'build-identity'
+        self.chip, self.chip_name = None, None
         self.diskos, self.libusb, self.run = str(diskos), str(libusb), run
         self.package, self.meta, self.readback_build = self.work/'package', self.work/'build-metadata', self.work/'build-readback'
         # The identity check's probe read (plan, stage 4c): the first rootfs blocks, in place of a backup.
@@ -221,9 +240,17 @@ class Reviewed:
         self.progress(label, 1.0, time.monotonic() - started)
         return subprocess.CompletedProcess(command, process.returncode, out, err)
 
-    def need(self, result, what):
+    def need(self, result, what, output=None):
+        """A tool's result, or the reason it failed: a session's (output: its folder) from its result.json,
+        else the last line it printed."""
         if result.returncode:
-            raise ReviewedError(f'{what} failed: ' + ((result.stderr or result.stdout).strip().splitlines() or ['no output'])[-1])
+            reason = None
+            if output and (Path(output)/'result.json').is_file():
+                try:
+                    reason = load_json(Path(output)/'result.json').get('error')
+                except ReviewedError:
+                    reason = None
+            raise ReviewedError(f'{what} failed: ' + (reason or ((result.stderr or result.stdout).strip().splitlines() or ['no output'])[-1]))
 
     def plan_sha(self, name):
         return load_json(self.package/name)['plan_sha256']
@@ -231,20 +258,31 @@ class Reviewed:
     # 1. Offline
 
     def builds(self):
-        """The payloads: the release's builds, by its digest (the tools still check them against the profiles
-        and sources), else built here."""
-        for mode, out in (('metadata', self.meta), ('rootfs', self.readback_build), ('staging-check', self.staging_build),
-                          ('rootfs-probe', self.probe_build), ('restart', self.restart_build)):
-            if self.payloads:
-                shutil.copytree(self.payloads/mode, out)
-                continue
-            self.need(self.tool('build_identity.py', '--version', self.version, '--mode', mode, '--diskos', self.diskos, '--output', out),
-                      f'the {mode} payload')
+        """The payloads of any chip: the release's builds, by its digest (the tools still check them against
+        the profiles and sources), else built here. The chip's follow its identity session (chip_builds)."""
+        for mode, attribute in self.COMMON:
+            self.payload(mode, getattr(self, attribute))
+
+    def chip_builds(self):
+        """The payloads compiled for the player's chip (the release's <chip>/<mode>), once identify named it."""
+        if not self.chip:
+            raise ReviewedError('the chip\'s payloads follow its identity session')
+        for mode, attribute in self.BY_CHIP:
+            self.payload(mode, getattr(self, attribute), self.chip)
+        self.payload('boot-evidence', self.boot_build, self.chip)
+
+    def payload(self, mode, out, chip=None):
+        folder = Path(chip)/mode if chip else Path(mode)
         if self.payloads:
-            shutil.copytree(self.payloads/'boot-evidence', self.boot_build)
-        else:
-            self.need(self.tool('boot_evidence.py', 'build', '--version', self.version, '--diskos', self.diskos,
-                                '--output', self.boot_build), 'the boot evidence\'s payloads')
+            shutil.copytree(self.payloads/folder, out)
+            return
+        chip_args = ['--chip', chip] if chip else []
+        if mode == 'boot-evidence':
+            self.need(self.tool('boot_evidence.py', 'build', '--version', self.version, *chip_args, '--diskos', self.diskos,
+                                '--output', out), 'the boot evidence\'s payloads')
+            return
+        self.need(self.tool('build_identity.py', '--version', self.version, '--mode', mode, *chip_args, '--diskos', self.diskos,
+                            '--output', out), f'the {mode} payload')
 
     # 2-3. The evidence of this entry, then the review
 
@@ -258,17 +296,41 @@ class Reviewed:
         plan = load_json(save)
         return plan['plan'], plan['plan_sha256']
 
+    def identify(self):
+        """The entry's first session (its SPL; about 10 s): the player's NAND chip by its Read ID, one of the chips
+        the firmware names (firmware/kernels/<v>.json), which selects the payloads compiled for it. An ID the
+        profiles do not know stops the run before any page is read."""
+        out = self.work/'chip'
+        args = ['--mode', 'identity', '--version', self.version, '--build', self.identity_build, '--diskos', self.diskos]
+        plan, approved = self.planned('ram_transport.py', *args, save=self.work/'chip-plan.json', what='the chip')
+        self.need(self.session('ram_transport.py', 'acquire', *args, '--libusb', self.libusb, '--approved-plan-sha256', approved,
+                               '--output', out, output=out, calls=expected_calls(plan), label='Reading the chip\'s ID'),
+                  'the chip\'s read', output=out)
+        result = load_json(out/'result.json')
+        if result.get('status') != 'nand-identity-observed':
+            raise ReviewedError('the chip\'s read did not finish')
+        identity = result.get('identity', {})
+        self.chip = identity.get('chip')
+        if not self.chip:
+            wire = int(identity.get('observed_id', 0)).to_bytes(3, 'little')
+            raise ReviewedError(f'the player\'s NAND chip (ID {wire[0]:02x} {wire[1]:02x}) is not one this installer knows: '
+                                'nothing is read further')
+        self.chip_name = chip_family(self.chip)
+        return self.chip
+
     def entry(self):
-        """The reads of the one entry before the review, each a session of its own: the partition table's page
-        (the entry's SPL; about 10 s), the boot evidence (the bootloader and the OTA selector; about 2 min) and the
-        identity probe (the first rootfs blocks; about 10 s), the last two audited offline."""
+        """The reads of the one entry before the review, each a session of its own: the chip's ID (the entry's
+        SPL; about 10 s, identify), the partition table's page (about 10 s), the boot evidence (the bootloader
+        and the OTA selector; about 2 min) and the identity probe (the first rootfs blocks; about 10 s), the
+        last two audited offline."""
+        self.identify()
+        self.chip_builds()
         out = self.work/'metadata'
-        plan, approved = self.planned('ram_transport.py', '--mode', 'metadata', '--version', self.version, '--build', self.meta,
-                                      '--diskos', self.diskos, save=self.work/'metadata-plan.json', what='the partition table')
-        self.need(self.session('ram_transport.py', 'acquire', '--mode', 'metadata', '--version', self.version, '--build', self.meta,
-                               '--diskos', self.diskos, '--libusb', self.libusb, '--approved-plan-sha256', approved, '--output', out,
-                               output=out, calls=expected_calls(plan), label='Reading the partition table'),
-                  'the partition table\'s read')
+        args = ['--mode', 'metadata', '--chip', self.chip, '--version', self.version, '--build', self.meta, '--diskos', self.diskos]
+        plan, approved = self.planned('ram_transport.py', *args, save=self.work/'metadata-plan.json', what='the partition table')
+        self.need(self.session('ram_transport.py', 'acquire', *args, '--libusb', self.libusb, '--approved-plan-sha256', approved,
+                               '--output', out, output=out, calls=expected_calls(plan), label='Reading the partition table'),
+                  'the partition table\'s read', output=out)
         if load_json(out/'result.json').get('status') != 'nand-metadata-observed':
             raise ReviewedError('the partition table\'s read did not finish')
         page = out/'metadata-main.bin'
@@ -278,12 +340,13 @@ class Reviewed:
                 ('identity', 'collect_rootfs.py', 'rootfs-probe', self.probe_build, 'audit_usb_probe.py', 'rootfs-probe-collected',
                  'Checking what the player holds')):
             mode_args = ['--mode', mode] if mode else []
-            args = [*mode_args, '--version', self.version, '--build', build, '--diskos', self.diskos, '--metadata-page', page]
+            args = [*mode_args, '--chip', self.chip, '--version', self.version, '--build', build, '--diskos', self.diskos,
+                    '--metadata-page', page]
             plan_file = self.work/f'{name}-plan.json'
             plan, approved = self.planned(tool, *args, save=plan_file, what=label.lower())
             out = self.work/name
             self.need(self.session(tool, 'acquire', *args, '--libusb', self.libusb, '--approved-plan-sha256', approved,
-                                   '--output', out, output=out, calls=expected_calls(plan), label=label), label.lower())
+                                   '--output', out, output=out, calls=expected_calls(plan), label=label), label.lower(), output=out)
             if load_json(out/'result.json').get('status') != status:
                 raise ReviewedError(f'{label.lower()} did not finish')
             self.need(self.tool(audit, '--run', out, '--plan', plan_file, '--build', build, '--diskos', self.diskos,
@@ -293,9 +356,11 @@ class Reviewed:
 
     def review_known(self, allow_unknown=False):
         """The review of this entry's evidence, offline in seconds: what the player holds (decision.json), or a
-        refusal (an image it does not know, another bootloader) before anything is written. allow_unknown: the way
-        back to stock from any state, where an image it does not know admits the restore only."""
+        refusal (an image it does not know, another bootloader, a chip no player has run the write on) before
+        anything is written. allow_unknown: the way back to stock from any state, where an image it does not know
+        admits the restore only."""
         self.need(self.tool('installation_review.py', '--known', *(['--allow-unknown'] if allow_unknown else []),
+                            *(['--accept-chip'] if self.accept_chip else []),
                             '--version', self.version, '--diskos', self.diskos,
                             '--artifacts', self.artifacts, '--build', self.meta, '--staging-build', self.staging_build,
                             '--readback-build', self.readback_build, '--boot-build', self.boot_build, '--probe-build', self.probe_build,
@@ -337,11 +402,11 @@ class Reviewed:
 
     def collect(self, output, metadata_page, label='Reading the player'):
         calls = expected_calls(load_json(self.package/'postwrite-collection-plan.json')['plan'])
-        self.need(self.session('collect_rootfs.py', 'acquire', '--mode', 'rootfs', '--version', self.version, '--build', self.readback_build,
-                               '--diskos', self.diskos, '--metadata-page', metadata_page, '--libusb', self.libusb,
-                               '--approved-plan-sha256', self.plan_sha('postwrite-collection-plan.json'), '--output', output,
-                               output=output, calls=calls, label=label),
-                  'the collection')
+        self.need(self.session('collect_rootfs.py', 'acquire', '--mode', 'rootfs', '--chip', self.chip, '--version', self.version,
+                               '--build', self.readback_build, '--diskos', self.diskos, '--metadata-page', metadata_page,
+                               '--libusb', self.libusb, '--approved-plan-sha256', self.plan_sha('postwrite-collection-plan.json'),
+                               '--output', output, output=output, calls=calls, label=label),
+                  'the collection', output=output)
         result = load_json(Path(output)/'result.json')
         if result.get('status') != 'rootfs-collected':
             raise ReviewedError(f'the collection ended {result.get("status")!r}')
@@ -350,14 +415,14 @@ class Reviewed:
     def compare(self, capture, metadata_page, image, image_sha, approved=None, name='exact'):
         """name: exact-<target> for a readback."""
         result = load_json(Path(capture)/'result.json')
-        plan = self.tool('readback.py', 'plan', '--version', self.version, '--metadata-page', metadata_page, '--image', image,
-                         '--image-sha256', image_sha, stdout=Path(capture)/f'{name}-plan.json')
+        plan = self.tool('readback.py', 'plan', '--chip', self.chip, '--version', self.version, '--metadata-page', metadata_page,
+                         '--image', image, '--image-sha256', image_sha, stdout=Path(capture)/f'{name}-plan.json')
         self.need(plan, 'the exact plan')
         if approved is not None and load_json(Path(capture)/f'{name}-plan.json') != load_json(approved):
             raise ReviewedError('the exact comparison plan differs from the approved one')
-        review = self.tool('readback.py', 'verify', '--version', self.version, '--metadata-page', metadata_page, '--image', image,
-                           '--image-sha256', image_sha, '--records', Path(capture)/'records.bin', '--nonce-hex', result['nonce_hex'],
-                           stdout=Path(capture)/f'{name}-review.json')
+        review = self.tool('readback.py', 'verify', '--chip', self.chip, '--version', self.version, '--metadata-page', metadata_page,
+                           '--image', image, '--image-sha256', image_sha, '--records', Path(capture)/'records.bin',
+                           '--nonce-hex', result['nonce_hex'], stdout=Path(capture)/f'{name}-review.json')
         self.need(review, 'the exact comparison')
         exact = load_json(Path(capture)/f'{name}-review.json')
         if exact.get('status') != 'saved-logical-readback-matches' or exact.get('nonce_hex') != result['nonce_hex'] \

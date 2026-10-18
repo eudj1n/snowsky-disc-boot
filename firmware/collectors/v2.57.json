@@ -2,7 +2,10 @@
   "schema_version": 1,
   "version": "2.57",
   "physical_qualified": false,
-  "policy_sha256": "f9342f7f8f685ef369c3e4f2cf1db344a6eb2bff9d62e7126335c066e08b9b6a",
+  "policy_sha256": {
+    "xt26g02c": "2b8fdae6499a43134972a18ae37629407253a60a5c45ae5ecb8a9baac0a89a23",
+    "hyf2gq4u": "5946dae071c5c208e8027e65d5b95a42b79e9bd93a7d5c08c2e615ab8b8159f3"
+  },
   "probe_blocks": 2,
   "request_address": 2695888896,
   "result_address": 2695954432,

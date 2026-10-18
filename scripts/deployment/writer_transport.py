@@ -19,6 +19,7 @@ import uuid
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from firmware_profile import PROFILES, artifact_names, fingerprint, sha
 from deployment import ram_transport as ram
+from deployment.metadata_policy import pinned_policy
 from deployment.collect_rootfs import Journal
 from deployment import review, installation_review
 
@@ -47,9 +48,9 @@ def run_layout(base, reader, transport, policy, path, bundle, directory=PROFILES
 
 def validate_layout(base, reader, transport, policy, layout):
     check(layout.get('schema_version') == 1 and layout.get('version') == base['version'], 'Invalid installer schema')
-    for name, value in [('firmware', base), ('page_policy', policy), ('transport', transport), ('writer', policy['writer'])]:
-        key = name+'_sha256' if name == 'page_policy' else name+'_profile_sha256'
-        check(layout.get(key) == fingerprint(value), f'Installer {name} audit changed')
+    for name, value in [('firmware', base), ('transport', transport), ('writer', policy['writer'])]:
+        check(layout.get(name+'_profile_sha256') == fingerprint(value), f'Installer {name} audit changed')
+    check(pinned_policy(layout.get('page_policy_sha256'), policy), 'Installer page_policy audit changed')
     check(type(layout.get('physical_write_admitted')) is bool, 'Missing physical write admission')
     binding=layout.get('installation_review_sha256')
     check((binding is None and not layout['physical_write_admitted']) or sha(binding),
@@ -384,7 +385,7 @@ def main():
     try:
         base = ram.load_profile(args.version); cpu = ram.load_probe_profile(base); reader = ram.load_reader_profile(base)
         transport = ram.load_transport(base,reader)
-        policy = ram.load_metadata_policy(base,reader)
+        policy = ram.load_metadata_policy(base,reader,chip=ram.build_chip(args.build))
         inputs = prepare(base,cpu,reader,transport,args.build,args.diskos,args.artifacts,args.target,
                          ram.read_file(args.metadata_page,policy['main_bytes']),args.staging_build)
         layout = load_layout(base,reader,transport,inputs['page_policy'])

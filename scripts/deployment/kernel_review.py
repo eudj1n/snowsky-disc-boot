@@ -35,8 +35,15 @@ def load_kernel_profile(firmware, writer, directory=PROFILES):
         require(sha(p.get(key)), f'Invalid {key}')
     for key in ('ximage_bytes', 'kernel_bytes', 'gzip_offset', 'dtb_bytes'):
         require(type(p.get(key)) is int and 0 < p[key] <= 32*1024*1024, f'Invalid {key}')
-    for key in ('kernel_base', 'chip_entry_address', 'dtb_address'):
+    for key in ('kernel_base', 'dtb_address'):
         require(type(p.get(key)) is int and 0 <= p[key] <= 0xffffffff, f'Invalid {key}')
+    # The chips the kernel's SPI-NAND table lists that a player of this firmware may hold, each by its
+    # entry (id, name, parameters) in that table: a player has one of them (metadata_policy.select_chip).
+    chips = p.get('chips')
+    require(isinstance(chips, dict) and 1 <= len(chips) <= 8 and
+            all(isinstance(k, str) and re.fullmatch('[a-z0-9-]+', k) and isinstance(v, dict) and set(v) == {'entry_address'}
+                and type(v['entry_address']) is int and 0 <= v['entry_address'] <= 0xffffffff for k, v in chips.items()),
+            'Invalid kernel chips')
     require(p.get('page_reads_admitted') is False and p.get('writes_admitted') is False,
             'Offline kernel review cannot admit hardware operations')
     m = p.get('metadata', {})
@@ -150,29 +157,44 @@ def key_pins(props):
     return keys
 
 
-def inspect_kernel(kernel, profile, chip):
+def inspect_chip(kernel, profile, name, chip):
+    """One chip's entry in the kernel's SPI-NAND table: its device ID and geometry against the chip profile."""
     def at(address, size):
         offset = address-profile['kernel_base']
         require(0 <= offset <= len(kernel)-size, 'Kernel address outside image')
         return kernel[offset:offset+size]
-    device_id, name_address, params_address = struct.unpack('<3I', at(profile['chip_entry_address'], 12))
+    require(name in profile['chips'] and chip['id'] == name, 'Chip is not in the kernel profile')
+    entry = profile['chips'][name]['entry_address']
+    device_id, name_address, params_address = struct.unpack('<3I', at(entry, 12))
     require(device_id == bytes.fromhex(chip['id_prefix_hex'])[1], 'Kernel device ID mismatch')
     name_bytes = at(name_address, 32)
     require(b'\0' in name_bytes, 'Unterminated kernel chip name')
-    name = name_bytes.split(b'\0', 1)[0].decode('ascii').strip()
+    kernel_name = name_bytes.split(b'\0', 1)[0].decode('ascii').strip()
     geometry = struct.unpack('<4I', at(params_address, 16))
     expected = (chip['page_bytes'], chip['page_bytes']*chip['pages_per_block'], chip['oob_bytes'],
                 chip['page_bytes']*chip['pages_per_block']*chip['blocks'])
     require(geometry == expected, 'Kernel/chip geometry mismatch')
+    return dict(kernel_chip_name=kernel_name, entry_address=entry, geometry=list(geometry),
+                metadata_page=profile['metadata']['offset']//chip['page_bytes'])
+
+
+def inspect_kernel(kernel, profile, chips):
+    """The kernel's chip table for every chip the profile names (chips: profiles by id), and its DTB:
+    the partition source and the keys."""
+    def at(address, size):
+        offset = address-profile['kernel_base']
+        require(0 <= offset <= len(kernel)-size, 'Kernel address outside image')
+        return kernel[offset:offset+size]
+    require(set(chips) == set(profile['chips']), 'Chip profiles differ from the kernel profile\'s chips')
+    found = {name: inspect_chip(kernel, profile, name, chips[name]) for name in profile['chips']}
     props = dtb_properties(at(profile['dtb_address'], profile['dtb_bytes']))
     node = profile['sfc_node']
     require(props.get((node, 'status')) == b'okay\0' and
             props.get((node, 'ingenic,use_ofpart_info')) == b'\0' and
             props.get((node, 'ingenic,spiflash_param_offset')) == bytes(4),
             'Unreviewed SFC partition source; repeat driver audit')
-    return dict(kernel_chip_name=name, geometry=list(geometry), partition_source='nand-metadata',
-                metadata_offset=profile['metadata']['offset'],
-                metadata_page=profile['metadata']['offset']//chip['page_bytes'], keys=key_pins(props))
+    return dict(chips=found, partition_source='nand-metadata',
+                metadata_offset=profile['metadata']['offset'], keys=key_pins(props))
 
 
 def review_partitions(page, profile, chip, writer):
@@ -219,22 +241,27 @@ def main():
     parser.add_argument('--version')
     parser.add_argument('--ximage', required=True, type=Path, help='Decrypted OTA xImage; never executed')
     parser.add_argument('--metadata-page', type=Path, help='Optional saved main-data page, no live acquisition')
+    parser.add_argument('--chip', help='The chip a saved page is parsed for (default: the only one the kernel names)')
     args = parser.parse_args()
     try:
         firmware = load_profile(args.version)
         writer = load_writer(firmware['writer'])
         profile = load_kernel_profile(firmware, writer)
-        chip = load_chip(profile['chip'])
+        chips = {name: load_chip(name) for name in profile['chips']}
         regular(args.ximage, profile['ximage_bytes'])
         kernel = extract_kernel(args.ximage.read_bytes(), profile)
-        report = inspect_kernel(kernel, profile, chip)
+        report = inspect_kernel(kernel, profile, chips)
         report.update(status='offline-kernel-reviewed', firmware_version=firmware['version'],
                       kernel_profile_sha256=fingerprint(profile), kernel_sha256=profile['kernel_sha256'],
                       ximage_sha256=profile['ximage_sha256'], physical_device_accessed=False,
                       page_reads_admitted=False, flash_ready=False)
         if args.metadata_page:
+            names = list(profile['chips'])
+            require(args.chip in names if args.chip else len(names) == 1,
+                    'Several reviewed chips (' + ', '.join(names) + '): name the saved page\'s with --chip')
+            chip = chips[args.chip or names[0]]
             regular(args.metadata_page, chip['page_bytes'])
-            report['saved_metadata'] = review_partitions(args.metadata_page.read_bytes(), profile, chip, writer)
+            report['saved_metadata'] = dict(chip=chip['id'], **review_partitions(args.metadata_page.read_bytes(), profile, chip, writer))
         print(json.dumps(report, indent=2))
     except (ValueError, OSError, KeyError, TypeError, struct.error, zlib.error) as error:
         parser.exit(1, f'Kernel review refused: {error}\n')

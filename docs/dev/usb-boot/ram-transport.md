@@ -35,7 +35,11 @@ It executes the payload once, waits, checks the CPU response, reads the full
 4,428-byte result and validates completion, request identity, error code, padding
 and plausible identity/counter/status fields. Only the payload's `0x9f` and `0x0f`
 NAND observations are admitted. There is no geometry/ECC admission or page read.
-Approval of `ram-check` does **not** approve this second mode.
+Approval of `ram-check` does **not** approve this second mode. The result names
+the player's chip among the firmware's reviewed ones (`identity.chip`, by the
+two documented ID bytes; `null` for a chip the profiles do not know): the
+installer's entry starts with this session (2026-10-18, the second chip), and
+the payloads that read pages are the ones compiled for that chip (`--chip`).
 
 The separate `metadata` mode repeats the RAM checks and executes a payload that
 can read only the profiled metadata page, with ID/ECC/OTP admission and retained

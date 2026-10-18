@@ -24,10 +24,13 @@ def digest(data):return hashlib.sha256(data).hexdigest()
 def validate_profile(p,base,policy):
     require(p.get('schema_version')==1 and p.get('format')=='ingenic-spl-ota-prefix-v1'
             and p.get('version')==base['version'] and p.get('firmware_sha256')==fingerprint(base)
-            and p.get('boot_policy_sha256')==fingerprint(policy),'Bootloader review/profile mismatch')
+            and isinstance(p.get('boot_policy_sha256'),dict)
+            and set(p['boot_policy_sha256'])==set(policy['page_policy']['kernel']['chips'])
+            and p['boot_policy_sha256'].get(policy['page_policy']['chip']['id'])==fingerprint(policy),
+            'Bootloader review/profile mismatch')
     require(p.get('writes_admitted') is False,'Offline review cannot admit writes')
     require(type(p.get('boot_bytes')) is int and p['boot_bytes']==policy['profile']['partitions'][0]['size']
-            and sha(p.get('boot_sha256')),'Invalid reviewed boot image')
+            and (sha(p.get('boot_sha256')) or boot_images(p)),'Invalid reviewed boot image')
     require(p.get('selector_read_bytes')==128 and p.get('selector_storage_bytes')==256,
             'Unreviewed selector read/storage contract')
     prefix=p.get('secondary_prefix');tokens=p.get('accepted_tokens')
@@ -48,6 +51,16 @@ def validate_profile(p,base,policy):
             and type(p.get('entry_offset')) is int and 0<=p['entry_offset']<p['boot_bytes']
             and p['image_base']+p['boot_bytes']<=0x100000000,'Invalid SPL address range')
     return p
+
+
+def boot_images(p):
+    """The reviewed boot images' digests: one (boot_sha256 a string), or several builds of the same SPL
+    ({digest: what the build is}, 2026-10-18: the owner's players' two, which differ in the build date
+    and the header's two bytes that follow it; bootloader-review.md)."""
+    images=p.get('boot_sha256')
+    if isinstance(images,str): return {images} if sha(images) else set()
+    return set(images) if isinstance(images,dict) and images and all(
+        sha(k) and isinstance(v,str) and v for k,v in images.items()) else set()
 
 
 def load_bootloader(base,policy,directory=PROFILES):
@@ -100,7 +113,7 @@ def assess(path,nonce,base,reader,policy,profile):
             image+=data[:main]
         ota_good,ota_bad=markers(ota)
         require(not stream.read(1),'Extra boot records')
-    require(len(image)==profile['boot_bytes'] and digest(image)==profile['boot_sha256'],
+    require(len(image)==profile['boot_bytes'] and digest(image) in boot_images(profile),
             'Unreviewed bootloader bytes; repeat RE before acceptance')
     table=boot.ram.review_partitions(metadata,page['kernel'],page['chip'],page['writer'])
     parts=table['partitions']
@@ -144,10 +157,11 @@ def assess(path,nonce,base,reader,policy,profile):
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--version')
     p.add_argument('--records',required=True,type=Path);p.add_argument('--nonce-hex',required=True)
+    p.add_argument('--chip',help='The player\'s chip (required where the firmware names several)')
     a=p.parse_args()
     try:
         base=boot.ram.load_profile(a.version);reader=boot.ram.load_reader_profile(base)
-        policy=boot.load_policy(base,reader);profile=load_bootloader(base,policy)
+        policy=boot.load_policy(base,reader,chip=a.chip);profile=load_bootloader(base,policy)
         print(json.dumps(assess(a.records,bytes.fromhex(a.nonce_hex),base,reader,policy,profile),indent=2))
     except (ValueError,OSError,KeyError,TypeError) as e:p.exit(1,f'Boot review refused: {e}\n')
 
