@@ -7,7 +7,7 @@ files on the [releases page](https://github.com/eudj1n/snowsky-disc-boot/release
 Entries stay short; why is in the developer documents (`docs/dev/`), how in
 the commits.
 
-## Unreleased
+## [2.57.10] — 2026-10-18
 
 - Players with a HeYangTek HYF2GQ4U memory chip (FiiO puts at least two chips
   in the DISC; the second one was found in a new player on 2026-10-18): the
