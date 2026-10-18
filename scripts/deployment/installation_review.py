@@ -154,7 +154,7 @@ def assemble(base,cpu,reader,transport,layout,inputs,restore_path,captures,libus
               and p.get('probe_profile_sha256',p.get('cpu_profile_sha256'))==fingerprint(cpu)
               and p['transport_profile_sha256']==fingerprint(transport)
               and p['metadata_sha256']==meta_hash,'Evidence firmware/reader/metadata mismatch')
-    bp=boot_evidence.load_policy(base,reader);profile=boot_review.load_bootloader(base,bp)
+    bp=boot_evidence.load_policy(base,reader,chip=policy['chip']['id']);profile=boot_review.load_bootloader(base,bp)
     boot=boot_review.assess(captures['boot']/'records.bin',bytes.fromhex(results['boot']['nonce_hex']),base,reader,bp,profile)
     check(boot['selected_route']=='primary' and boot['selected_rootfs']==policy['kernel']['metadata']['target']
           and boot['metadata_sha256']==meta_hash,'Unqualified installation boot target')
@@ -214,7 +214,21 @@ def same_entry(boot,probe):
           'The boot evidence and the identity probe are not of one USB Boot entry')
 
 
-def assemble_known(base,cpu,reader,transport,layout,inputs,captures,plans,libusb,known,allow_unknown=False):
+def exercised_for(known,chip,accept_chip=False):
+    """The write's ABI a player ran on this chip (known['exercised'][chip]). accept_chip: no player
+    ran it on this chip yet (its first write, the developer's acceptance): the ABI the chip does not
+    change is taken from another chip's record (known_images.EXERCISED_SHARED), and the record says so."""
+    records=known['exercised']
+    if chip in records:
+        return dict(records[chip],chip=chip,chip_exercised=True)
+    check(accept_chip,f'No player has run this write on a {chip} chip yet: this installer does not write it; '
+          'a developer\'s acceptance (--accept-chip) is its first write, recorded in firmware/images afterwards')
+    other=next(iter(records))
+    return dict({k:v for k,v in records[other].items() if k in known_images.EXERCISED_SHARED},
+                chip=chip,chip_exercised=False,shared_from=other)
+
+
+def assemble_known(base,cpu,reader,transport,layout,inputs,captures,plans,libusb,known,allow_unknown=False,accept_chip=False):
     """The installation without a history (plan, stage 6): its evidence read in the entry of the
     write. The boot evidence (the bootloader selects the primary rootfs) and the identity probe (the
     first rootfs blocks: an image known by their digest, stock or one of ours, so the player runs the
@@ -222,7 +236,8 @@ def assemble_known(base,cpu,reader,transport,layout,inputs,captures,plans,libusb
     (known['exercised']), in place of a staging capture of this player. plans: the boot evidence's and
     the probe's plans computed now from the reviewed builds, which the sessions must have carried out.
     allow_unknown: the way back to stock from any state (owner, 2026-10-05/09): an image it does not know is
-    named so (found 'unknown'), and the bundle then admits only the restore (validate_binding)."""
+    named so (found 'unknown'), and the bundle then admits only the restore (validate_binding).
+    accept_chip: the first write on a chip no player ran it on (exercised_for)."""
     results={};pins={}
     for kind in ('boot','probe'):
         results[kind],pins[kind]=evidence(captures[kind],kind)
@@ -236,7 +251,7 @@ def assemble_known(base,cpu,reader,transport,layout,inputs,captures,plans,libusb
         check(p['firmware_profile_sha256']==fingerprint(base) and p['reader_profile_sha256']==fingerprint(reader)
               and p['probe_profile_sha256']==fingerprint(cpu) and p['transport_profile_sha256']==fingerprint(transport)
               and p['metadata_sha256']==meta_hash,'Evidence firmware/reader/metadata mismatch')
-    bp=boot_evidence.load_policy(base,reader);profile=boot_review.load_bootloader(base,bp)
+    bp=boot_evidence.load_policy(base,reader,chip=policy['chip']['id']);profile=boot_review.load_bootloader(base,bp)
     boot=boot_review.assess(captures['boot']/'records.bin',bytes.fromhex(results['boot']['nonce_hex']),base,reader,bp,profile)
     check(boot['selected_route']=='primary' and boot['selected_rootfs']==policy['kernel']['metadata']['target']
           and boot['metadata_sha256']==meta_hash,'Unqualified installation boot target')
@@ -258,22 +273,31 @@ def assemble_known(base,cpu,reader,transport,layout,inputs,captures,plans,libusb
     check(images['restore']['sha256']==known['stock']['sha256'] and images['restore']['bytes']==known['stock']['bytes'],
           'The way back is not the reviewed stock image')
     from deployment.writer_transport import validate_layout
-    regions=validate_layout(base,reader,transport,policy,layout);exercised=known['exercised']
-    for key,value in dict(writer_sha256=ram.sha(current['writer']),spl_sha256=ram.sha(current['spl']),
-                          metadata_payload_sha256=ram.sha(current['payload']),
-                          staging_payload_sha256=ram.sha(current['staging_payload']),
-                          firmware_profile_sha256=fingerprint(base),cpu_profile_sha256=fingerprint(cpu),
-                          reader_profile_sha256=fingerprint(reader),transport_profile_sha256=fingerprint(transport),
-                          page_policy_sha256=fingerprint(policy),completion_profile_sha256=fingerprint(current['completion']),
-                          installer_contract_sha256=fingerprint(layout_contract(layout)),image_bytes=len(current['image']),
-                          ram_regions=[dict(name=n,address=a,bytes=s) for n,a,s in regions],
-                          writer_entry=reader['load_address']+layout['writer_entry_offset']).items():
-        check(exercised.get(key)==value,'No player has run this write\'s '+key)
+    regions=validate_layout(base,reader,transport,policy,layout)
+    chip=policy['chip']['id']
+    for result in results.values():
+        check(result['plan'].get('chip')==chip,'Evidence read for another chip')
+    exercised=exercised_for(known,chip,accept_chip)
+    expected=dict(writer_sha256=ram.sha(current['writer']),spl_sha256=ram.sha(current['spl']),
+                  metadata_payload_sha256=ram.sha(current['payload']),
+                  staging_payload_sha256=ram.sha(current['staging_payload']),
+                  firmware_profile_sha256=fingerprint(base),cpu_profile_sha256=fingerprint(cpu),
+                  reader_profile_sha256=fingerprint(reader),transport_profile_sha256=fingerprint(transport),
+                  page_policy_sha256=fingerprint(policy),completion_profile_sha256=fingerprint(current['completion']),
+                  installer_contract_sha256=fingerprint(layout_contract(layout)),image_bytes=len(current['image']),
+                  ram_regions=[dict(name=n,address=a,bytes=s) for n,a,s in regions],
+                  writer_entry=reader['load_address']+layout['writer_entry_offset'])
+    for key,value in expected.items():
+        if exercised['chip_exercised'] or key in known_images.EXERCISED_SHARED:
+            check(exercised.get(key)==value,'No player has run this write\'s '+key)
+    if not exercised['chip_exercised']:
+        # What this first write would record once it ran (the developer's acceptance).
+        exercised.update(first_write={k:expected[k] for k in ('metadata_payload_sha256','page_policy_sha256')})
     check(context(base,cpu,reader,transport,layout,current)==
           context(base,cpu,reader,transport,layout,inputs['restore']),'Candidate/restore contexts differ')
     found=dict(kind=kind,**{k:found[k] for k in ('name','bytes','sha256','first_blocks_sha256','release') if k in found})
     images_admitted=['restore'] if kind=='unknown' else sorted(images)
-    source_state=dict(kind='known-image',found=found,first_blocks_sha256=first['image_sha256'],
+    source_state=dict(kind='known-image',chip=chip,found=found,first_blocks_sha256=first['image_sha256'],
                       first_blocks=dict(bytes=first['image_bytes'],bad_blocks=first['bad_blocks'],
                                         logical_to_physical=first['logical_to_physical']),
                       known_images_sha256=fingerprint(known),same_entry_required=True,new_image_staged=False,
@@ -300,13 +324,15 @@ def main():
         p.add_argument('--'+n,type=Path)
     p.add_argument('--allow-unknown',action='store_true',help='With --known, the way back to stock from any state: '
                    'an image it does not know admits the restore only')
+    p.add_argument('--accept-chip',action='store_true',help='With --known, the first write on a chip no player has run '
+                   'this write on (a developer\'s acceptance): the ABI the chip does not change is taken as exercised')
     a=p.parse_args()
     installed=(a.previous_review,a.previous_image,a.write_capture,a.readback_capture)
     fresh=(a.probe_capture,a.boot_build,a.probe_build)
     if a.known:
         if not all(fresh) or any(installed) or a.stage_capture or a.stock_capture:
             p.error('known-image review takes the probe capture and both builds, and no history, stock or stage capture')
-    elif any(fresh) or not a.stock_capture or a.allow_unknown:
+    elif any(fresh) or not a.stock_capture or a.allow_unknown or a.accept_chip:
         p.error('a review with a history takes the stock capture, and no probe capture or its builds')
     elif any(installed):
         if not all(installed) or a.stage_capture:
@@ -316,7 +342,8 @@ def main():
     try:
         from deployment import writer_transport as writer
         base=ram.load_profile(a.version);cpu=ram.load_probe_profile(base);reader=ram.load_reader_profile(base)
-        transport=ram.load_transport(base,reader);policy=ram.load_metadata_policy(base,reader)
+        transport=ram.load_transport(base,reader)
+        chip=ram.build_chip(a.build);policy=ram.load_metadata_policy(base,reader,chip=chip)
         layout=writer.load_layout(base,reader,transport,policy)
         metadata=ram.read_file(a.boot_capture/'metadata-main.bin',policy['main_bytes'])
         ri=ram.prepare_inputs(base,cpu,reader,transport,a.readback_build,a.diskos,'rootfs')
@@ -326,7 +353,7 @@ def main():
                 for k in ('candidate','restore')}
         for value in inputs.values():value['readback_plan']=rp
         if a.known:
-            bp=boot_evidence.load_policy(base,reader)
+            bp=boot_evidence.load_policy(base,reader,chip=chip)
             bi=boot_evidence.prepare(base,cpu,reader,transport,bp,a.diskos,a.boot_build,metadata)
             bi['completion']=ram.load_completion(base,transport)
             pi=ram.prepare_inputs(base,cpu,reader,transport,a.probe_build,a.diskos,'rootfs-probe')
@@ -334,7 +361,7 @@ def main():
             plans=dict(boot=boot_evidence.make_plan(base,cpu,reader,transport,bp,bi),
                        probe=collect_rootfs.make_plan(base,cpu,reader,transport,pi,metadata))
             bundle=assemble_known(base,cpu,reader,transport,layout,inputs,dict(boot=a.boot_capture,probe=a.probe_capture),
-                                  plans,a.libusb,known_images.load(base['version']),a.allow_unknown)
+                                  plans,a.libusb,known_images.load(base['version']),a.allow_unknown,a.accept_chip)
         else:
             bundle=assemble(base,cpu,reader,transport,layout,inputs,a.artifacts/inputs['restore']['image_name'],
                             dict(boot=a.boot_capture,stock=a.stock_capture,stage=a.stage_capture),a.libusb,

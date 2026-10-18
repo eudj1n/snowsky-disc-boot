@@ -20,7 +20,7 @@ from firmware_profile import PROFILES, fingerprint, load_profile, load_probe_pro
 from deployment import rom_probe as probe
 from deployment.build_identity import inspect_elf, source_paths
 from deployment.nand_records import encode_request, decode_result
-from deployment.metadata_policy import load_metadata_policy
+from deployment.metadata_policy import load_metadata_policy, load_chips, match_chip
 from deployment.collector_policy import load_collector_policy
 from deployment.kernel_review import review_partitions
 
@@ -91,15 +91,30 @@ def load_completion(base, transport, directory=PROFILES):
     return p
 
 
-def prepare_inputs(base, cpu, reader, transport, build, diskos, mode='identity'):
+def build_chip(build):
+    """The chip a build's page policy was compiled for (its id), None for a build without one."""
+    m = json.loads(read_file(Path(build)/'build.json', 65536))
+    policy = m.get('page_policy')
+    chip = policy.get('chip', {}).get('id') if isinstance(policy, dict) else None
+    check(chip is None or (isinstance(chip, str) and chip), 'Invalid build chip')
+    return chip
+
+
+def prepare_inputs(base, cpu, reader, transport, build, diskos, mode='identity', chip=None):
+    """chip: the chip the build must be compiled for (default: the build's own, checked against the
+    reviewed profiles either way)."""
     raw = read_file(build/'build.json', 65536)
     m = json.loads(raw)
     check(m.get('schema_version') == 1 and m.get('version') == base['version']
           and m.get('firmware_profile_sha256') == fingerprint(base)
           and m.get('reader_profile_sha256') == fingerprint(reader)
           and m.get('reader_profile') == reader, 'Build profile mismatch')
-    page_policy = load_metadata_policy(base, reader) if mode in ('metadata', 'rootfs-probe', 'rootfs', 'rootfs-digest') else None
-    collector = load_collector_policy(base, reader, mode) if mode.startswith('rootfs') else None
+    needs_policy = mode in ('metadata', 'rootfs-probe', 'rootfs', 'rootfs-digest')
+    if needs_policy:
+        chip = chip or build_chip(build)
+        check(chip is not None, 'The build names no chip')
+    page_policy = load_metadata_policy(base, reader, chip=chip) if needs_policy else None
+    collector = load_collector_policy(base, reader, mode, chip=chip) if mode.startswith('rootfs') else None
     # The staging check (plan, stage 4c) and the restart (plan, stage 7) are memory only: no page policy, no
     # collector, no NAND opcode.
     staging = mode in ('staging-check', 'restart')
@@ -134,6 +149,8 @@ def prepare_inputs(base, cpu, reader, transport, build, diskos, mode='identity')
     result = dict(spl=spl, payload=payload, build_sha256=sha(raw))
     if page_policy: result['page_policy'] = page_policy
     if collector: result['collector_policy'] = collector
+    # The identity session names the player's chip among the reviewed ones (observe).
+    if mode == 'identity': result['chips'] = load_chips(base)
     return result
 
 
@@ -155,6 +172,8 @@ def plan(base, cpu, reader, transport, inputs, mode):
                     'scripts/deployment/ram_transport.py', 'scripts/deployment/rom_probe.py',
                     'scripts/deployment/nand_records.py')},
                 payload_sha256=sha(inputs['payload']), target={'vid':cpu['vid'], 'pid':cpu['pid'], 'matches':1},
+                # The chip the page policy is built for; an identity session names the player's instead.
+                chip=page_policy['chip']['id'] if page_policy else None,
                 metadata=(dict(page=page_policy['page'], bytes=page_policy['main_bytes']+page_policy['oob_bytes'],
                                policy_sha256=fingerprint(page_policy)) if page_policy else None),
                 interface=0, bulk_out=1, bulk_in=129, vendor_requests=[0, 1, 2, 4],
@@ -489,6 +508,9 @@ def observe(session, reader, inputs, mode, nonce, record):
           and all(0 <= decoded[k] <= 255 for k in ('protect', 'feature', 'status'))
           and not decoded['status'] & 1, 'Impossible identity observation')
     decoded.pop('data')
+    # The player's chip among the reviewed ones (metadata_policy.match_chip), or None: an unknown
+    # chip is an observation too, and the reason the installer stops before any page is read.
+    decoded['chip'] = match_chip(decoded['observed_id'], inputs.get('chips', {}))
     record['identity'] = decoded
     record['status'] = 'nand-identity-observed'
 
@@ -549,16 +571,19 @@ def main():
     parser.add_argument('--libusb', type=Path)
     parser.add_argument('--output', type=Path)
     parser.add_argument('--approved-plan-sha256')
+    parser.add_argument('--chip', help='The chip the metadata build must be compiled for (default: the build\'s own)')
     args = parser.parse_args()
     extras = (args.libusb, args.output, args.approved_plan_sha256)
     if (args.action == 'plan' and any(x is not None for x in extras)) or (
             args.action == 'acquire' and not all(x is not None for x in extras)):
         parser.error('acquire requires libusb, fresh output and approved-plan-sha256; plan accepts none of them')
+    if args.chip and args.mode != 'metadata':
+        parser.error('only the metadata mode takes a chip; the identity session names the player\'s')
     try:
         base = load_profile(args.version)
         cpu, reader = load_probe_profile(base), load_reader_profile(base)
         config = load_transport(base, reader)
-        inputs = prepare_inputs(base, cpu, reader, config, args.build, args.diskos, args.mode)
+        inputs = prepare_inputs(base, cpu, reader, config, args.build, args.diskos, args.mode, args.chip)
         intent = plan(base, cpu, reader, config, inputs, args.mode)
         if args.action == 'plan':
             result = dict(plan=intent, plan_sha256=fingerprint(intent))

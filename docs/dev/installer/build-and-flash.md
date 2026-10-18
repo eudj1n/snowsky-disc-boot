@@ -40,6 +40,9 @@ export DISC_LIBUSB=/opt/homebrew/Cellar/libusb/1.0.30/lib/libusb-1.0.0.dylib
 export DISC_RUN=next-reviewed-update-001
 export DISC_ARTIFACTS="$PWD/work/$DISC_RUN-artifacts"
 export DISC_PACKAGE="$PWD/work/$DISC_RUN-package"
+# The player's chip, as its identity session names it (ram_transport.py --mode identity,
+# result.json identity.chip): the firmware's chips are firmware/kernels/v<v>.json, chips.
+export DISC_CHIP=xt26g02c
 export DISC_META_BUILD="$PWD/build/$DISC_RUN-metadata"
 export DISC_READ_BUILD="$PWD/build/$DISC_RUN-readback"
 test -d "$DISC_DISKOS"
@@ -148,9 +151,9 @@ export DISC_PREVIOUS_IMAGE="$PWD/work/combined-003-artifacts/disc-web-v257-usb-e
 export DISC_PREVIOUS_WRITE="$PWD/work/combined-003-write"
 export DISC_PREVIOUS_READ="$PWD/work/combined-003-read"
 python3 scripts/deployment/build_identity.py --version "$DISC_VERSION" \
-  --mode metadata --diskos "$DISC_DISKOS" --output "$DISC_META_BUILD"
+  --mode metadata --chip "$DISC_CHIP" --diskos "$DISC_DISKOS" --output "$DISC_META_BUILD"
 python3 scripts/deployment/build_identity.py --version "$DISC_VERSION" \
-  --mode rootfs --diskos "$DISC_DISKOS" --output "$DISC_READ_BUILD"
+  --mode rootfs --chip "$DISC_CHIP" --diskos "$DISC_DISKOS" --output "$DISC_READ_BUILD"
 python3 scripts/deployment/installation_review.py --version "$DISC_VERSION" \
   --diskos "$DISC_DISKOS" --artifacts "$DISC_ARTIFACTS" \
   --build "$DISC_META_BUILD" --readback-build "$DISC_READ_BUILD" \

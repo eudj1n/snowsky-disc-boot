@@ -33,6 +33,12 @@ EXERCISED_DIGESTS = ('writer_sha256', 'spl_sha256', 'metadata_payload_sha256', '
                      'installer_contract_sha256')
 
 
+# The write's ABI the chip does not change: what a first write on a chip no player has run it on
+# (installation_review --accept-chip) still takes from the record of another chip.
+EXERCISED_SHARED = tuple(k for k in EXERCISED_DIGESTS if k not in ('metadata_payload_sha256', 'page_policy_sha256')) + (
+    'image_bytes', 'writer_entry', 'ram_regions')
+
+
 def exercised_ok(entry):
     regions = entry.get('ram_regions') if isinstance(entry, dict) else None
     if not isinstance(entry, dict) or not all(digest_ok(entry.get(k)) for k in EXERCISED_DIGESTS) or \
@@ -43,16 +49,25 @@ def exercised_ok(entry):
         raise KnownImagesError('exercised: the write\'s ABI names its digests, image size, writer entry and RAM regions')
 
 
+def exercised_chips_ok(entries):
+    """The write's ABI by the chip a player ran it on: {chip id: record}, at least one."""
+    if not isinstance(entries, dict) or not entries or not all(
+            isinstance(k, str) and k and isinstance(v, dict) for k, v in entries.items()):
+        raise KnownImagesError('exercised: the write\'s ABI by the chip of the player that ran it')
+    for entry in entries.values():
+        exercised_ok(entry)
+
+
 def load(version, images=IMAGES, releases=RELEASES):
     """{"first_blocks_bytes", "stock", "images": [{"release", "name", "bytes", "sha256", "first_blocks_sha256"}],
     "exercised"}: stock, the images listed before reproducible builds, then each recorded boot release's image,
-    and the write's ABI a player ran."""
+    and the write's ABI a player ran, by that player's chip."""
     path = Path(images)/f'v{version}.json'
     data = json.loads(path.read_text())
     if data.get('schema_version') != 1 or data.get('version') != version or data.get('first_blocks_bytes') != 262144:
         raise KnownImagesError(f'{path}: not a known-images list for {version}')
     entry_ok(data.get('stock'), 'stock')
-    exercised_ok(data.get('exercised'))
+    exercised_chips_ok(data.get('exercised'))
     known = []
     for n, entry in enumerate(data.get('earlier', [])):
         entry_ok(entry, f'earlier[{n}]')
@@ -81,7 +96,7 @@ def load(version, images=IMAGES, releases=RELEASES):
     if len(set(digests)) != len(digests):
         raise KnownImagesError('two known images share their first blocks: the probe could not tell them apart')
     return dict(first_blocks_bytes=data['first_blocks_bytes'], stock=dict(data['stock']), images=known,
-                exercised={k: v for k, v in data['exercised'].items() if k != 'note'})
+                exercised={chip: {k: v for k, v in entry.items() if k != 'note'} for chip, entry in data['exercised'].items()})
 
 
 def first_blocks(path, size=262144):

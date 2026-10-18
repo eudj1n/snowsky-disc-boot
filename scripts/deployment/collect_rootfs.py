@@ -58,7 +58,7 @@ def make_plan(base, cpu, reader, config, inputs, metadata):
     # same calls.
     completion = inputs.get('completion')
     ask = bool(completion and completion['completion_ask'])
-    bootstrap.update(operation=scope['mode'], collector_policy_sha256=fingerprint(scope),
+    bootstrap.update(operation=scope['mode'], chip=page['chip']['id'], collector_policy_sha256=fingerprint(scope),
         page_policy_sha256=fingerprint(page), metadata_sha256=layout['page_sha256'],
         first_page=scope['first_page'], end_page_exclusive=scope['end_page'],
         logical_blocks=scope['logical_blocks'], pages_per_block=ppb,
@@ -295,6 +295,7 @@ def main():
     parser.add_argument('--libusb', type=Path)
     parser.add_argument('--output', type=Path)
     parser.add_argument('--approved-plan-sha256')
+    parser.add_argument('--chip', help='The chip the build must be compiled for (default: the build\'s own)')
     args = parser.parse_args()
     extra = (args.libusb, args.output, args.approved_plan_sha256)
     if (args.action == 'plan' and any(x is not None for x in extra)) or (args.action == 'acquire' and not all(extra)):
@@ -303,7 +304,7 @@ def main():
         base = ram.load_profile(args.version)
         cpu, reader = ram.load_probe_profile(base), ram.load_reader_profile(base)
         config = ram.load_transport(base, reader)
-        inputs = ram.prepare_inputs(base, cpu, reader, config, args.build, args.diskos, args.mode)
+        inputs = ram.prepare_inputs(base, cpu, reader, config, args.build, args.diskos, args.mode, args.chip)
         inputs['completion'] = ram.load_completion(base, config)
         metadata = ram.read_file(args.metadata_page, inputs['page_policy']['main_bytes'])
         plan = make_plan(base, cpu, reader, config, inputs, metadata)

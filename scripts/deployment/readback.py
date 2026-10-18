@@ -186,6 +186,7 @@ def main():
     parser.add_argument('--nonce-hex')
     parser.add_argument('--first-sequence', type=int, default=1)
     parser.add_argument('--digest', action='store_true', help='A capture read by digest (plan, stage 4b)')
+    parser.add_argument('--chip', help='The player\'s chip (required where the firmware names several)')
     args = parser.parse_args()
     if (args.action == 'verify' and (args.records is None or args.nonce_hex is None)) or (
             args.action == 'plan' and (args.records is not None or args.nonce_hex is not None or args.first_sequence != 1)):
@@ -193,7 +194,7 @@ def main():
     try:
         base = load_profile(args.version)
         reader = load_reader_profile(base)
-        policy = load_metadata_policy(base, reader)
+        policy = load_metadata_policy(base, reader, chip=args.chip)
         require(regular(args.metadata_page, policy['main_bytes']) == policy['main_bytes'], 'Invalid metadata page')
         metadata = args.metadata_page.read_bytes()
         plan = make_plan(base, reader, policy, metadata, args.image_sha256, digest=args.digest)

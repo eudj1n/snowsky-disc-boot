@@ -74,7 +74,8 @@ class KernelReviewTests(unittest.TestCase):
         self.firmware = review.load_profile('2.57')
         self.writer = review.load_writer(self.firmware['writer'])
         self.profile = review.load_kernel_profile(self.firmware, self.writer)
-        self.chip = review.load_chip(self.profile['chip'])
+        self.chips = {name: review.load_chip(name) for name in self.profile['chips']}
+        self.chip = self.chips['xt26g02c']
 
     def page(self, changes=None, count=None):
         # Historical layout is a synthetic parser fixture, not a device capture.
@@ -155,7 +156,8 @@ class KernelReviewTests(unittest.TestCase):
             self.assertEqual(review.load_kernel_profile(firmware, self.writer, root)['version'], '9.99')
             for key, value in [('rootfs_sha256', '0'*64), ('writer_profile_sha256', '0'*64),
                                ('writes_admitted', True), ('page_reads_admitted', True),
-                               ('kernel_bytes', 1 << 30)]:
+                               ('kernel_bytes', 1 << 30), ('chips', {}), ('chips', {'xt26g02c': {}}),
+                               ('chips', {'XT26': {'entry_address': 1}}), ('chips', {'a': {'entry_address': 1 << 32}})]:
                 path.write_text(json.dumps(dict(profile, **{key: value})))
                 with self.subTest(key=key), self.assertRaises(ValueError):
                     review.load_kernel_profile(firmware, self.writer, root)
@@ -200,23 +202,31 @@ class KernelReviewTests(unittest.TestCase):
         tree = fdt(properties, key_nodes())
         kernel = bytearray(256)+tree
         base = 0x80010000
+        # Two entries of the kernel's SPI-NAND table, as the two chips' drivers register them (the owner's
+        # players, 2026-10-18): the XTX one and the HeYangTek one, each by its device ID and parameters.
         struct.pack_into('<3I', kernel, 0, 0x12, base+32, base+64)
         kernel[32:48] = b'SYNTHETIC CHIP\0\0'
         struct.pack_into('<4I', kernel, 64, 2048, 131072, 128, 268435456)
-        profile = dict(self.profile, kernel_base=base, chip_entry_address=base,
+        struct.pack_into('<3I', kernel, 96, 0x52, base+112, base+128)
+        kernel[112:124] = b'HYF2GQ4U\0\0\0\0'
+        struct.pack_into('<4I', kernel, 128, 2048, 131072, 128, 268435456)
+        profile = dict(self.profile, kernel_base=base, chips={'xt26g02c': {'entry_address': base}, 'hyf2gq4u': {'entry_address': base+96}},
                        dtb_address=base+256, dtb_bytes=len(tree), sfc_node='/sfc')
-        report = review.inspect_kernel(bytes(kernel), profile, self.chip)
-        self.assertEqual(report['metadata_page'], 11)
+        report = review.inspect_kernel(bytes(kernel), profile, self.chips)
+        self.assertEqual({name: c['metadata_page'] for name, c in report['chips'].items()}, {'xt26g02c': 11, 'hyf2gq4u': 11})
+        self.assertEqual(report['chips']['hyf2gq4u']['kernel_chip_name'], 'HYF2GQ4U')
         self.assertEqual(report['keys']['play'], {'port': '0x10010100', 'bit': 15})
-        for offset, value in ((0, 0xe2), (8, base+len(kernel)+4), (64, 4096)):
+        for offset, value in ((0, 0xe2), (8, base+len(kernel)+4), (64, 4096), (96, 0x21), (128, 4096)):
             altered = bytearray(kernel)
             struct.pack_into('<I', altered, offset, value)
             with self.subTest(offset=offset), self.assertRaises(ValueError):
-                review.inspect_kernel(bytes(altered), profile, self.chip)
+                review.inspect_kernel(bytes(altered), profile, self.chips)
+        with self.assertRaisesRegex(ValueError, 'differ from the kernel profile'):
+            review.inspect_kernel(bytes(kernel), profile, {'xt26g02c': self.chip})
         tree = fdt([('status', b'okay\0'), ('ingenic,use_ofpart_info', b'\1'),
                     ('ingenic,spiflash_param_offset', bytes(4))], key_nodes())
         with self.assertRaisesRegex(ValueError, 'partition source'):
-            review.inspect_kernel(bytes(kernel[:256])+tree, profile, self.chip)
+            review.inspect_kernel(bytes(kernel[:256])+tree, profile, self.chips)
 
 
     def test_key_pins_are_the_ones_disc_boot_reads(self):

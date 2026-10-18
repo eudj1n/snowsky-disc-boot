@@ -1,7 +1,7 @@
 """Reviewed RAM buffers and rootfs-only acquisition limits; never opens USB."""
 import json
 from firmware_profile import PROFILES, fingerprint, require
-from deployment.metadata_policy import load_metadata_policy
+from deployment.metadata_policy import load_metadata_policy, pinned_policy
 from deployment.review import regular
 
 REQUEST_BYTES, RESULT_BYTES, MAX_PAGES = 3088, 283408, 64
@@ -9,14 +9,14 @@ REQUEST_BYTES, RESULT_BYTES, MAX_PAGES = 3088, 283408, 64
 DIGEST_RESULT_BYTES, DIGEST_RECORD_BYTES = 8208, 128
 
 
-def load_collector_policy(base, reader, mode, directory=PROFILES):
+def load_collector_policy(base, reader, mode, directory=PROFILES, chip=None):
     require(mode in ('rootfs-probe', 'rootfs', 'rootfs-digest'), 'Unknown collector scope')
-    page = load_metadata_policy(base, reader, directory)
+    page = load_metadata_policy(base, reader, directory, chip)
     path = directory/'collectors'/f'v{base["version"]}.json'
     regular(path, 8192)
     p = json.loads(path.read_text())
     require(p.get('schema_version') == 1 and p.get('version') == base['version']
-            and p.get('physical_qualified') is False and p.get('policy_sha256') == fingerprint(page),
+            and p.get('physical_qualified') is False and pinned_policy(p.get('policy_sha256'), page),
             'Collector audit mismatch')
     require(type(p.get('probe_blocks')) is int and 1 <= p['probe_blocks'] <= 2, 'Invalid probe size')
     regions = [(reader['load_address'], reader['code_bytes']),

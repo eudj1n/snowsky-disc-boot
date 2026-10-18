@@ -528,7 +528,7 @@ class Installer:
             raise Stop('the player is written through libusb, which was not found: ' + LIBUSB_HINT)
         return usbboot.Reviewed(load_profile()['version'], work or self.work/'usb', Path(image).parent, self.diskos(),
                                 libusb, run=self.runner, progress=self.session_progress(),
-                                payloads=self.release_payloads())
+                                payloads=self.release_payloads(), accept_chip=bool(getattr(self.args, 'accept_chip', False)))
 
     def release_payloads(self):
         """The folder of the boot release's prebuilt USB payloads (plan, stage 6), by its record's digest; None when
@@ -674,8 +674,8 @@ class Installer:
             self.proven_start = True
             self.say(title, ['Written; the new system read its root device and found the written image, every byte by its '
                              'SHA-256; the USB journal of the write audited.'])
-            self.done('player', image=str(image), written=True, simulated=False, target='candidate', backup=backup, write=written,
-                      firstStart=str(proof), audits=audits)
+            self.done('player', image=str(image), written=True, simulated=False, target='candidate', chip=reviewed.chip,
+                      backup=backup, write=written, firstStart=str(proof), audits=audits)
             return
         answer = self.start_answer(title, [why])
         if answer is not None and not answer[0]:
@@ -687,8 +687,8 @@ class Installer:
         read = reviewed.readback('candidate')
         audits = reviewed.audit('candidate')
         self.say(title, ['Written, read back and every byte compared; both USB journals audited.'])
-        self.done('player', image=str(image), written=True, simulated=False, target='candidate', backup=backup, write=written, read=read,
-                  audits=audits, ownerAnswer=answer[1] if answer else None)
+        self.done('player', image=str(image), written=True, simulated=False, target='candidate', chip=reviewed.chip, backup=backup,
+                  write=written, read=read, audits=audits, ownerAnswer=answer[1] if answer else None)
 
     # One entry into USB Boot (plan, stage 6)
 
@@ -719,10 +719,11 @@ class Installer:
         try:
             self.say(title, ['Preparing the payloads the player runs from its RAM (offline).'])
             reviewed.builds()
-            self.confirm(title, [self.ENTER, self.STUCK, 'Next, in this one entry: the player\'s partition table, bootloader and '
-                                 'first rootfs blocks are read (about three minutes), each read checked here; nothing is written '
-                                 'yet.'], 'CHECK')
+            self.confirm(title, [self.ENTER, self.STUCK, 'Next, in this one entry: the player\'s NAND chip, partition table, '
+                                 'bootloader and first rootfs blocks are read (about three minutes), each read checked here; '
+                                 'nothing is written yet.'], 'CHECK')
             reviewed.entry()
+            self.say(title, [f'The player\'s NAND chip: {reviewed.chip_name}.'])
             # Back to stock from any state (owner, 2026-10-05/09): an image it does not know admits the restore only.
             decision = reviewed.review_known(allow_unknown=restore)
             if restore:
@@ -751,7 +752,7 @@ class Installer:
         self.say(title, ['Stock\'s rootfs is written: the writer finished, after the image was checked in the player\'s RAM; '
                          'the USB journal of the write audited.'] + ([] if answer and answer[0] else
                          ['Stock\'s start was not confirmed: tell the developers what you saw.']))
-        self.done('player', image=str(stock), written=True, simulated=False, target='restore', restore=dict(
+        self.done('player', image=str(stock), written=True, simulated=False, target='restore', chip=reviewed.chip, restore=dict(
                   write=written, audits=audits, found=decision.get('found'), ownerAnswer=answer[1] if answer else None,
                   startedNormally=bool(answer and answer[0])))
         self.report['status'] = 'restored'

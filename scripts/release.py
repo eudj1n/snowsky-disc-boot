@@ -90,31 +90,49 @@ def own_packages(version):
 
 
 # The programs the installer runs from the player's RAM in USB Boot (plan, stage 6: built once here, with the boot
-# layer's toolchain, and taken from the release by their digest, so a user's computer compiles nothing).
-PAYLOAD_MODES = ('metadata', 'rootfs', 'rootfs-probe', 'staging-check', 'restart')
+# layer's toolchain, and taken from the release by their digest, so a user's computer compiles nothing). The ones a
+# player of any chip runs are at <mode>; the ones compiled for a chip (they read its pages) at <chip>/<mode>, for
+# every chip the firmware names (firmware/kernels/<v>.json, chips): the identity session selects the player's.
+COMMON_PAYLOADS = ('identity', 'staging-check', 'restart')
+CHIP_PAYLOADS = ('metadata', 'rootfs', 'rootfs-probe')
+PAYLOAD_MODES = COMMON_PAYLOADS + CHIP_PAYLOADS
 PAYLOAD_FILES = ('build.json', 'identity.elf', 'identity.bin', 'identity_layout.h', 'identity.ld')
 EVIDENCE_SCOPES = ('uboot', 'ota')
 
 
+def firmware_chips(firmware):
+    """The chips a player of this firmware may hold, as its kernel profile names them."""
+    return list(json.loads((ROOT/'firmware/kernels'/f'v{firmware}.json').read_text())['chips'])
+
+
 def build_payloads(firmware, diskos, output):
-    """Every payload into output/<mode>, and the boot evidence's into output/boot-evidence (Docker, the boot
-    layer's toolchain image, scripts/deployment/build_identity.py and boot_evidence.py)."""
+    """Every payload into output/<mode>, each chip's into output/<chip>/<mode> and the boot evidence's into
+    output/<chip>/boot-evidence (Docker, the boot layer's toolchain image, scripts/deployment/build_identity.py
+    and boot_evidence.py)."""
     import subprocess
     tools = ROOT/'scripts/deployment'
-    for mode in PAYLOAD_MODES:
+    for mode in COMMON_PAYLOADS:
         subprocess.run([sys.executable, '-B', str(tools/'build_identity.py'), '--version', firmware, '--mode', mode,
                         '--diskos', str(diskos), '--output', str(Path(output)/mode)], check=True, capture_output=True)
-    subprocess.run([sys.executable, '-B', str(tools/'boot_evidence.py'), 'build', '--version', firmware,
-                    '--diskos', str(diskos), '--output', str(Path(output)/'boot-evidence')], check=True, capture_output=True)
+    for chip in firmware_chips(firmware):
+        for mode in CHIP_PAYLOADS:
+            subprocess.run([sys.executable, '-B', str(tools/'build_identity.py'), '--version', firmware, '--mode', mode,
+                            '--chip', chip, '--diskos', str(diskos), '--output', str(Path(output)/chip/mode)],
+                           check=True, capture_output=True)
+        subprocess.run([sys.executable, '-B', str(tools/'boot_evidence.py'), 'build', '--version', firmware, '--chip', chip,
+                        '--diskos', str(diskos), '--output', str(Path(output)/chip/'boot-evidence')], check=True, capture_output=True)
 
 
-def payload_members(built):
-    """(name in the archive, source) of every file the installer's tools read from the payloads' builds."""
+def payload_members(built, chips):
+    """(name in the archive, source) of every file the installer's tools read from the payloads' builds, for
+    the chips given."""
     built = Path(built)
-    members = [(f'{mode}/{name}', built/mode/name) for mode in PAYLOAD_MODES for name in PAYLOAD_FILES]
-    members.append(('boot-evidence/build.json', built/'boot-evidence/build.json'))
-    members += [(f'boot-evidence/{scope}/{name}', built/'boot-evidence'/scope/name)
-                for scope in EVIDENCE_SCOPES for name in PAYLOAD_FILES if name != 'build.json']
+    members = [(f'{mode}/{name}', built/mode/name) for mode in COMMON_PAYLOADS for name in PAYLOAD_FILES]
+    for chip in chips:
+        members += [(f'{chip}/{mode}/{name}', built/chip/mode/name) for mode in CHIP_PAYLOADS for name in PAYLOAD_FILES]
+        members.append((f'{chip}/boot-evidence/build.json', built/chip/'boot-evidence/build.json'))
+        members += [(f'{chip}/boot-evidence/{scope}/{name}', built/chip/'boot-evidence'/scope/name)
+                    for scope in EVIDENCE_SCOPES for name in PAYLOAD_FILES if name != 'build.json']
     return members
 
 
@@ -185,7 +203,8 @@ def build(version, output, mips=ROOT/'build/mips', release=True, diskos=None, pa
     (ROOT/'work').mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(dir=ROOT/'work', prefix='release-payloads-') as temp:
         payloads(firmware, diskos, Path(temp)/'built')
-        tarball(f'disc-usb-payloads-{version}', [(name, source, 0o644) for name, source in payload_members(Path(temp)/'built')],
+        tarball(f'disc-usb-payloads-{version}',
+                [(name, source, 0o644) for name, source in payload_members(Path(temp)/'built', firmware_chips(firmware))],
                 output/payload_name)
     files = {name: dict(bytes=(output/name).stat().st_size, sha256=digest(output/name)) for name in names(version)}
     (output/'SHA256SUMS').write_text(''.join(f'{f["sha256"]}  {name}\n' for name, f in sorted(files.items())))
@@ -382,7 +401,7 @@ def extract_payloads(archive, version, output):
     if output.exists():
         raise ReleaseError(f'{output} exists; choose a fresh folder')
     top = f'disc-usb-payloads-{version}'
-    wanted = {name for name, _ in payload_members(Path('.'))}
+    wanted = {name for name, _ in payload_members(Path('.'), firmware_chips(firmware_of(version, release=False)))}
     with tarfile.open(archive, 'r:gz') as tar:
         members = {m.name: m for m in tar.getmembers()}
         if set(members) != {f'{top}/{name}' for name in wanted}:

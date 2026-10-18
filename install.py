@@ -56,6 +56,9 @@ def main():
     parser.add_argument('--simulate-small', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--fault', action='append', help='A simulated fault: no-device, bad-blocks=N,M, write-stops=N, readback-flip=N')
     parser.add_argument('--restore', action='store_true', help="Back to stock: the restore image, the same path to the player")
+    parser.add_argument('--accept-chip', action='store_true',
+                        help="A developer's acceptance: the first write on a NAND chip no player has run this write on "
+                             "(recorded in firmware/images afterwards); without it such a player is read, never written")
     parser.add_argument('--diskos', help="diskOS's checkout at the writer's pinned revision (default: its pinned files, "
                                          "fetched once and kept in work/downloads)")
     parser.add_argument('--libusb', help='The libusb library the reviewed tools load (default: where Homebrew or the '

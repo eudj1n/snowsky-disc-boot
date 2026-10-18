@@ -192,7 +192,7 @@ class InstallerTests(unittest.TestCase):
         (mips/'build-id').write_text('b43034ba1e27\n')
 
         def payloads(firmware, diskos, output):
-            for name, source in release.payload_members(output):
+            for name, source in release.payload_members(output, release.firmware_chips(firmware)):
                 source.parent.mkdir(parents=True, exist_ok=True)
                 source.write_bytes(f'{firmware} {name}'.encode())
         dist = self.root/'dist'
@@ -247,7 +247,7 @@ class InstallerTests(unittest.TestCase):
         (mips/'build-id').write_text('b43034ba1e27\n')
 
         def payloads(firmware, diskos, output):
-            for name, source in release.payload_members(output):
+            for name, source in release.payload_members(output, release.firmware_chips(firmware)):
                 source.parent.mkdir(parents=True, exist_ok=True)
                 source.write_bytes(f'{firmware} {name}'.encode())
         dist = self.root/'dist'

@@ -3,7 +3,10 @@
   "version": "2.57",
   "format": "ingenic-spl-ota-prefix-v1",
   "firmware_sha256": "9c24f384013ebd611f5527079196d8a8923453019efe354c137552774b847151",
-  "boot_policy_sha256": "e5f6651b937a6426a1ffb7182a12d054de935a804f31b62824563b2808daf72e",
+  "boot_policy_sha256": {
+    "xt26g02c": "29ee178a42c5a6bd1a4a7b3886348f2c0b677101caba5caa7fcfa4805ce993c4",
+    "hyf2gq4u": "23114d7c5605efaec252fff27940ea8ecf72a44df7df76916cba14031fcd4bbf"
+  },
   "boot_bytes": 2097152,
   "boot_sha256": "389703052c38dc279187a98e7a61094fd7f5c1d3103e8b929f2b11c69a68ae5a",
   "image_base": 2990542848,

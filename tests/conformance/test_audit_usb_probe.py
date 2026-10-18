@@ -31,8 +31,8 @@ class ProbeAuditTests(unittest.TestCase):
         self.cpu = ram.load_probe_profile(self.base)
         self.reader = ram.load_reader_profile(self.base)
         self.config = ram.load_transport(self.base, self.reader)
-        self.policy = ram.load_metadata_policy(self.base, self.reader)
-        self.scope = load_collector_policy(self.base, self.reader, 'rootfs-probe')
+        self.policy = ram.load_metadata_policy(self.base, self.reader, chip='xt26g02c')
+        self.scope = load_collector_policy(self.base, self.reader, 'rootfs-probe', chip='xt26g02c')
         self.build = self.root/'build'
         self.build.mkdir()
         (self.build/'identity.bin').write_bytes(b'synthetic probe payload')

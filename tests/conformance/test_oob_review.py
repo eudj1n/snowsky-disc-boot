@@ -21,7 +21,7 @@ class OobReviewTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.base = ob.load_profile()
         self.reader = ob.load_reader_profile(self.base)
-        self.policy = ob.load_metadata_policy(self.base, self.reader)
+        self.policy = ob.load_metadata_policy(self.base, self.reader, chip='xt26g02c')
         self.layout = ob.load_layout(self.policy['chip'])
         self.nonce = bytes(range(16))
         self.path = self.root/'records.bin'
@@ -153,7 +153,7 @@ class OobReviewTests(unittest.TestCase):
     def test_cli_and_firmware_identity_are_explicit(self):
         self.capture([2112])
         result = subprocess.run([sys.executable, str(ROOT/'scripts/deployment/oob_review.py'),
-                                 '--version', self.base['version'], '--records', str(self.path),
+                                 '--version', self.base['version'], '--chip', 'xt26g02c', '--records', str(self.path),
                                  '--nonce', self.nonce.hex(), '--count', '4', '--pages', '10'],
                                 text=True, capture_output=True, check=True)
         self.assertEqual(json.loads(result.stdout), self.audit())

@@ -149,7 +149,7 @@ class RamTransportTests(unittest.TestCase):
         return result, output
 
     def metadata(self):
-        self.inputs['page_policy'] = ram.load_metadata_policy(self.base, self.reader)
+        self.inputs['page_policy'] = ram.load_metadata_policy(self.base, self.reader, chip='xt26g02c')
 
     def test_metadata_success_with_fresh_request_and_separate_outputs(self):
         self.metadata()
@@ -457,7 +457,7 @@ class RamInputTests(unittest.TestCase):
 
     def test_metadata_build_cannot_substitute_identity_or_stale_policy(self):
         # Profile loading is tested separately; external bytes here are synthetic.
-        policy = {'page': 11, 'fixture': 'synthetic reviewed policy'}
+        policy = {'page': 11, 'fixture': 'synthetic reviewed policy', 'chip': {'id': 'synthetic'}}
         with patch.object(ram, 'load_metadata_policy', return_value=policy):
             with self.assertRaises(ram.probe.ProbeError): self.prepare('metadata')
             self.manifest.update(purpose='metadata', page_policy=policy,

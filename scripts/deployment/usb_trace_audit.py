@@ -149,17 +149,25 @@ def compare(rows, expected, run: Path, transport, call_limit, executions, connec
                 bulk_writes=counts['writes'], executions=actual_executions)
 
 
-def profiles(root, version):
+def profiles(root, version, chip=None):
     """The reviewed profiles of a firmware version, read as files, and the page and boot policies
-    rebuilt from them as the acquisition's loaders build them (metadata_policy, boot_evidence)."""
+    rebuilt from them for the plan's chip as the acquisition's loaders build them (metadata_policy,
+    boot_evidence); without a chip (a session that reads no page) the profiles alone."""
     d = Path(root)/'firmware'
     base = load(d/f'v{version}.json')
     named = {k: load(d/k/f'v{version}.json') for k in
              ('readers', 'transports', 'probes', 'completion', 'pages', 'kernels', 'boot', 'collectors')}
     reader, pages, kernel = named['readers'], named['pages'], named['kernels']
-    chip, writer = load(d/'chips'/f'{kernel["chip"]}.json'), load(d/'writers'/f'{base["writer"]}.json')
+    require(isinstance(kernel.get('chips'), dict) and kernel['chips'], 'Kernel names no chip')
+    if chip is None:
+        return dict(base=base, reader=reader, transport=named['transports'], probe=named['probes'],
+                    completion=named['completion'])
+    require(chip in kernel['chips'], 'The plan\'s chip is not one the kernel names')
+    chip_profile, writer = load(d/'chips'/f'{chip}.json'), load(d/'writers'/f'{base["writer"]}.json')
+    chip = chip_profile
     require(pages['reader_profile_sha256'] == fingerprint(reader) and pages['kernel_profile_sha256'] == fingerprint(kernel)
-            and pages['chip_profile_sha256'] == fingerprint(chip), 'Page profile links differ')
+            and set(pages['chip_profiles_sha256']) == set(kernel['chips'])
+            and pages['chip_profiles_sha256'][chip['id']] == fingerprint(chip), 'Page profile links differ')
     ecc = chip['ecc']
     page = dict(profile=pages, kernel=kernel, chip=chip, writer=writer, page=pages['page'],
                 expected_id=int.from_bytes(bytes.fromhex(chip['id_prefix_hex']), 'little'), id_mask=0xffff,
@@ -168,8 +176,9 @@ def profiles(root, version):
                 feature_value=pages['feature_value'], ecc_mask=ecc['status_mask'], ecc_shift=ecc['status_shift'],
                 ecc_admitted=(1 << (ecc['max_corrected']+1))-1)
     boot, collector = named['boot'], named['collectors']
-    require(boot['page_policy_sha256'] == fingerprint(page) and collector['policy_sha256'] == fingerprint(page),
-            'Boot/collector policy links differ')
+    require(all(set(x) == set(kernel['chips']) for x in (boot['page_policy_sha256'], collector['policy_sha256']))
+            and boot['page_policy_sha256'][chip['id']] == fingerprint(page)
+            and collector['policy_sha256'][chip['id']] == fingerprint(page), 'Boot/collector policy links differ')
     return dict(base=base, reader=reader, transport=named['transports'], probe=named['probes'],
                 completion=named['completion'], page=page, collector=collector,
                 boot=dict(profile=boot, page_policy=page, buffers=collector))

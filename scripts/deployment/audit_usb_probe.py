@@ -24,7 +24,7 @@ def audit(run, plan_file, build, diskos, root=ROOT):
     run = Path(run)
     r, p = check_session(run, plan_file, 'rootfs-probe-collected', root)
     require(p['operation'] == 'rootfs-probe', 'Not an identity probe plan')
-    f = profiles(root, p['version'])
+    f = profiles(root, p['version'], p['chip'])
     reader, t, page, collector = f['reader'], f['transport'], f['page'], f['collector']
     ask = check_plan(p, f)
     main, ppb, writer = page['main_bytes'], page['chip']['pages_per_block'], page['writer']

@@ -33,7 +33,7 @@ class BootAuditTests(unittest.TestCase):
         self.cpu = boot.ram.load_probe_profile(self.base)
         self.transport = boot.ram.load_transport(self.base, self.reader)
         # The reviewed profiles as they are: the audit reads them as files.
-        self.policy = boot.load_policy(self.base, self.reader)
+        self.policy = boot.load_policy(self.base, self.reader, chip='xt26g02c')
         fixture = test_kernel_review.KernelReviewTests()
         fixture.setUp()
         self.metadata = fixture.page()

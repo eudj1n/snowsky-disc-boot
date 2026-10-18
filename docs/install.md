@@ -44,7 +44,7 @@ back](way-back.md) returns the player to stock.
    and put the card back into the player (or leave USB storage).
 4. **The player.** Switch the player off, hold **Volume Down** and connect
    the cable to the computer (USB Boot). Type `CHECK`: in about a minute the
-   installer reads what the player holds and checks it. It writes nothing to
+   installer reads the player's memory chip and what the player holds, and checks it. It writes nothing to
    a player it does not know.
 5. Type `WRITE`. The new system is written in about 10 minutes; keep the
    cable connected.

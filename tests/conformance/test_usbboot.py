@@ -65,10 +65,21 @@ class Tools:
                 plan['plan_sha256'] = 'other'
             stdout = json.dumps(plan)
         elif tool == 'ram_transport.py' and args[0] == 'plan':
-            stdout = json.dumps(dict(plan=dict(protocol_call_limit=50), plan_sha256='metadata-plan'))
-        elif tool == 'ram_transport.py':
-            # The entry's first session (plan, stage 6): the partition table's page, with the entry's SPL.
+            mode = self.value(command, '--mode')
+            stdout = json.dumps(dict(plan=dict(protocol_call_limit=50), plan_sha256=f'{mode}-plan'))
+        elif tool == 'ram_transport.py' and self.value(command, '--mode') == 'identity':
+            # The entry's first session (the second chip, 2026-10-18): the player's chip by its Read ID, with the
+            # entry's SPL; one of the reviewed chips, or none.
             out.mkdir(parents=True)
+            chip = None if 'unknown-chip' in self.faults else 'hyf2gq4u' if 'other-chip' in self.faults else 'xt26g02c'
+            identity = dict(observed_id=0x2c2c2c if chip is None else 0x52c9 if chip == 'hyf2gq4u' else 0x120b, chip=chip)
+            (out/'result.json').write_text(json.dumps(dict(status='nand-identity-observed', session_id='chip-session', identity=identity)))
+        elif tool == 'ram_transport.py':
+            # The partition table's page, after the chip's session.
+            out.mkdir(parents=True)
+            if 'page-fails' in self.faults:
+                (out/'result.json').write_text(json.dumps(dict(status='failed', error='ValueError: NAND core failed with code 5')))
+                return subprocess.CompletedProcess(command, 1, '{\n  "status": "failed"\n}\n', '')
             (out/'result.json').write_text(json.dumps(dict(status='nand-metadata-observed', session_id='metadata-session')))
             (out/'metadata-main.bin').write_bytes(b'page')
         elif tool == 'restart_player.py' and args[0] == 'plan':
@@ -155,17 +166,83 @@ class ReviewedTests(unittest.TestCase):
         return reviewed, tools
 
     def test_the_releases_payloads_are_taken_rather_than_built(self):
-        """Plan, stage 6: with the release's prebuilt payloads nothing is compiled on the computer."""
+        """Plan, stage 6: with the release's prebuilt payloads nothing is compiled on the computer; the ones
+        compiled for a chip (<chip>/<mode>) follow the identity session that names the player's."""
         payloads = self.root/'payloads'
-        for mode in ('metadata', 'rootfs', 'staging-check', 'rootfs-probe', 'restart', 'boot-evidence'):
-            (payloads/mode).mkdir(parents=True)
-            (payloads/mode/'identity.bin').write_bytes(mode.encode())
+        for folder in ('identity', 'staging-check', 'restart', 'xt26g02c/metadata', 'xt26g02c/rootfs', 'xt26g02c/rootfs-probe',
+                       'xt26g02c/boot-evidence', 'hyf2gq4u/metadata', 'hyf2gq4u/rootfs', 'hyf2gq4u/rootfs-probe',
+                       'hyf2gq4u/boot-evidence'):
+            (payloads/folder).mkdir(parents=True)
+            (payloads/folder/'identity.bin').write_bytes(folder.encode())
         reviewed, tools = self.reviewed(payloads=payloads)
         reviewed.builds()
         self.assertEqual(tools.calls, [])
-        self.assertEqual((reviewed.probe_build/'identity.bin').read_bytes(), b'rootfs-probe')
+        self.assertEqual((reviewed.identity_build/'identity.bin').read_bytes(), b'identity')
         self.assertEqual((reviewed.staging_build/'identity.bin').read_bytes(), b'staging-check')
-        self.assertEqual((reviewed.boot_build/'identity.bin').read_bytes(), b'boot-evidence')
+        self.assertFalse(reviewed.probe_build.exists(), 'the chip\'s payloads wait for its identity session')
+        with self.assertRaisesRegex(usbboot.ReviewedError, 'follow its identity session'):
+            reviewed.chip_builds()
+        reviewed.identify()
+        reviewed.chip_builds()
+        self.assertEqual(tools.calls, ['ram_transport.py plan', 'ram_transport.py acquire'])
+        self.assertEqual((reviewed.probe_build/'identity.bin').read_bytes(), b'xt26g02c/rootfs-probe')
+        self.assertEqual((reviewed.boot_build/'identity.bin').read_bytes(), b'xt26g02c/boot-evidence')
+        reviewed, tools = self.reviewed('other-chip', payloads=payloads, work='other')
+        reviewed.builds()
+        reviewed.identify()
+        reviewed.chip_builds()
+        self.assertEqual((reviewed.chip, reviewed.chip_name), ('hyf2gq4u', 'HeYangTek HYF2GQ4U'))
+        self.assertEqual((reviewed.meta/'identity.bin').read_bytes(), b'hyf2gq4u/metadata')
+
+    def test_the_chip_is_named_first_and_an_unknown_one_stops_before_any_page(self):
+        """The player's NAND chip by its Read ID (the second chip, 2026-10-18): the payloads that read pages are
+        compiled for it, and every later tool takes it; a chip the profiles do not know stops the run."""
+        reviewed, tools = self.reviewed()
+        reviewed.builds()
+        self.assertEqual(tools.calls, ['build_identity.py']*3, 'the payloads of any chip: identity, staging check, restart')
+        reviewed.entry()
+        self.assertEqual((reviewed.chip, reviewed.chip_name), ('xt26g02c', 'XTX XT26G02C'))
+        self.assertEqual(tools.calls[3:9], ['ram_transport.py plan', 'ram_transport.py acquire', 'build_identity.py']*1
+                         + ['build_identity.py']*2 + ['boot_evidence.py build'])
+        built = [c for c in tools.commands if '--chip' in c and (Path(c[2]).name == 'build_identity.py' or
+                                                                 (Path(c[2]).name == 'boot_evidence.py' and c[3] == 'build'))]
+        self.assertEqual(sorted(tools.value(c, '--mode') if '--mode' in c else 'boot-evidence' for c in built),
+                         ['boot-evidence', 'metadata', 'rootfs', 'rootfs-probe'])
+        self.assertTrue(all(tools.value(c, '--chip') == 'xt26g02c' for c in built))
+        for name in ('boot_evidence.py', 'collect_rootfs.py'):
+            for command in (c for c in tools.commands if Path(c[2]).name == name and c[3] != 'build'):
+                self.assertEqual(tools.value(command, '--chip'), 'xt26g02c', name)
+        identity = next(c for c in tools.commands if Path(c[2]).name == 'ram_transport.py' and tools.value(c, '--mode') == 'identity')
+        self.assertEqual(tools.value(identity, '--build'), str(self.root/'usb/build-identity'))
+        self.assertTrue((self.root/'usb/chip-plan.json').is_file())
+        reviewed, tools = self.reviewed('unknown-chip', work='unknown')
+        reviewed.builds()
+        with self.assertRaisesRegex(usbboot.ReviewedError, r'NAND chip \(ID 2c 2c\) is not one this installer knows'):
+            reviewed.entry()
+        self.assertNotIn('boot_evidence.py build', tools.calls)
+        self.assertEqual(tools.calls[-1], 'ram_transport.py acquire', 'nothing read after the chip')
+
+    def test_a_failed_session_is_reported_by_its_result(self):
+        """The reason a session failed is its result.json's, not the last line the tool printed (2026-10-18: a
+        report read \"the partition table's read failed: }\")."""
+        reviewed, tools = self.reviewed('page-fails')
+        reviewed.builds()
+        with self.assertRaisesRegex(usbboot.ReviewedError, r"partition table's read failed: ValueError: NAND core failed with code 5"):
+            reviewed.entry()
+
+    def test_a_developers_acceptance_reaches_the_review(self):
+        reviewed, tools = self.reviewed(accept_chip=True)
+        reviewed.builds()
+        reviewed.entry()
+        reviewed.review_known()
+        review = next(c for c in tools.commands if Path(c[2]).name == 'installation_review.py')
+        self.assertIn('--accept-chip', review)
+        reviewed, tools = self.reviewed(work='plain')
+        reviewed.builds()
+        reviewed.entry()
+        reviewed.review_known()
+        review = next(c for c in tools.commands if Path(c[2]).name == 'installation_review.py')
+        self.assertNotIn('--accept-chip', review)
 
     def test_the_entry_s_evidence_is_read_audited_and_reviewed_before_the_write(self):
         reviewed, tools = self.reviewed()
@@ -174,7 +251,8 @@ class ReviewedTests(unittest.TestCase):
         decision = reviewed.review_known()
         reviewed.write()
         reviewed.audit(read=False)
-        self.assertEqual(tools.calls, ['build_identity.py']*5 + ['boot_evidence.py build',
+        self.assertEqual(tools.calls, ['build_identity.py']*3 + ['ram_transport.py plan', 'ram_transport.py acquire']
+                         + ['build_identity.py']*3 + ['boot_evidence.py build',
                          'ram_transport.py plan', 'ram_transport.py acquire',
                          'boot_evidence.py plan', 'boot_evidence.py acquire', 'audit_usb_boot.py',
                          'collect_rootfs.py plan', 'collect_rootfs.py acquire', 'audit_usb_probe.py',
@@ -367,10 +445,13 @@ class ReviewedTests(unittest.TestCase):
         fetch_record = json.loads((proof/'fetch.json').read_text())
         self.assertEqual(fetch_record['rootfs_check_sha256'], hashlib.sha256((proof/'rootfs-check.json').read_bytes()).hexdigest())
         acquired = [c for c in tools.calls if c.endswith('acquire')]
-        self.assertEqual(acquired, ['ram_transport.py acquire', 'boot_evidence.py acquire', 'collect_rootfs.py acquire',
-                                    'writer_transport.py acquire'], 'one entry: three reads and the write; no readback')
+        self.assertEqual(acquired, ['ram_transport.py acquire', 'ram_transport.py acquire', 'boot_evidence.py acquire',
+                                    'collect_rootfs.py acquire', 'writer_transport.py acquire'],
+                         'one entry: the chip, three reads and the write; no readback')
+        self.assertEqual(player['chip'], 'xt26g02c', 'the report names the player\'s chip')
         self.assertNotIn('audit_usb_readback.py', tools.calls)
         screen = ' '.join(installer.screen.out.getvalue().split())
+        self.assertIn('NAND chip: XTX XT26G02C', screen)
         self.assertNotIn('Did it start normally', screen)
 
     def test_a_check_that_does_not_come_back_asks_and_a_yes_reads_it_back(self):
@@ -436,8 +517,9 @@ class ReviewedTests(unittest.TestCase):
         write = next(c for c in tools.commands if Path(c[2]).name == 'writer_transport.py' and c[3] == 'acquire')
         self.assertEqual(write[write.index('--target') + 1], 'restore')
         self.assertEqual([c for c in tools.calls if c.endswith('acquire')],
-                         ['ram_transport.py acquire', 'boot_evidence.py acquire', 'collect_rootfs.py acquire',
-                          'writer_transport.py acquire'], 'the reads and stock, in one entry; no readback')
+                         ['ram_transport.py acquire', 'ram_transport.py acquire', 'boot_evidence.py acquire',
+                          'collect_rootfs.py acquire', 'writer_transport.py acquire'],
+                         'the chip, the reads and stock, in one entry; no readback')
         self.assertTrue(installer.report['steps'][-1]['restore']['startedNormally'], 'stock has no check: the owner\'s word')
 
     def test_restore_from_any_state_asks_once_more(self):
@@ -456,7 +538,8 @@ class ReviewedTests(unittest.TestCase):
         code, installer, tools = self.install(['', 'CARD', 'CHECK', 'WRITE', 'no', 'CHECK', 'RESTORE', 'yes'])
         self.assertEqual((code, installer.report['status']), (0, 'restored'))
         self.assertEqual([c for c in tools.calls if c.endswith('acquire')],
-                         ['ram_transport.py acquire', 'boot_evidence.py acquire', 'collect_rootfs.py acquire', 'writer_transport.py acquire']*2)
+                         ['ram_transport.py acquire', 'ram_transport.py acquire', 'boot_evidence.py acquire', 'collect_rootfs.py acquire',
+                          'writer_transport.py acquire']*2)
         back = self.root/'run/usb-back'
         self.assertTrue((back/'package/decision.json').is_file() and (back/'restore-write').is_dir())
         self.assertEqual(installer.report['wayBack']['candidateAnswer'], 'no', 'yes or no only, no words')

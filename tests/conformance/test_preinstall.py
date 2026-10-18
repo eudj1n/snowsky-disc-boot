@@ -21,7 +21,7 @@ class PreinstallTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.base = rb.load_profile()
         self.reader = rb.load_reader_profile(self.base)
-        self.policy = rb.load_metadata_policy(self.base, self.reader)
+        self.policy = rb.load_metadata_policy(self.base, self.reader, chip='xt26g02c')
         self.content = b'hsqs'+bytes(range(256))*11+b'Z'*253  # Boundary inside a page.
         self.base.update(rootfs_size=len(self.content), rootfs_sha256=hashlib.sha256(self.content).hexdigest())
         self.policy['chip'].update(pages_per_block=2, blocks=32)
@@ -31,7 +31,8 @@ class PreinstallTests(unittest.TestCase):
                          struct.pack('<32s4I', b'rootfs', 16384, 12288, 0, 0)).ljust(2048, b'\xff')
         self.review = dict(schema_version=1, version=self.base['version'],
                            scope='stock-before-installation', firmware_profile_sha256=rb.fingerprint(self.base),
-                           page_policy_sha256=rb.fingerprint(self.policy), tail_value=255,
+                           page_policy_sha256=dict.fromkeys(self.policy['kernel']['chips'], rb.fingerprint(self.policy)),
+                           tail_value=255,
                            physical_qualified=False)
         self.image = self.root/'restore.bin'
         self.image.write_bytes(self.content.ljust(8192, b'\0'))
@@ -158,7 +159,7 @@ class PreinstallTests(unittest.TestCase):
 
     def test_actual_review_loads_without_private_dependencies(self):
         base = rb.load_profile(); reader = rb.load_reader_profile(base)
-        policy = rb.load_metadata_policy(base, reader)
+        policy = rb.load_metadata_policy(base, reader, chip='xt26g02c')
         review = pi.load_review(base, policy)
         self.assertEqual(review['scope'], 'stock-before-installation')
         result = subprocess.run([sys.executable, str(ROOT/'scripts/deployment/preinstall.py'), '--help'],

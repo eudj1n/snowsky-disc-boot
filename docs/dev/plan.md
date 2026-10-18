@@ -29,6 +29,18 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
 
 ## The installer
 
+- [ ] The owner's second player, with a HeYangTek HYF2GQ4U NAND (2026-10-18;
+  [chip review](nand/nand-chip-review.md#a-second-chip-heyangtek-hyf2gq4u--2026-10-18)).
+  The profiles, the tools and the installer know the chip (the identity session
+  names it, the payloads are compiled for it); no player has run a write on it.
+  Open, in order: the exact datasheet (HY SPI 2G, A-series: HYF2GQ4UAACAE, ID
+  `C9 52`), reviewed against `firmware/chips/hyf2gq4u.json`; a release whose
+  payloads carry the chip's builds; the owner's acceptance on that player,
+  `install.py --accept-chip` (its first write: the entry's reads, the write,
+  the first start's check), then `exercised.hyf2gq4u` in `firmware/images`
+  from the run's review (`exercised.first_write`), after which the installer
+  writes such players without the flag.
+
 - [ ] The installation's card after the write, over the cable (owner,
   2026-10-09). Today the card is staged before USB Boot, through a card
   reader or the player's Working mode → USB Storage (2026-10-10). The goal:

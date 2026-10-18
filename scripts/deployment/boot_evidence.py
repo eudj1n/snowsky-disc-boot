@@ -20,18 +20,19 @@ from deployment import ram_transport as ram
 from deployment import collect_rootfs as collector
 from deployment import build_identity as builder
 from deployment.collector_policy import load_collector_policy, REQUEST_BYTES, RESULT_BYTES, MAX_PAGES
+from deployment.metadata_policy import pinned_policy
 from deployment.nand_records import encode_request, decode_result
 
 check = ram.check
 ARTIFACTS = {'identity.elf':1048576,'identity.bin':32768,'identity_layout.h':8192,'identity.ld':8192}
 
 
-def load_policy(base,reader,directory=PROFILES):
-    page=ram.load_metadata_policy(base,reader,directory)
-    buffers=load_collector_policy(base,reader,'rootfs-probe',directory)['profile']
+def load_policy(base,reader,directory=PROFILES,chip=None):
+    page=ram.load_metadata_policy(base,reader,directory,chip)
+    buffers=load_collector_policy(base,reader,'rootfs-probe',directory,chip)['profile']
     p=json.loads(ram.read_file(directory/'boot'/f'v{base["version"]}.json',16384))
     check(p.get('schema_version')==1 and p.get('version')==base['version'] and
-          p.get('page_policy_sha256')==fingerprint(page), 'Boot profile/policy mismatch')
+          pinned_policy(p.get('page_policy_sha256'),page), 'Boot profile/policy mismatch')
     check(p.get('physical_qualified') is False and p.get('writes_admitted') is False,'Boot evidence cannot admit writes')
     check(type(p.get('session_budget_ms')) is int and 10000<=p['session_budget_ms']<=600000,'Invalid boot budget')
     check(type(p.get('selector_bytes')) is int and 16<=p['selector_bytes']<=page['main_bytes'],'Invalid selector length')
@@ -70,7 +71,8 @@ def build(base,reader,policy,diskos,output):
     output.mkdir(parents=True,exist_ok=False)
     image=os.environ.get('DISC_TOOLCHAIN_IMAGE',builder.TOOLCHAIN_IMAGE)
     image_id=subprocess.check_output(['docker','image','inspect','--format','{{.Id}}',image],text=True).strip()
-    manifest=dict(schema_version=1,purpose='boot-evidence',firmware_sha256=fingerprint(base),
+    manifest=dict(schema_version=1,purpose='boot-evidence',chip=policy['page_policy']['chip']['id'],
+                  firmware_sha256=fingerprint(base),
                   reader_sha256=fingerprint(reader),policy_sha256=fingerprint(policy),sources=source_pins(),
                   scopes=scopes(policy),artifacts={},toolchain=builder.toolchain(image_id),nand_writes=False)
     for scope in scopes(policy):
@@ -87,7 +89,8 @@ def build(base,reader,policy,diskos,output):
 
 def prepare(base,cpu,reader,transport,policy,diskos,build_dir,metadata):
     raw=ram.read_file(build_dir/'build.json',65536); m=json.loads(raw)
-    for key,value in dict(schema_version=1,purpose='boot-evidence',firmware_sha256=fingerprint(base),
+    for key,value in dict(schema_version=1,purpose='boot-evidence',chip=policy['page_policy']['chip']['id'],
+                          firmware_sha256=fingerprint(base),
                           reader_sha256=fingerprint(reader),policy_sha256=fingerprint(policy),sources=source_pins(),
                           scopes=scopes(policy),nand_writes=False).items():
         check(m.get(key)==value,f'Boot build mismatch: {key}')
@@ -121,7 +124,7 @@ def make_plan(base,cpu,reader,transport,policy,inputs):
     # With the completion profile the batch's one CPU request is asked at once and held (plan, stage
     # 4c): the same calls; without it the plan is as before.
     completion=inputs.get('completion');ask=bool(completion and completion['completion_ask'])
-    p.update(operation='boot-evidence',policy_sha256=fingerprint(policy),scopes=spans,
+    p.update(operation='boot-evidence',chip=page['chip']['id'],policy_sha256=fingerprint(policy),scopes=spans,
              metadata_sha256=table['page_sha256'],payload_entry=reader['load_address'],
              payload_sha256={n:ram.sha(v) for n,v in inputs['payloads'].items()},
              payload_bytes={n:len(v) for n,v in inputs['payloads'].items()},
@@ -259,13 +262,17 @@ def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('action',choices=('build','plan','acquire'))
     p.add_argument('--version');p.add_argument('--diskos',type=Path,required=True)
     for name in ('build','metadata-page','libusb','output'): p.add_argument('--'+name,type=Path)
-    p.add_argument('--approved-plan-sha256');a=p.parse_args()
+    p.add_argument('--approved-plan-sha256')
+    p.add_argument('--chip',help='The chip the payloads are compiled for (a build; default for a plan or an acquisition: the build\'s own)')
+    a=p.parse_args()
     required={'build':{'output'},'plan':{'build','metadata_page'},'acquire':{'build','metadata_page','libusb','output','approved_plan_sha256'}}
     if {n for n in ('build','metadata_page','libusb','output','approved_plan_sha256') if getattr(a,n) is not None}!=required[a.action]:
         p.error('Supply exactly the arguments for build, offline plan or separately authorized acquisition')
     try:
         base=ram.load_profile(a.version);reader=ram.load_reader_profile(base);cpu=ram.load_probe_profile(base)
-        transport=ram.load_transport(base,reader);policy=load_policy(base,reader)
+        transport=ram.load_transport(base,reader)
+        chip=a.chip if a.action=='build' else a.chip or json.loads(ram.read_file(a.build/'build.json',65536)).get('chip')
+        policy=load_policy(base,reader,chip=chip)
         if a.action=='build': result=build(base,reader,policy,a.diskos,a.output)
         else:
             inputs=prepare(base,cpu,reader,transport,policy,a.diskos,a.build,ram.read_file(a.metadata_page,policy['page_policy']['main_bytes']))

@@ -41,6 +41,7 @@ def validate_layout(layout, chip):
 def load_layout(chip, directory=PROFILES):
     # The selector comes from the validated chip profile, never a firmware branch.
     path = directory/'oob'/f'{chip["id"]}.json'
+    require(path.exists(), f'No reviewed OOB layout for the {chip["id"]} chip (its datasheet\'s spare-area table)')
     regular(path, 8192)
     layout = json.loads(path.read_text())
     validate_layout(layout, chip)
@@ -126,11 +127,12 @@ def main():
     parser.add_argument('--count', type=int, required=True)
     parser.add_argument('--pages', type=int, nargs='+', required=True)
     parser.add_argument('--first-sequence', type=int, default=1)
+    parser.add_argument('--chip', help='The player\'s chip (required where the firmware names several)')
     args = parser.parse_args()
     try:
         base = load_profile(args.version)
         reader = load_reader_profile(base)
-        policy = load_metadata_policy(base, reader)
+        policy = load_metadata_policy(base, reader, chip=args.chip)
         report = audit(args.records, args.count, args.pages, bytes.fromhex(args.nonce), base,
                        reader, policy, load_layout(policy['chip']), args.first_sequence)
         print(json.dumps(report, indent=2))

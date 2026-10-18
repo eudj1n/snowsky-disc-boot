@@ -252,7 +252,12 @@ where the review knows this run's own image), without reading the failed image b
 its own; an image the review does not know admits the restore only, after the word `STOCK`.
 Without a terminal (`--yes`) the card is staged and the player is not written. The payloads come
 from the boot release (`disc-usb-payloads-<v>.tar.gz`, the boot evidence's among them) or are
-built here with `--boot-build`.
+built here with `--boot-build`. The entry's first session reads the player's NAND chip by its ID
+(the firmware names the chips its players may hold, two for 2.57: `firmware/kernels`, `chips`);
+the payloads that read pages are the ones compiled for that chip, and a chip the profiles do not
+know stops the run before any page is read. A chip no player has run the write on is read and
+reviewed but not written, until a developer's acceptance (`--accept-chip`, the first write on it;
+[installation review](installer/installation-review.md)).
 
 Each session shows a bar, the percentage and the time gone and left, counting its journal (two
 lines a call) against the plan's call limit (`expected_calls`). The write checks the image region
@@ -441,8 +446,10 @@ Its files are built from
 services' `disc-health-<version>.zip` (from 2.57.7) and `disc-network-<version>.zip` (from 2.57.8),
 `disc-boot-<version>-mips.tar.gz` (`disc-boot` and `disc-usb-console` for the image
 `install.py` builds from FiiO's update), from 2.57.5 `disc-usb-payloads-<version>.tar.gz` (the
-programs the installer runs from the player's RAM in USB Boot: the metadata read, the readback, the
-staging check, the identity probe, the restart (from 2.57.6) and the boot evidence's two (the read
+programs the installer runs from the player's RAM in USB Boot: the identity session's (from 2.57.10),
+the staging check and the restart (from 2.57.6) at `<mode>`, and for each chip the firmware names,
+at `<chip>/<mode>` (from 2.57.10; before, at `<mode>` for the one chip), the metadata read, the
+readback, the identity probe and the boot evidence's two (the read
 by digest until 2.57.8: a developer's check since, `collect_rootfs.py --mode rootfs-digest`), each with its
 `build.json`, built with the boot layer's own toolchain, `disc-native-toolchain`, whose compiler gives
 diskOS's toolchain's payloads byte for byte; `build.json` names the compiler, not the image's id, so a

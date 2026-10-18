@@ -31,7 +31,7 @@ def audit(run, plan_file, build, diskos, root=ROOT):
     run = Path(run)
     r, p = check_session(run, plan_file, 'boot-evidence-collected', root)
     require(p['operation'] == 'boot-evidence' and p['writer_executions'] == 0, 'Not a read-only boot evidence plan')
-    f = profiles(root, p['version'])
+    f = profiles(root, p['version'], p['chip'])
     reader, t, page, policy = f['reader'], f['transport'], f['page'], f['boot']
     boot, buffers = policy['profile'], policy['buffers']
     ask = check_plan(p, f)

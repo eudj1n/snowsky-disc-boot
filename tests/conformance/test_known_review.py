@@ -53,7 +53,7 @@ class KnownReviewTests(unittest.TestCase):
         self.known = dict(first_blocks_bytes=262144, images=[],
                           stock=dict(name='stock.bin', bytes=len(restore['image']), sha256=ram.sha(restore['image']),
                                      first_blocks_sha256=blocks),
-                          exercised=dict(writer_sha256=ram.sha(w.inputs['writer']), spl_sha256=ram.sha(w.inputs['spl']),
+                          exercised={policy['chip']['id']: dict(writer_sha256=ram.sha(w.inputs['writer']), spl_sha256=ram.sha(w.inputs['spl']),
                                          metadata_payload_sha256=ram.sha(w.inputs['payload']),
                                          staging_payload_sha256=ram.sha(w.inputs['staging_payload']),
                                          firmware_profile_sha256=writer.fingerprint(w.base),
@@ -65,7 +65,7 @@ class KnownReviewTests(unittest.TestCase):
                                          installer_contract_sha256=writer.fingerprint(install.layout_contract(layout)),
                                          image_bytes=len(w.inputs['image']),
                                          ram_regions=[dict(name=n, address=a, bytes=s) for n, a, s in regions],
-                                         writer_entry=w.reader['load_address']+layout['writer_entry_offset']))
+                                         writer_entry=w.reader['load_address']+layout['writer_entry_offset'])})
         selected = dict(selected_route='primary', selected_rootfs='rootfs', metadata_sha256=ram.sha(w.inputs['metadata']),
                         static_selection_reviewed=True)
         assess = patch.object(install.boot_review, 'assess', return_value=selected)
@@ -75,11 +75,11 @@ class KnownReviewTests(unittest.TestCase):
         bootloader.start()
         self.addCleanup(bootloader.stop)
 
-    def assemble(self, captures=None, plans=None, known=None, allow_unknown=False):
+    def assemble(self, captures=None, plans=None, known=None, allow_unknown=False, accept_chip=False):
         w = self.w
         return install.assemble_known(w.base, w.cpu, w.reader, w.transport, w.layout, self.inputs,
                                       captures or self.captures, plans or self.plans, self.boot.library,
-                                      known or self.known, allow_unknown)
+                                      known or self.known, allow_unknown, accept_chip)
 
     def test_a_known_image_in_one_entry_makes_a_bundle_the_write_takes(self):
         bundle = self.assemble()
@@ -137,11 +137,35 @@ class KnownReviewTests(unittest.TestCase):
         self.assertEqual(self.assemble()['source_state']['targets'], ['candidate', 'restore'], 'a known image admits both')
 
     def test_the_write_abi_must_be_one_a_player_ran(self):
+        chip = self.inputs['candidate']['page_policy']['chip']['id']
         for key in ('writer_sha256', 'staging_payload_sha256', 'installer_contract_sha256', 'writer_entry'):
             known = copy.deepcopy(self.known)
-            known['exercised'][key] = 'f'*64 if key.endswith('sha256') else 0
+            known['exercised'][chip][key] = 'f'*64 if key.endswith('sha256') else 0
             with self.subTest(key=key), self.assertRaisesRegex(ram.probe.ProbeError, 'No player has run'):
                 self.assemble(known=known)
+
+    def test_the_first_write_on_a_chip_is_a_developers_acceptance(self):
+        """A chip no player has run the write on (the second chip, 2026-10-18): refused, unless accepted as its
+        first write, which takes the ABI the chip does not change from another chip's record and names what
+        this write records once it ran."""
+        chip = self.inputs['candidate']['page_policy']['chip']['id']
+        known = copy.deepcopy(self.known)
+        known['exercised'] = {'other-chip': known['exercised'][chip]}
+        with self.assertRaisesRegex(ram.probe.ProbeError, f'No player has run this write on a {chip} chip'):
+            self.assemble(known=known)
+        bundle = self.assemble(known=known, accept_chip=True)
+        exercised = bundle['exercised']
+        self.assertEqual((exercised['chip'], exercised['chip_exercised'], exercised['shared_from']), (chip, False, 'other-chip'))
+        self.assertEqual(set(exercised['first_write']), {'metadata_payload_sha256', 'page_policy_sha256'})
+        self.assertNotIn('page_policy_sha256', {k for k in exercised if k != 'first_write'})
+        self.assertEqual(bundle['source_state']['chip'], chip)
+        # The ABI the chip does not change is still the one a player ran.
+        known['exercised']['other-chip']['writer_sha256'] = 'f'*64
+        with self.assertRaisesRegex(ram.probe.ProbeError, 'No player has run'):
+            self.assemble(known=known, accept_chip=True)
+        # A chip-specific digest of another chip's record is not this chip's; the accepted record skips it.
+        bundle = self.assemble(accept_chip=True)
+        self.assertTrue(bundle['exercised']['chip_exercised'], 'a chip a player ran the write on needs no acceptance')
 
     def test_the_way_back_must_be_stock(self):
         known = copy.deepcopy(self.known)

@@ -38,7 +38,7 @@ class KnownImagesTests(unittest.TestCase):
     def write_list(self, stock, earlier, exercised=None):
         (self.root/'images/v2.57.json').write_text(json.dumps(dict(
             schema_version=1, version='2.57', first_blocks_bytes=BLOCKS, stock=stock, earlier=earlier,
-            exercised=exercised or EXERCISED)))
+            exercised={'xt26g02c': exercised or EXERCISED})))
 
     def load(self):
         return known_images.load('2.57', self.root/'images', self.root/'releases')
@@ -74,15 +74,25 @@ class KnownImagesTests(unittest.TestCase):
             self.load()
 
     def test_the_exercised_write_abi_is_complete(self):
-        self.assertEqual(self.load()['exercised'], EXERCISED)
+        """The write's ABI by the chip of the player that ran it (2026-10-18: the owner's first player, XTX; the
+        second, HeYangTek, has not run a write yet)."""
+        self.assertEqual(self.load()['exercised'], {'xt26g02c': EXERCISED})
         mine = known_images.load('2.57')['exercised']
-        self.assertEqual(mine['image_bytes'], known_images.load('2.57')['stock']['bytes'])
-        self.assertNotIn('note', mine)
+        self.assertEqual(list(mine), ['xt26g02c'])
+        self.assertEqual(mine['xt26g02c']['image_bytes'], known_images.load('2.57')['stock']['bytes'])
+        self.assertNotIn('note', mine['xt26g02c'])
         for change in (dict(writer_sha256='x'), dict(image_bytes=0), dict(ram_regions=[]),
                        dict(ram_regions=[dict(name='code', address=0)])):
             self.write_list(entry(1, name='stock.bin'), [], dict(EXERCISED, **change))
             with self.subTest(change=change), self.assertRaisesRegex(known_images.KnownImagesError, 'exercised'):
                 self.load()
+        (self.root/'images/v2.57.json').write_text(json.dumps(dict(
+            schema_version=1, version='2.57', first_blocks_bytes=BLOCKS, stock=entry(1, name='stock.bin'), earlier=[],
+            exercised=EXERCISED)))
+        with self.assertRaisesRegex(known_images.KnownImagesError, 'by the chip'):
+            self.load()
+        self.assertNotIn('metadata_payload_sha256', known_images.EXERCISED_SHARED)
+        self.assertIn('writer_sha256', known_images.EXERCISED_SHARED)
 
     def test_a_release_records_the_image_the_guest_ran(self):
         folder = self.root/'build'

@@ -18,7 +18,7 @@ class BootReviewTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)
         self.base=review.boot.ram.load_profile();self.reader=review.boot.ram.load_reader_profile(self.base)
-        self.policy=review.boot.load_policy(self.base,self.reader)
+        self.policy=review.boot.load_policy(self.base,self.reader, chip='xt26g02c')
         self.profile=review.load_bootloader(self.base,self.policy)
         # Reduce only the synthetic fixture's boot extent. Its bytes are generated here.
         self.policy['profile']['partitions'][0]['size']=131072
@@ -29,7 +29,7 @@ class BootReviewTests(unittest.TestCase):
             p=self.profile[route];s=('console=synthetic root='+p['root_device']+' ro\0').encode()
             a=p['bootargs_offset'];self.image[a:a+len(s)]=s
         self.profile.update(boot_bytes=len(self.image),boot_sha256=review.digest(self.image),
-                            boot_policy_sha256=review.fingerprint(self.policy))
+                            boot_policy_sha256=dict.fromkeys(self.policy['page_policy']['kernel']['chips'],review.fingerprint(self.policy)))
         self.nonce=bytes(range(16));self.path=self.root/'records.bin'
 
     def fixture(self,token='ota:backup',bad=(),later=None,alter=None):
