@@ -32,7 +32,11 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
 - [ ] The owner's second player, with a HeYangTek HYF2GQ4U NAND (2026-10-18;
   [chip review](nand/nand-chip-review.md#a-second-chip-heyangtek-hyf2gq4u--2026-10-18)).
   The profiles, the tools and the installer know the chip (the identity session
-  names it, the payloads are compiled for it); no player has run a write on it.
+  names it, the payloads are compiled for it) and its SPL build
+  ([bootloader review](nand/bootloader-review.md#the-second-players-spl--2026-10-18));
+  its first run (2026-10-18, `install-20261018-190821`) read the chip, the
+  partition table, the bootloader and stock's first blocks (ECC clean) and
+  stopped at that review; no player has run a write on it.
   Open, in order: the exact datasheet (HY SPI 2G, A-series: HYF2GQ4UAACAE, ID
   `C9 52`), reviewed against `firmware/chips/hyf2gq4u.json`; a release whose
   payloads carry the chip's builds; the owner's acceptance on that player,

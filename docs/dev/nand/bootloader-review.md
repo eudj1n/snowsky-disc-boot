@@ -169,3 +169,20 @@ assessment and capture provenance to stock/staging evidence, current exact image
 and write/readback plans. Physical write admission remains closed pending
 separate authorization of the concrete prepared activation/write/readback step. See the
 [installation procedure](../installer/installation-procedure.md).
+
+## The second player's SPL — 2026-10-18
+
+The owner's second player (HeYangTek HYF2GQ4U, [chip review](nand-chip-review.md#a-second-chip-heyangtek-hyf2gq4u--2026-10-18))
+holds a boot image whose SHA-256 is
+`e307af01bd42eec743308cbc97936b1b74fc7c2c3ef488c8bf5ce8bb4b8d67bc`, so the
+installer's first run on it stopped at this review ("Unreviewed bootloader
+bytes"; run `install-20261018-190821`). Compared byte by byte with the reviewed
+image, the two 2,097,152-byte images differ in ten bytes only: the build date
+string at `0x381d`–`0x3832` (`SPL 2013.07 (Jan 09 2026 - 15:02:40)` against
+`SPL 2013.07 (May 07 2026 - 17:14:17)`) and the header's bytes `0x9` and `0xf`,
+which follow the image's contents. Every byte of the SPL's code and data from
+`0x800` on, apart from the date, is the same: the functions, the NAND path, the
+selector, the arguments and the chip handling reviewed above hold for both,
+and both players boot stock with it. The profile lists the reviewed images by
+their digests (`boot_sha256`, each with what the build is); the review admits
+an image whose digest is listed and still refuses any other.

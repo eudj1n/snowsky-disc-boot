@@ -17,6 +17,8 @@ the commits.
   accepted, the installer reads these players and writes nothing.
 - A read that fails in USB Boot is reported by its reason, not by the last line
   the tool printed.
+- The bootloader review knows the second player's SPL build (the same program,
+  built on another day).
 
 ## [2.57.9] — 2026-10-11
 

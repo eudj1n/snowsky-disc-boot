@@ -122,6 +122,24 @@ class BootReviewTests(unittest.TestCase):
         self.fixture()
         with self.assertRaises(ValueError):self.assess()
 
+    def test_several_builds_of_the_reviewed_spl_are_listed_by_their_digests(self):
+        """The owner's second player (2026-10-18) holds the same SPL built on another day: the profile
+        lists the reviewed images' digests, each saying what the build is."""
+        other=bytearray(self.image);other[0x381d:0x381d+5]=b'May07'
+        self.profile['boot_sha256']={review.digest(bytes(self.image)):'the first build',review.digest(bytes(other)):'the second'}
+        self.fixture();self.assertEqual(self.assess()['boot_sha256'],review.digest(bytes(self.image)))
+        self.image=other;self.fixture()
+        self.assertEqual(self.assess()['boot_sha256'],review.digest(bytes(other)))
+        self.image[0x100]^=1;self.fixture()
+        with self.assertRaisesRegex(ValueError,'Unreviewed bootloader bytes'):self.assess()
+        self.image[0x100]^=1;self.fixture()
+        for images in ({},{'x'*64:'bad digest'},{review.digest(bytes(other)):''},[review.digest(bytes(other))]):
+            self.profile['boot_sha256']=images
+            with self.subTest(images=images),self.assertRaisesRegex(ValueError,'Invalid reviewed boot image'):self.assess()
+        mine=json.loads((Path(__file__).resolve().parents[2]/'firmware/bootloaders/v2.57.json').read_text())
+        self.assertEqual(sorted(mine['boot_sha256']),['389703052c38dc279187a98e7a61094fd7f5c1d3103e8b929f2b11c69a68ae5a',
+                                                       'e307af01bd42eec743308cbc97936b1b74fc7c2c3ef488c8bf5ce8bb4b8d67bc'])
+
     def test_future_profile_selection_and_review_binding(self):
         base=copy.deepcopy(self.base);base['version']='9.99';p=copy.deepcopy(self.profile)
         p.update(version='9.99',firmware_sha256=review.fingerprint(base))
