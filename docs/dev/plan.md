@@ -30,20 +30,13 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
 ## The installer
 
 - [ ] The owner's second player, with a HeYangTek HYF2GQ4U NAND (2026-10-18;
-  [chip review](nand/nand-chip-review.md#a-second-chip-heyangtek-hyf2gq4u--2026-10-18)).
-  The profiles, the tools and the installer know the chip (the identity session
-  names it, the payloads are compiled for it) and its SPL build
-  ([bootloader review](nand/bootloader-review.md#the-second-players-spl--2026-10-18));
-  its first run (2026-10-18, `install-20261018-190821`) read the chip, the
-  partition table, the bootloader and stock's first blocks (ECC clean) and
-  stopped at that review; no player has run a write on it.
-  Open, in order: the exact datasheet (HY SPI 2G, A-series: HYF2GQ4UAACAE, ID
-  `C9 52`), reviewed against `firmware/chips/hyf2gq4u.json`; a release whose
-  payloads carry the chip's builds; the owner's acceptance on that player,
-  `install.py --accept-chip` (its first write: the entry's reads, the write,
-  the first start's check), then `exercised.hyf2gq4u` in `firmware/images`
-  from the run's review (`exercised.first_write`), after which the installer
-  writes such players without the flag.
+  [chip review](nand/nand-chip-review.md#a-second-chip-heyangtek-hyf2gq4u--2026-10-18),
+  [the acceptance](observations/second-player-acceptance.md)): written and
+  proven by its first start's check that day, `exercised.hyf2gq4u` recorded.
+  Open: the exact datasheet (HY SPI 2G, A-series: HYF2GQ4UAACAE, ID `C9 52`),
+  reviewed against `firmware/chips/hyf2gq4u.json`; a boot release whose
+  payloads carry both chips' builds (until then the installer's archive of
+  2.57.9 reads such a player and stops: its payloads are the one chip's).
 
 - [ ] The installation's card after the write, over the cable (owner,
   2026-10-09). Today the card is staged before USB Boot, through a card

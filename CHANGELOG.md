@@ -12,13 +12,15 @@ the commits.
 - Players with a HeYangTek HYF2GQ4U memory chip (FiiO puts at least two chips
   in the DISC; the second one was found in a new player on 2026-10-18): the
   installer reads the chip's ID first and takes the programs built for that
-  chip. A chip it does not know stops the run before anything is read further,
-  and the report says which. Until a first installation on such a player is
-  accepted, the installer reads these players and writes nothing.
+  chip, and writes such players as it writes the others (the first installation
+  on one was accepted the same day). A chip it does not know stops the run
+  before anything is read further, and the report says which.
 - A read that fails in USB Boot is reported by its reason, not by the last line
   the tool printed.
 - The bootloader review knows the second player's SPL build (the same program,
   built on another day).
+- After the write, the restart no longer leaves the installer waiting when the
+  USB library does not return once the player has left the bus.
 
 ## [2.57.9] — 2026-10-11
 

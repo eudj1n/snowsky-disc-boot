@@ -21,8 +21,10 @@ import ctypes as C
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import os
 import struct
 import sys
+import threading
 import time
 import uuid
 
@@ -33,6 +35,13 @@ from deployment import ram_transport as ram
 check = ram.check
 # The payload's own bound is a fraction of a second at the SPL's clocks (restart.h, RESTART_WAIT_TICKS).
 WAIT_MS = 5000
+# How long the USB library's close may take once the player left the bus. libusb 1.0.30's darwin
+# backend deadlocked in libusb_exit when the device detached at that moment (2026-10-18, the second
+# player's write: libusb_exit waiting for its hotplug thread, which waited for the mutex it held), and
+# the installer waited for a result that would never be written. The close runs in a thread with this
+# bound; a close that does not return is noted and left to the process's end (main, os._exit).
+CLOSE_SECONDS = 5.0
+PENDING_CLOSES = []
 
 
 def make_plan(base, cpu, reader, transport, inputs):
@@ -64,8 +73,26 @@ def run(session, inputs, record):
     record['status'] = {True: 'restart-not-observed', False: 'player-restarted', None: 'restart-uncertain'}[answer]
 
 
+def close_bounded(session, seconds=CLOSE_SECONDS):
+    """session.close() within seconds: its errors, else the note that it did not return (the thread is
+    left in PENDING_CLOSES for the process's end)."""
+    errors, done = [], threading.Event()
+    def work():
+        try:
+            errors.extend(session.close())
+        finally:
+            done.set()
+    thread = threading.Thread(target=work, name='libusb-close', daemon=True)
+    thread.start()
+    thread.join(seconds)
+    if done.is_set():
+        return errors
+    PENDING_CLOSES.append(thread)
+    return [f'the USB library did not return from the close within {seconds:g} s; left to the process\'s end']
+
+
 def acquire(plan, approved, base, cpu, reader, transport, inputs, library, output,
-            loader=C.CDLL, clock=time.monotonic, sleep=time.sleep):
+            loader=C.CDLL, clock=time.monotonic, sleep=time.sleep, close_seconds=CLOSE_SECONDS):
     check(plan == make_plan(base, cpu, reader, transport, inputs) and approved == fingerprint(plan), 'Restart plan/inputs changed')
     output.mkdir(mode=0o700)
     nonce = uuid.uuid4().bytes
@@ -88,8 +115,11 @@ def acquire(plan, approved, base, cpu, reader, transport, inputs, library, outpu
         record.update(status='failed', error=f'{type(exc).__name__}: {exc}')
     finally:
         # A player that restarted is gone from the bus: its interface cannot be released, which is no failure.
-        if session and session.close() and record['status'] != 'player-restarted':
-            record['status'] = 'failed'
+        if session:
+            errors = close_bounded(session, close_seconds)
+            record['cleanup_errors'] = errors
+            if errors and record['status'] != 'player-restarted':
+                record['status'] = 'failed'
         if journal:
             journal.file.close()
         record['finished_at'] = datetime.now(timezone.utc).isoformat()
@@ -119,7 +149,13 @@ def main():
         result = dict(plan=plan, plan_sha256=fingerprint(plan)) if args.action == 'plan' else acquire(
             plan, args.approved_plan_sha256, base, cpu, reader, transport, inputs, args.libusb, args.output)
         print(json.dumps(result, indent=2))
-        return 1 if result.get('status') in ('failed', 'restart-uncertain') else 0
+        code = 1 if result.get('status') in ('failed', 'restart-uncertain') else 0
+        if PENDING_CLOSES:
+            # The result is written and printed; a close stuck in the USB library would hold the process.
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os._exit(code)
+        return code
     except (Exception, KeyboardInterrupt) as exc:
         print(f'{type(exc).__name__}: {exc}', file=sys.stderr)
         return 2

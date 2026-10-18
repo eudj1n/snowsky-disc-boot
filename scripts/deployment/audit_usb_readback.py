@@ -30,6 +30,7 @@ assert p['operation']=='rootfs' and fp(scope)==p['collector_policy_sha256']
 assert fp(reader)==p['reader_profile_sha256'] and fp(t)==p['transport_profile_sha256']
 build=args.build;assert sha((build/'build.json').read_bytes())==p['build_sha256']
 payload=(build/'identity.bin').read_bytes();assert sha(payload)==p['payload_sha256']
+policy=json.loads((build/'build.json').read_text())['page_policy'];assert policy['chip']['id']==p['chip']
 spl=(args.diskos/'flash/disc_spl_lpddr3.bin').read_bytes();assert sha(spl)==p['spl_sha256']
 nonce=bytes.fromhex(r['nonce_hex']);raw=(run/'records.bin').read_bytes()
 assert len(raw)==p['capture_bytes'] and sha(raw)==r['capture_sha256']
@@ -41,8 +42,8 @@ for i in range(len(raw)//4476):
  assert request==struct.pack('<3I16s5I',0x3151524e,1,2,nonce,i+1,page,0,0,0)
  assert w[:4]==(0x3153524e,1,0x454e4f44,0) and b[16:32]==nonce and w[8:10]==(i+1,2) and w[11]==2176
  assert w[12]==zlib.crc32(b[76:2252]) and not any(b[2252:])
- assert w[13]==0x120b and w[15]&0x50==0x10 and not w[16]&1
- ecc=(w[16]&0x70)>>4;assert ecc in (0,1) and 2<=w[17]<=2*reader['nand_polls'] and w[18]==w[17]+8
+ assert 0<w[13]<0xffffff and w[13]&policy['id_mask']==policy['expected_id'] and w[15]&policy['feature_mask']==policy['feature_value'] and not w[16]&1
+ ecc=(w[16]&policy['ecc_mask'])>>policy['ecc_shift'];assert ecc in (0,1) and policy['ecc_admitted']>>ecc&1 and 2<=w[17]<=2*reader['nand_polls'] and w[18]==w[17]+8
  hist[ecc]+=1;main.append(b[76:2252]);framed.append(b);observed_pages.append(page)
 good=[];bad=[]
 for i,block in enumerate(range(first,end)):

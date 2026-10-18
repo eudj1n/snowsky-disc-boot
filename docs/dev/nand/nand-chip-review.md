@@ -178,5 +178,7 @@ comparison's open items are the XTX ones; the OOB layout of the 128-byte spare
 (the ECC parity's place) is not documented in the 1G datasheet, so no
 `firmware/oob/hyf2gq4u.json` exists and `oob_review.py` refuses this chip.
 
-Physical page reads on this chip, its acceptance (the first installation with
-`--accept-chip`) and the exact datasheet remain open ([plan](../plan.md)).
+The acceptance ran the same day: [the second player's acceptance](../observations/second-player-acceptance.md)
+(the entry's reads, the write, the first start's check matching the written
+image), after which `exercised.hyf2gq4u` names what that write ran. The exact
+datasheet remains open ([plan](../plan.md)).

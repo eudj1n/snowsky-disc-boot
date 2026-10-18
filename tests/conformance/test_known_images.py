@@ -74,13 +74,18 @@ class KnownImagesTests(unittest.TestCase):
             self.load()
 
     def test_the_exercised_write_abi_is_complete(self):
-        """The write's ABI by the chip of the player that ran it (2026-10-18: the owner's first player, XTX; the
-        second, HeYangTek, has not run a write yet)."""
+        """The write's ABI by the chip of the player that ran it (2026-10-18: the owner's first player, XTX, and
+        the second, HeYangTek, accepted that day)."""
         self.assertEqual(self.load()['exercised'], {'xt26g02c': EXERCISED})
         mine = known_images.load('2.57')['exercised']
-        self.assertEqual(list(mine), ['xt26g02c'])
-        self.assertEqual(mine['xt26g02c']['image_bytes'], known_images.load('2.57')['stock']['bytes'])
-        self.assertNotIn('note', mine['xt26g02c'])
+        self.assertEqual(list(mine), ['xt26g02c', 'hyf2gq4u'])
+        for chip in mine:
+            self.assertEqual(mine[chip]['image_bytes'], known_images.load('2.57')['stock']['bytes'])
+            self.assertNotIn('note', mine[chip])
+        # The second chip's acceptance (2026-10-18): the ABI the chip does not change is the first record's.
+        self.assertEqual({k: mine['hyf2gq4u'][k] for k in known_images.EXERCISED_SHARED},
+                         {k: mine['xt26g02c'][k] for k in known_images.EXERCISED_SHARED})
+        self.assertNotEqual(mine['hyf2gq4u']['metadata_payload_sha256'], mine['xt26g02c']['metadata_payload_sha256'])
         for change in (dict(writer_sha256='x'), dict(image_bytes=0), dict(ram_regions=[]),
                        dict(ram_regions=[dict(name='code', address=0)])):
             self.write_list(entry(1, name='stock.bin'), [], dict(EXERCISED, **change))
