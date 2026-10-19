@@ -29,6 +29,16 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
 
 ## The installer
 
+- [ ] The first installation's packages over the console, on a player
+  (owner, 2026-10-19: no Play at power-on for what the user chose). The
+  installer asks the new system to install each staged folder over the USB
+  console after the first start's check, removes the console's marker and
+  restarts the player (`Installer.install_over_console`, synthetic tests in
+  `test_installer`; the guest has no USB console, so it cannot stand in).
+  To settle on a player: the time each `disc-boot install` takes over the
+  console against the session's 900 s, the restart line against the
+  console's revocation once the marker is gone (the port must leave the
+  computer), and the start with the menu after it. Then the release.
 - [ ] The installation's card after the write, over the cable (owner,
   2026-10-09). Today the card is staged before USB Boot, through a card
   reader or the player's Working mode → USB Storage (2026-10-10). The goal:

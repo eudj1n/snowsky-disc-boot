@@ -7,6 +7,15 @@ files on the [releases page](https://github.com/eudj1n/snowsky-disc-boot/release
 Entries stay short; why is in the developer documents (`docs/dev/`), how in
 the commits.
 
+## [Unreleased]
+
+- The first installation needs no Play at power-on: once the new system's
+  first start has checked the written image, the installer asks it, over the
+  same cable, to install the packages you chose from the card, removes the
+  USB console's marker from the card and restarts the player with them. Its
+  last screen says what was installed; should the console not answer, a start
+  with Play installs them as before.
+
 ## [2.57.10] — 2026-10-18
 
 - Players with a HeYangTek HYF2GQ4U memory chip (FiiO puts at least two chips

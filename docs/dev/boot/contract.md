@@ -841,10 +841,18 @@ controller or service package starts with its own `PATH` and does not need it.
   every `mq_ui` process is the launcher, also before it marks its wait
   (`ui/install-wait`). The packages then run as in `platform` mode.
 - Without the gesture boot never installs or runs anything from the card.
+  The installer's own session counts as the gesture for the packages the
+  user chose on the computer (owner, 2026-10-19): after the first start's
+  check it runs `disc-boot install <folder>` for each folder it staged, in
+  the recovery's order, over the USB console, then removes the console's
+  marker from the card and restarts the player. Boot itself still acts only
+  on a command or on Play; nothing in the image changes, so packages cannot
+  tell (`bootApi` unchanged).
 - Play's timing at power-on stays as it is (owner, 2026-10-08), even though
   it is awkward to press together with the power key. Once the menu is
   installed, its Packages screen installs what waits on the card without
-  Play.
+  Play; the first installation goes in over the cable (above), so Play is
+  for a player installed without the console's answer, or for a recovery.
 
 ## Environment of a package
 

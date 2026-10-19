@@ -13,8 +13,10 @@ docs/dev/boot/contract.md and docs/dev/plan.md before extending it.
 - The contract (docs/dev/boot/contract.md) is what packages build on. Change it only
   with the owner's decision, and raise `bootApi` when packages can tell.
 - Boot never runs or installs anything from the card without the physical
-  gesture, adds no network listener, and requires no signature of ours:
-  packages run at the installer's own risk. The image carries no package.
+  gesture (Play, or the installer's own USB session for the packages the user
+  chose: owner, 2026-10-19), adds no network listener, and requires no
+  signature of ours: packages run at the installer's own risk. The image
+  carries no package.
 - Keep the external emulator repository unchanged. Reuse its runtime scripts;
   do not copy firmware, proprietary binaries, private catalogs or captures.
   FiiO's rootfs is never redistributed: users build the image from their own

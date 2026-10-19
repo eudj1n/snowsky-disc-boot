@@ -12,7 +12,11 @@ Since combined-008 the opt-in file is `.disc/dev/usb-console` on the card
 (the same exact content as `DISC_WEB_USB_DEBUG` below, which images through
 combined-007 read at the card root), and the product image
 (`build_candidate.py --product`) carries no USB console at all. The steps
-below describe the combined-007 layout as it was accepted.
+below describe the combined-007 layout as it was accepted. The installer
+puts the marker on the card for the first start's check and the packages'
+installation over the console, and removes it from the card before it
+restarts the player (owner, 2026-10-19): the console runs at the first
+start only, unless the marker is put back by hand.
 
 ## Firmware evidence
 
