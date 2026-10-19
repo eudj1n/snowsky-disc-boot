@@ -62,29 +62,48 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
 
 ## Later
 
-- Packages released on their own, without a cascade (owner, 2026-10-10; to
-  do later, not started). Today a new server, disc-health or disc-network
-  needs a boot release, whose packages change only in their manifests
-  (2.57.8: the menu and disc-health 2.57.7's binaries under a new version
-  and digest, reinstalled on players). Three couplings cause it: the own
-  packages take the boot release's version (`release.py`); the catalog lives
-  in this repository and the installer's archive; `install.py --packages`
-  reads the archive's copy. Proposed: a boot release only for what is
-  written to the player (`disc-boot`, the USB console, the payloads, the
-  installer); each package its own version, tag (`disc-health-v1.0.1` and
-  the like) and build id from its own sources; the catalog published apart,
-  at a stable address, signed with our ed25519 key (verified by CI without
-  secrets, and later by the server on the player), each entry with its
-  digest, compatibility (profile, `bootApi`, a minimum boot layer when
-  needed) and acceptance; `install.py --packages` and later the server's
-  page read the live catalog, the archive keeping a snapshot and the
-  packages for a first installation offline. Open decisions: the catalog in
-  a repository of its own (`snowsky-disc-catalog`, recommended) or a file
-  on `2.x` here; signed (recommended) or not; per-package semantic versions
-  (recommended) or `2.57.N`; the menu and the services kept here with tags
-  of their own (recommended) or split; the order (the catalog and the
-  versions, then `--packages` on the live catalog, then updates over Wi-Fi).
-  Updates over Wi-Fi (above) build on it.
+- Packages released on their own, without a cascade (owner, 2026-10-10;
+  paused by the owner on 2026-10-19, not started). Today a new server,
+  disc-health or disc-network needs a boot release, whose packages change
+  only in their manifests (2.57.8: the menu and disc-health 2.57.7's
+  binaries under a new version and digest, reinstalled on players). Three
+  couplings cause it: the own packages take the boot release's version
+  (`release.py`); the catalog lives in this repository and the installer's
+  archive; `install.py --packages` reads the archive's copy.
+
+  Decided on 2026-10-19 (owner), should it be taken up: no repository of
+  its own for the catalog and no tags of their own for the packages (four
+  release streams in one repository are more than this project wants to
+  manage); the catalog stays `catalog/packages.json` on `2.x`, read live
+  at `https://raw.githubusercontent.com/eudj1n/snowsky-disc-boot/refs/heads/2.x/catalog/packages.json`,
+  unsigned for now (HTTPS to the repository and each entry's digest; a
+  signature file can be added beside it without a change of format), and
+  one release stream `v2.57.N` stays. Three small stages, in this order:
+  1. A package is published again only when it changed: the menu, disc-health
+     and disc-network carry versions of their own in their `package.json`
+     sources (1.0.0 to begin with); `release.py` takes each package's build
+     id from its sources and, when the catalog's entry already names that
+     build, keeps the entry (its url, digest and version) instead of
+     building and attaching a new zip; a changed package with an unchanged
+     version fails the release. The installer's archive takes each package by
+     its digest from wherever the catalog names it.
+  2. The live catalog: `install.py --packages` and the packages step of the
+     full installation fetch the catalog from `2.x` (the archive's snapshot
+     without a network or with `--offline`), check its format, filter by
+     `profiles` and `bootApi`, and say which catalog was used; the fetched
+     copy is kept in the data folder beside the downloads. The server's apps
+     stay as they are (`catalog/apps.json` of the chosen server package).
+  3. `install.py --self-update`: the latest release from GitHub's API,
+     compared with the archive's version; the installer's archive fetched,
+     checked against the release's `SHA256SUMS` and `releases/<v>.json` on
+     `2.x`, unpacked beside the current one, and the image's build id
+     compared, so that it says whether the player needs a new write.
+  Deferred until a package needs them: a `boot: ">=2.57.N"` range in the
+  catalog's entries (compared by the release's three numbers; `bootApi` and
+  `profiles` carry compatibility today) with the release's number carried in
+  the image for boot to check; separate tags for the packages, should the
+  one stream become the bottleneck. Updates over Wi-Fi (above) build on
+  stage 2.
 
 - Experiments with the SNOWSKY Echo Mini (owner, 2026-10-17; later). Nothing
   is known of it here yet: its SoC, storage, firmware and update path, and
