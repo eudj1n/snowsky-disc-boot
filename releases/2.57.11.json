@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "version": "2.57.11",
+  "firmware": "2.57",
+  "tag": "v2.57.11",
+  "buildId": "8eb15a998d85",
+  "files": {
+    "disc-menu-2.57.11.zip": {
+      "bytes": 177631,
+      "sha256": "7c4d66cbf8c9b8e043443c87b92e5709b3ae11338bacf6d6c7a153e810f9ac4d"
+    },
+    "disc-boot-2.57.11-mips.tar.gz": {
+      "bytes": 343791,
+      "sha256": "1dde16bcdf512b8aec47bf62ce778396dd6f3d3609e116658310e84876efebcb"
+    },
+    "disc-usb-payloads-2.57.11.tar.gz": {
+      "bytes": 101321,
+      "sha256": "13ce08ec5645bb7cfd824dccd54ecd4f1b8809d612c0e7b48daa85e0ad9258c1"
+    },
+    "disc-health-2.57.11.zip": {
+      "bytes": 136407,
+      "sha256": "2003c424b09ed8b8fa125fe9ae674938e94ac652aaabd45dddfcb8bd221b67a4"
+    },
+    "disc-network-2.57.11.zip": {
+      "bytes": 138839,
+      "sha256": "a81f1915af9496aa563dd118426170ef6a0cac9075aa98c7a8d122125e0a9957"
+    },
+    "disc-installer-2.57.11.tar.gz": {
+      "bytes": 2527778,
+      "sha256": "68f5b2bf3b59576c89b2da6efb92fc99e869f05a708237090b5b2a2295b6ac86"
+    }
+  },
+  "accepted": "no new image or binaries: build 8eb15a998d85 and image 9e6448dd as release 2.57.7's, whose guest and player acceptance stands; the boot programs, the USB payloads, the menu, disc-health and disc-network byte for byte 2.57.10's (the packages' manifests name 2.57.11). What is new is the installer: on 2026-10-19 the owner's second player (HeYangTek HYF2GQ4U), after 'Everything ours' in the menu and one start into stock, was written from this tree with install.py --boot-build; the first start's check came over the USB console, the installer had the new system install the four staged packages over that console (all answered ok, 5 s), removed the console's marker from the card and restarted the player, which left the bus within 5 s and started with the menu (observations/first-install-over-console.md). The installer's archive unpacked outside the repository with an empty home: install.py --packages --dry-run staged its packages. The guest was not run again: nothing it runs changed",
+  "urls": {
+    "disc-menu-2.57.11.zip": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.11/disc-menu-2.57.11.zip",
+    "disc-boot-2.57.11-mips.tar.gz": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.11/disc-boot-2.57.11-mips.tar.gz",
+    "disc-usb-payloads-2.57.11.tar.gz": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.11/disc-usb-payloads-2.57.11.tar.gz",
+    "disc-health-2.57.11.zip": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.11/disc-health-2.57.11.zip",
+    "disc-network-2.57.11.zip": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.11/disc-network-2.57.11.zip",
+    "disc-installer-2.57.11.tar.gz": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.11/disc-installer-2.57.11.tar.gz"
+  },
+  "image": {
+    "name": "disc-boot-v257-review-only.bin",
+    "bytes": 100663296,
+    "sha256": "9e6448ddc429e3e156a862abf1e5cf5547f6f7294850b1233609a7edfc880c77",
+    "first_blocks_bytes": 262144,
+    "first_blocks_sha256": "68c9da0ed3a62c3dfccff5f650326dc06e8c6b68881e997598f18411e0c25632"
+  }
+}
