@@ -78,7 +78,10 @@ back: the port's leaving the computer within 90 s is the restart's proof). The
 report's `packages` step holds the outcome (`installed`, `partly installed`, `no
 console`, `console lost` with the error, `nothing staged`), each folder's answer,
 `marker` and `restart`; the first-boot screen names what went in and, when the
-console did not answer, keeps the start with Play. Any other outcome, or a release without the payload, is
+console did not answer, keeps the start with Play. On the owner's second player
+([2026-10-19](../observations/first-install-over-console.md)) the check came 33 s
+after the player left the bus, the four installs took 5 s together and the port
+left within 5 s of the restart line: 43 s of the console's 900 s session. Any other outcome, or a release without the payload, is
 the cable as before (unplug, then plug while the new system runs); the write stands
 either way and nothing is retried (`test_usbboot`). The run's `report.json` names
 the outcome in the player's step: its `restart` field holds `outcome`

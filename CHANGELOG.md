@@ -14,7 +14,11 @@ the commits.
   same cable, to install the packages you chose from the card, removes the
   USB console's marker from the card and restarts the player with them. Its
   last screen says what was installed; should the console not answer, a start
-  with Play installs them as before.
+  with Play installs them as before. Accepted on a player on 2026-10-19: the
+  four packages went in within a minute of the write's end.
+- "Everything ours" in the menu's Packages screen was run on a player for the
+  first time: at the next start the player came up with FiiO's interface, and
+  the installer wrote it again from that state.
 
 ## [2.57.10] — 2026-10-18
 
