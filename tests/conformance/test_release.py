@@ -89,7 +89,20 @@ class ReleaseTests(unittest.TestCase):
             release.record('2.57.1', self.root/'dist', 'again', self.releases)
         checked = release.check('2.57.1', self.root/'dist', self.releases, self.catalog(menu['sha256'], menu['bytes']))
         self.assertEqual(checked['catalogEntries'], 1)
-        self.assertIn('`disc-menu-2.57.1.zip`', release.notes(checked))
+        # The notes (owner, 2026-10-19): what changes for users first, from the changelog's entry; the
+        # acceptance last, folded; no entry for the version refuses the release.
+        changelog = self.root/'CHANGELOG.md'
+        changelog.write_text('# Changelog\n\n## [2.57.2] — later\n\n- Later.\n\n## [2.57.1] — 2026-10-03\n\n- The menu asks.\n'
+                             '- A way back.\n\n## [2.57.0] — before\n\n- Before.\n')
+        text = release.notes(checked, changelog)
+        self.assertLess(text.index('## What changes for you\n\n- The menu asks.\n- A way back.\n'), text.index('`disc-menu-2.57.1.zip`'))
+        self.assertLess(text.index('`disc-menu-2.57.1.zip`'), text.index('<details>\n<summary>Acceptance'))
+        self.assertIn('boot_guest and menu_guest on the guest.', text)
+        self.assertNotIn('Later.', text)
+        self.assertNotIn('Before.', text)
+        changelog.write_text('# Changelog\n\n## [2.57.2] — later\n\n- Later.\n')
+        with self.assertRaisesRegex(release.ReleaseError, 'no entry for 2.57.1'):
+            release.notes(checked, changelog)
         with self.assertRaisesRegex(release.ReleaseError, 'another digest'):
             release.check('2.57.1', self.root/'dist', self.releases, self.catalog('0' * 64, menu['bytes']))
         (self.mips/'disc-boot').write_bytes(b'\x7fELF another build')
