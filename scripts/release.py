@@ -462,9 +462,28 @@ def check(version, dist, releases=RELEASES, catalog_path=ROOT/'catalog/packages.
     return dict(data, catalogEntries=pointing)
 
 
-def notes(data):
+def changelog_entry(version, changelog=ROOT/'CHANGELOG.md'):
+    """The changelog's entry for the version (its lines under `## [<version>]`, up to the next heading),
+    what the release changes for users; a release without one is refused."""
+    lines, found = [], False
+    for line in Path(changelog).read_text().splitlines():
+        if line.startswith('## '):
+            if found:
+                break
+            found = line.startswith(f'## [{version}]')
+        elif found:
+            lines.append(line)
+    text = '\n'.join(lines).strip()
+    if not text:
+        raise ReleaseError(f'no entry for {version} in {Path(changelog).name}: the notes begin with what changes for users')
+    return text
+
+
+def notes(data, changelog=ROOT/'CHANGELOG.md'):
+    """The release's notes (owner, 2026-10-19): what changes for users first, from the changelog; how to install;
+    the files; the record's acceptance last, folded."""
     lines = [f'The boot layer {data["version"]} for FiiO\'s firmware {data["firmware"]} (build {data["buildId"]}).', '',
-             f'Accepted on the emulator\'s guest: {data["accepted"]}.', '',
+             '## What changes for you', '', changelog_entry(data['version'], changelog), '',
              'The image is built on your computer from FiiO\'s update by install.py; it is never a release file.', '']
     name = installer_name(data['version'])
     if name in data['files']:
@@ -474,6 +493,8 @@ def notes(data):
                   'writer and its SPL) and of the emulator (the reader of FiiO\'s update), each checked by its digest.', '']
     lines += ['| File | Bytes | SHA-256 |', '| --- | --- | --- |']
     lines += [f'| `{name}` | {f["bytes"]} | `{f["sha256"]}` |' for name, f in sorted(data['files'].items())]
+    lines += ['', '<details>', f'<summary>Acceptance (the record, releases/{data["version"]}.json)</summary>', '',
+              f'{data["accepted"]}.', '', '</details>']
     return '\n'.join(lines) + '\n'
 
 
