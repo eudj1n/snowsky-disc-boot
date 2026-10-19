@@ -82,7 +82,9 @@ What happened in sessions on players: the writes to the owner's player
 ([first-write-observation](observations/first-write-observation.md), from
 2026-10-04), the combined images' sessions of 2026-09-24, and the second
 player's acceptance ([second-player-acceptance](observations/second-player-acceptance.md),
-2026-10-18).
+2026-10-18), and the first installation whose packages went in over the USB
+console ([first-install-over-console](observations/first-install-over-console.md),
+2026-10-19).
 
 Comments in the image's own sources (`device/boot`, `device/console`,
 `device/common`, `device/menu`, `device/scripts`) and in the scripts

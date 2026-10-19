@@ -53,9 +53,12 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   installation from that new state, the first installation of the packages
   on a card without `.disc` (neither the Local upgrade nor stock's "Reset
   all" removes `/usr/data/disc-boot`, so this is the only way to that
-  state). Reinstall diskOS then too: the player's diskOS 1.2.0 package
-  predates `title` and `homepage`, so the manager shows it as `diskos`
-  without a link.
+  state). Done on 2026-10-19 without the Local upgrade: "Everything ours",
+  then the installation over a known boot layer
+  ([first-install-over-console](observations/first-install-over-console.md)).
+  Left: the same from stock after the Local upgrade. Reinstall diskOS then
+  too: the player's diskOS 1.2.0 package predates `title` and `homepage`, so
+  the manager shows it as `diskos` without a link.
 
 ## Later
 

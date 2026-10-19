@@ -43,14 +43,20 @@ def data_home():
     return Path(os.environ.get('XDG_DATA_HOME') or Path.home()/'.local/share')/'snowsky-disc'
 
 
-def fetch_check_over_console(sha256, card, wait=300):
-    """The boot layer's check for this image (.disc/boot/rootfs-check.json on the player's card),
-    read over the USB console, waiting for the port and the outcome at most wait seconds: its bytes,
-    or None."""
+def console_module():
+    """The USB console's client (console.py at the root of the repository and of the installer's archive)."""
     import importlib.util
     spec = importlib.util.spec_from_file_location('disc_console', ROOT/'console.py')
     console = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(console)
+    return console
+
+
+def fetch_check_over_console(sha256, card, wait=300):
+    """The boot layer's check for this image (.disc/boot/rootfs-check.json on the player's card),
+    read over the USB console, waiting for the port and the outcome at most wait seconds: its bytes,
+    or None."""
+    console = console_module()
     until = time.monotonic() + wait
     while time.monotonic() < until:
         for port in console.find_ports():
@@ -67,6 +73,60 @@ def fetch_check_over_console(sha256, card, wait=300):
                 return (line + '\n').encode()
         time.sleep(5)
     return None
+
+
+BOOT_PROGRAM = '/opt/disc-boot/disc-boot'   # the boot program in the image (build_candidate.BOOT)
+STAGED_ORDER = {'controller': 0, 'menu': 1, 'service': 2, 'ui': 3}   # the recovery's order (contract)
+
+
+def console_over_usb(wait=60):
+    """The running new system's USB console, open: the first port whose shell answers, waited for at most
+    wait seconds, or None. The caller closes it."""
+    console = console_module()
+    until = time.monotonic() + wait
+    while time.monotonic() < until:
+        for port in console.find_ports():
+            try:
+                link = console.Console(port)
+            except console.ConsoleError:
+                continue
+            try:
+                out, status = link.run('echo disc-console-ready', timeout=10)
+                if status == 0 and 'disc-console-ready' in out:
+                    return link
+            except console.ConsoleError:
+                pass
+            link.close()
+        time.sleep(3)
+    return None
+
+
+def port_gone(port, seconds):
+    """True once the console's port has left this computer (the player restarting), within seconds."""
+    until = time.monotonic() + seconds
+    while time.monotonic() < until:
+        if not os.path.exists(port):
+            return True
+        time.sleep(1)
+    return not os.path.exists(port)
+
+
+def staged_folders(places):
+    """The staged folders (package.place: controller/, menu/, service/<name>/, ui/<name>/) in the order the
+    recovery installs them, as `disc-boot install` names them."""
+    return ['/'.join(place) for place in sorted(places, key=lambda place: STAGED_ORDER[place[0]])]
+
+
+def boot_answer(out):
+    """The boot program's answer ({"ok", "note"}) among a command's output, or {}."""
+    for line in reversed(out.splitlines()):
+        line = line.strip()
+        if line.startswith('{'):
+            try:
+                return json.loads(line)
+            except ValueError:
+                return {}
+    return {}
 
 
 class Stop(Exception):
@@ -123,6 +183,9 @@ class Installer:
         self.places = [Path(p) for p in args.packages_from] + [self.downloads] + ([ROOT/'packages'] if self.archive else [])
         # The first start's check over the USB console (plan, stage 4c); tests replace it.
         self.fetch_check, self.image, self.expected = fetch_check_over_console, None, None
+        # The packages installed over the same console after the proven start (owner, 2026-10-19); tests
+        # replace the console and the port's leaving. What the card step staged, in the recovery's order.
+        self.open_console, self.port_gone, self.staged_folders, self.packages_outcome = console_over_usb, port_gone, [], None
 
     # The screen
 
@@ -451,8 +514,10 @@ class Installer:
             self.confirm('The card', [f'On {target}: {len(folders)} package(s) for the player, {len(apps)} app(s) in Apps/, '
                                       'and the USB console\'s marker.'], 'CARD')
         profile = load_profile()['version']
-        cleared = cards.clear_unchosen(target, cards.places(folders))
+        places = cards.places(folders)
+        cleared = cards.clear_unchosen(target, places)
         staged = cards.stage_packages(folders, target, profile)
+        self.staged_folders = staged_folders(places)
         self.roles = {s['role'] for s in staged}
         self.services = [s['name'] for s in staged if s['role'] == 'service']
         with tempfile.TemporaryDirectory() as temp:
@@ -660,10 +725,59 @@ class Installer:
             return None, f'The new system\'s check differs: {record.get("error") or "another image on its root device"}.'
         return folder, None
 
+    def install_over_console(self, reviewed, title):
+        """The packages the card step staged, installed by the new system at the installer's asking over the
+        USB console (owner, 2026-10-19: what the user chose on this computer needs no Play at power-on):
+        `disc-boot install <folder>` for each staged folder in the recovery's order, the menu's own command,
+        then the console's marker removed from the card and the player restarted with what was installed.
+        Play at power-on stays the recovery. The outcome (installed, partly installed, no console, console
+        lost, nothing staged) goes to the first-boot screen and the report; the write stands either way."""
+        card = load_usb_profile(load_profile())['sd_mount']
+        folder = reviewed.work/'packages'
+        outcome = dict(outcome='nothing staged', installed=[], marker='kept', restart='not attempted')
+        self.packages_outcome = outcome
+        if not self.staged_folders:
+            self.done('packages', **outcome)
+            return outcome
+        self.say(title, ['Installing the packages from the card over the USB console, as the boot menu would: '
+                         + ', '.join(self.staged_folders) + '.'])
+        link = self.open_console(60)
+        if link is None:
+            outcome['outcome'] = 'no console'
+            self.done('packages', **outcome)
+            return outcome
+        try:
+            for name in self.staged_folders:
+                out, status = link.run(f'{BOOT_PROGRAM} install {name}', timeout=300)
+                answer = boot_answer(out)
+                ok = status == 0 and answer.get('ok') is True
+                outcome['installed'].append(dict(folder=name, ok=ok, note=answer.get('note') or out.strip()[-200:]))
+            out, status = link.run(f'cat {card}/.disc/boot/result.json 2>/dev/null', timeout=20)
+            folder.mkdir(parents=True, exist_ok=True)
+            if status == 0 and out.strip():
+                (folder/'result.json').write_text(out.strip() + '\n')
+            # The marker goes and the player restarts in one line: once the marker is gone the console
+            # revokes its session by itself, so no answer comes back; the port's leaving is the answer.
+            link.write(f'{console_module().KILL_LINE}sync; rm -f {card}/{cards.MARKER}; reboot\n')
+            outcome['marker'] = 'removed'
+            outcome['restart'] = 'player-restarted' if self.port_gone(link.port, 90) else 'restart-not-observed'
+            outcome['outcome'] = 'installed' if all(i['ok'] for i in outcome['installed']) else 'partly installed'
+        except Exception as error:   # the console lost midway (its error, the port gone): the write stands
+            outcome.update(outcome='console lost', error=str(error))
+        finally:
+            try:
+                link.close()
+            except Exception:
+                pass
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder/'answers.json').write_text(json.dumps(outcome, indent=2) + '\n')
+        self.done('packages', evidence=str(folder), **outcome)
+        return outcome
+
     def write_and_read(self, reviewed, title, image, backup, holds):
         """After the review, in the same entry: the write and the new system's first start, whose check proves
         the write. Without that proof the owner's yes or no decides (owner, 2026-10-11): a no is the way back to
-        stock, a yes the readback in a fresh entry."""
+        stock, a yes the readback in a fresh entry. With the proof, the packages go in over the same console."""
         self.confirm(title, [f'The player holds {holds}.', 'Next, in the same entry (stay connected): the image with the boot '
                              'layer, written once. Its outcome is never retried.'], 'WRITE')
         written = reviewed.write('candidate')
@@ -676,6 +790,7 @@ class Installer:
                              'SHA-256; the USB journal of the write audited.'])
             self.done('player', image=str(image), written=True, simulated=False, target='candidate', chip=reviewed.chip,
                       backup=backup, write=written, firstStart=str(proof), audits=audits)
+            self.install_over_console(reviewed, title)
             return
         answer = self.start_answer(title, [why])
         if answer is not None and not answer[0]:
@@ -856,13 +971,32 @@ class Installer:
         # with Play is possible only after that start, switched off and on again. Once the boot menu is installed
         # it offers the packages on the card itself (owner, 2026-10-10), so Play is for the first installation.
         if getattr(self, 'proven_start', False):
-            # The first start's check was fetched: nothing is left to do but what the card holds.
+            p = self.packages_outcome
+            if p and p['outcome'] in ('installed', 'partly installed'):
+                # The packages went in over the cable (owner, 2026-10-19): no Play at power-on.
+                installed = [i['folder'] for i in p['installed'] if i['ok']]
+                failed = [f'{i["folder"]} ({i["note"]})' for i in p['installed'] if not i['ok']]
+                lines = ['Done: the image is written, its first start found it on the root device, and the packages were '
+                         'installed from the card over the cable: ' + (', '.join(installed) or 'none') + '.']
+                if failed:
+                    lines.append('Not installed: ' + '; '.join(failed) + '. The boot menu offers what stays on the card '
+                                 '(Packages), and a start with Play held installs everything staged.')
+                lines.append('The USB console\'s marker was removed from the card. ' +
+                             ('The player is restarting with them.' if p['restart'] == 'player-restarted' else
+                              'Switch the player off and on: it starts with them.'))
+                lines.append(f'This run\'s report: {self.work/"report.json"}')
+                self.say('First boot', lines)
+                self.done('first boot', proven=True, packages=p['outcome'])
+                return
+            # The first start's check was fetched, but the packages did not go in over the cable: Play, as before.
+            why = {'no console': 'the USB console did not answer', 'console lost': 'the USB console was lost: ' + p.get('error', ''),
+                   'nothing staged': 'nothing was staged'}.get(p['outcome'], 'they were not attempted') if p else 'they were not attempted'
             self.say('First boot', ['Done: the image is written, and its first start found it on the root device.',
-                                    'The packages on the card: once the boot menu is installed, it offers them at a start '
-                                    '(Packages); the first time, switch the player off, then on holding Play. '
-                                    '.disc/boot/result.json on the card says what was installed.',
+                                    f'The packages on the card were not installed over the cable ({why}): once the boot menu '
+                                    'is installed, it offers them at a start (Packages); the first time, switch the player off, '
+                                    'then on holding Play. .disc/boot/result.json on the card says what was installed.',
                                     f'This run\'s report: {self.work/"report.json"}'])
-            self.done('first boot', proven=True)
+            self.done('first boot', proven=True, packages=p['outcome'] if p else 'not attempted')
             return
         self.say('First boot', ['Disconnect the cable and put the card in: leaving USB Boot, the player restarts into the new '
                                 'system by itself. The first time, once it has started, switch it off; then hold Play, press '

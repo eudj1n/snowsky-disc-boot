@@ -346,7 +346,126 @@ class InstallerTests(unittest.TestCase):
                 for words in expected:
                     self.assertIn(words, text)
                 self.assertNotIn(absent, text)
-                self.assertEqual(installer.report['steps'][-1], dict(step='first boot', **({'proven': True} if proven else {})))
+                self.assertEqual(installer.report['steps'][-1],
+                                 dict(step='first boot', **({'proven': True, 'packages': 'not attempted'} if proven else {})))
+
+    def flow_installer(self):
+        """An installer without a player, its screen captured: (installer, screen)."""
+        import argparse
+        import io
+        from installer import flow, tui
+        args = argparse.Namespace(dry_run=False, yes=True, plain=True, ota=None, image=str(self.image), emulator=None, card=None,
+                                  package=None, app=None, packages_from=[str(self.local)], download=False, work=str(self.root/'run'),
+                                  catalog=str(self.catalog), simulate=None, simulate_small=False, fault=None, restore=False, guest=False,
+                                  diskos=None, libusb=None)
+        screen = io.StringIO()
+        return flow.Installer(args, tui.Screen(look='plain', stream=screen)), screen
+
+    class Link:
+        """A USB console that answers as the player's: the boot program's answers, the card's result, the
+        line that removes the marker and restarts."""
+        port = '/dev/cu.usbmodem-test'
+
+        def __init__(self, refuse=(), lose_at=None):
+            self.commands, self.closed, self.refuse, self.lose_at = [], False, refuse, lose_at
+
+        def run(self, command, timeout=30):
+            self.commands.append(command)
+            if self.lose_at is not None and len(self.commands) >= self.lose_at:
+                raise OSError('the port went away')
+            if command.startswith('/opt/disc-boot/disc-boot install '):
+                name = command.split()[-1]
+                if name in self.refuse:
+                    return 'the menu\'s installation\n{"ok":false,"note":"refused: the package does not fit"}', 1
+                return '{"ok":true,"note":"installed"}', 0
+            if command.startswith('cat '):
+                return '{"schema":1,"roles":{"controller":{"installed":true,"note":"installed"}}}', 0
+            return '', 0
+
+        def write(self, text):
+            self.commands.append(text)
+
+        def close(self):
+            self.closed = True
+
+    def test_the_packages_are_installed_over_the_console_after_the_proven_start(self):
+        """Owner, 2026-10-19: what the user chose on this computer needs no Play at power-on. After the first
+        start's check the installer asks the new system to install each staged folder (the menu's command, in
+        the recovery's order), removes the console's marker from the card and restarts the player."""
+        import types
+        installer, screen = self.flow_installer()
+        link = self.Link()
+        installer.open_console, installer.port_gone = lambda wait: link, lambda port, seconds: True
+        installer.staged_folders = ['controller', 'menu', 'service/disc-health', 'ui/diskos']
+        reviewed = types.SimpleNamespace(work=self.root/'run/usb')
+        outcome = installer.install_over_console(reviewed, 'The player')
+        self.assertEqual(link.commands[:4], [f'/opt/disc-boot/disc-boot install {f}' for f in installer.staged_folders])
+        self.assertTrue(link.commands[4].startswith('cat /tmp/sdcard/.disc/boot/result.json'))
+        self.assertEqual(link.commands[5], '\x15sync; rm -f /tmp/sdcard/.disc/dev/usb-console; reboot\n', 'one line: the console '
+                         'revokes its session once the marker is gone')
+        self.assertTrue(link.closed)
+        self.assertEqual((outcome['outcome'], outcome['marker'], outcome['restart']), ('installed', 'removed', 'player-restarted'))
+        self.assertEqual([i['folder'] for i in outcome['installed'] if i['ok']], installer.staged_folders)
+        self.assertEqual(json.loads((self.root/'run/usb/packages/answers.json').read_text())['outcome'], 'installed')
+        self.assertIn('"controller"', (self.root/'run/usb/packages/result.json').read_text())
+        step = installer.report['steps'][-1]
+        self.assertEqual((step['step'], step['outcome'], step['marker']), ('packages', 'installed', 'removed'))
+        installer.proven_start = True
+        installer.first_boot()
+        text = ' '.join(screen.getvalue().split())
+        self.assertIn('installed from the card over the cable: controller, menu, service/disc-health, ui/diskos.', text)
+        self.assertIn('marker was removed from the card. The player is restarting with them.', text)
+        self.assertNotIn('holding Play', text)
+        self.assertEqual(installer.report['steps'][-1], dict(step='first boot', proven=True, packages='installed'))
+
+    def test_a_package_the_player_refuses_is_named_and_the_rest_go_in(self):
+        import types
+        installer, screen = self.flow_installer()
+        link = self.Link(refuse=('ui/diskos',))
+        installer.open_console, installer.port_gone = lambda wait: link, lambda port, seconds: False
+        installer.staged_folders = ['controller', 'ui/diskos']
+        outcome = installer.install_over_console(types.SimpleNamespace(work=self.root/'run/usb'), 'The player')
+        self.assertEqual((outcome['outcome'], outcome['marker'], outcome['restart']), ('partly installed', 'removed', 'restart-not-observed'))
+        self.assertEqual(outcome['installed'][1], dict(folder='ui/diskos', ok=False, note='refused: the package does not fit'))
+        installer.proven_start = True
+        installer.first_boot()
+        text = ' '.join(screen.getvalue().split())
+        self.assertIn('over the cable: controller.', text)
+        self.assertIn('Not installed: ui/diskos (refused: the package does not fit). The boot menu offers', text)
+        self.assertIn('Switch the player off and on: it starts with them.', text)
+
+    def test_without_the_console_or_with_it_lost_the_first_boot_keeps_play(self):
+        """The write stands: when the console does not answer, or goes away midway, the run says so and
+        the packages are installed as before, by the menu or a start with Play."""
+        import types
+        for link, outcome, why in ((None, 'no console', 'the USB console did not answer'),
+                                   (self.Link(lose_at=2), 'console lost', 'the USB console was lost: the port went away')):
+            with self.subTest(outcome):
+                installer, screen = self.flow_installer()
+                installer.open_console, installer.port_gone = lambda wait, link=link: link, lambda port, seconds: True
+                installer.staged_folders = ['controller', 'menu']
+                shutil.rmtree(self.root/'run/usb', ignore_errors=True)
+                result = installer.install_over_console(types.SimpleNamespace(work=self.root/'run/usb'), 'The player')
+                self.assertEqual((result['outcome'], result['marker'], result['restart']), (outcome, 'kept', 'not attempted'))
+                if link:
+                    self.assertTrue(link.closed)
+                    self.assertEqual([i['folder'] for i in result['installed']], ['controller'])
+                installer.proven_start = True
+                installer.first_boot()
+                text = ' '.join(screen.getvalue().split())
+                self.assertIn(f'were not installed over the cable ({why})', text)
+                self.assertIn('then on holding Play', text)
+                self.assertEqual(installer.report['steps'][-1], dict(step='first boot', proven=True, packages=outcome))
+
+    def test_the_staged_folders_are_asked_for_in_the_recovery_order(self):
+        """What the installer asks the player to install is what it staged, controller first, as the recovery
+        installs them, and as `disc-boot install` names a folder."""
+        from installer import flow
+        places = [('ui', 'diskos'), ('service', 'disc-network'), ('menu',), ('service', 'disc-health'), ('controller',)]
+        self.assertEqual(flow.staged_folders(places), ['controller', 'menu', 'service/disc-network', 'service/disc-health', 'ui/diskos'])
+        self.assertEqual(flow.staged_folders([]), [])
+        self.assertEqual(flow.staged_folders(cards.places([self.root/'src/disc-server', self.root/'src/disc-menu'])), ['controller', 'menu'],
+                         'the server of boot API 1 is the controller')
 
     def test_what_an_earlier_run_staged_and_this_one_did_not_choose_leaves_the_card(self):
         """2026-10-07: a server staged by a run that stopped at its review was installed by the next

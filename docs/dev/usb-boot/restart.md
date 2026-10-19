@@ -67,7 +67,21 @@ After every write (the candidate's and both ways back to stock) the installer ru
 session in the write's entry (`usbboot.Reviewed.restart`, the payload from the release
 or built with the others) and audits it. When the player left the bus it says so and
 the cable stays connected: the first start's check is read over that cable, and the
-user is asked about the start only when it does not come back. Any other outcome, or a release without the payload, is
+user is asked about the start only when it does not come back. With the check in,
+the packages the card step staged go in over the same console (owner, 2026-10-19;
+`Installer.install_over_console`): `/opt/disc-boot/disc-boot install <folder>` for
+each, controller, menu, services, UIs, the menu's own command with its `{"ok",
+"note"}` answer, the card's `result.json` kept in the run's `packages/` folder, then
+one line that removes the console's marker from the card and runs `reboot` (the
+console revokes its session as soon as the marker is gone, so no answer comes
+back: the port's leaving the computer within 90 s is the restart's proof). The
+report's `packages` step holds the outcome (`installed`, `partly installed`, `no
+console`, `console lost` with the error, `nothing staged`), each folder's answer,
+`marker` and `restart`; the first-boot screen names what went in and, when the
+console did not answer, keeps the start with Play. On the owner's second player
+([2026-10-19](../observations/first-install-over-console.md)) the check came 33 s
+after the player left the bus, the four installs took 5 s together and the port
+left within 5 s of the restart line: 43 s of the console's 900 s session. Any other outcome, or a release without the payload, is
 the cable as before (unplug, then plug while the new system runs); the write stands
 either way and nothing is retried (`test_usbboot`). The run's `report.json` names
 the outcome in the player's step: its `restart` field holds `outcome`

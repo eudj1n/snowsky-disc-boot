@@ -302,7 +302,9 @@ capture) is for the boot after the readback, as with combined-007
 order of combined-008, a confirmation of the boot between the write and the
 readback, is read by the history check. The installer writes none (owner,
 2026-10-11): it reads the first start's check and asks about the start only
-when that check does not come back.
+when that check does not come back. With the check in, it has the new system
+install the staged packages over the same console and restarts it (owner,
+2026-10-19; [restart](../usb-boot/restart.md#in-the-installer)).
 
 ```sh
 python3 scripts/deployment/collect_rootfs.py acquire --mode rootfs \

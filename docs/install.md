@@ -55,12 +55,16 @@ back](way-back.md) returns the player to stock.
    whether it started normally. (Should the restart not come, the installer
    asks you to disconnect the cable and connect it again while the new system
    runs.)
-7. **The packages from the card.** The first time, switch the player off,
-   then switch it on holding **Play** (let Play go once the logo shows). The
-   menu shows the installation, then the player starts as usual. Once the
-   boot menu is installed, it offers new packages on the card itself: its
-   row "on the card" opens Packages, where Play installs each one; nothing
-   is held at power-on.
+7. **The packages from the card.** Once that check is in, the installer asks
+   the new system, over the same cable, to install the packages you chose
+   from the card, one by one, as the boot menu would; then it removes the
+   USB console's marker from the card and restarts the player, which starts
+   with them. Nothing is held at power-on. The installer's last screen says
+   what was installed. Should the console not answer (the screen says so),
+   install them the old way: switch the player off, then on holding **Play**
+   (let Play go once the logo shows); the menu shows the installation.
+   Later, the boot menu offers new packages on the card itself: its row "on
+   the card" opens Packages, where Play installs each one.
 
 All together it takes about 15 minutes with the player. Each run is kept,
 with its report, in `~/Library/Application Support/SNOWSKY DISC/runs`
