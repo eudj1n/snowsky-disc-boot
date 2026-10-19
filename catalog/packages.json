@@ -6,11 +6,11 @@
         {
             "name": "disc-menu",
             "role": "menu",
-            "version": "2.57.10",
+            "version": "2.57.11",
             "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.10/disc-menu-2.57.10.zip",
-                "sha256": "cd07a1a39b540b8977b597ab972d055bc84c5db7f317afb4481b00c962fa270a",
+                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.11/disc-menu-2.57.11.zip",
+                "sha256": "7c4d66cbf8c9b8e043443c87b92e5709b3ae11338bacf6d6c7a153e810f9ac4d",
                 "size": 177631
             },
             "profiles": [
@@ -20,22 +20,22 @@
             "license": "MIT; Inter (SIL OFL 1.1) as rasterised masks",
             "default": true,
             "verified": {
-                "date": "2026-10-18",
+                "date": "2026-10-19",
                 "boot": "8eb15a9",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "release 2.57.10: binaries byte for byte 2.57.9's (build 8eb15a9), whose guest acceptance stands; its USB payloads ran on the owner's second player (HeYangTek HYF2GQ4U), 2026-10-18"
+                "acceptance": "release 2.57.11: binaries byte for byte 2.57.10's (build 8eb15a9); installed by the installer over the USB console on the owner's second player (HeYangTek HYF2GQ4U), 2026-10-19"
             }
         },
         {
             "name": "disc-health",
             "role": "service",
-            "version": "2.57.10",
+            "version": "2.57.11",
             "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.10/disc-health-2.57.10.zip",
-                "sha256": "47d795311e1731bc8175f8bcd3150c54f1e5018763c4bc99aa02888adf936d09",
-                "size": 136406
+                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.11/disc-health-2.57.11.zip",
+                "sha256": "2003c424b09ed8b8fa125fe9ae674938e94ac652aaabd45dddfcb8bd221b67a4",
+                "size": 136407
             },
             "profiles": [
                 "2.57"
@@ -45,21 +45,21 @@
             "default": true,
             "notes": "A read-only, offline journal of the player's health; its report shows in the server's diagnostics",
             "verified": {
-                "date": "2026-10-18",
+                "date": "2026-10-19",
                 "boot": "8eb15a9",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "release 2.57.10: binaries byte for byte 2.57.9's (build 8eb15a9), whose guest acceptance stands; its USB payloads ran on the owner's second player (HeYangTek HYF2GQ4U), 2026-10-18"
+                "acceptance": "release 2.57.11: binaries byte for byte 2.57.10's (build 8eb15a9); installed by the installer over the USB console on the owner's second player (HeYangTek HYF2GQ4U), 2026-10-19"
             }
         },
         {
             "name": "disc-network",
             "role": "service",
-            "version": "2.57.10",
+            "version": "2.57.11",
             "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.10/disc-network-2.57.10.zip",
-                "sha256": "6eec51efbf1e1ebd929638217c6fee0a9b8f0932c0e6fda7881d368a2f87b185",
+                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.11/disc-network-2.57.11.zip",
+                "sha256": "a81f1915af9496aa563dd118426170ef6a0cac9075aa98c7a8d122125e0a9957",
                 "size": 138839
             },
             "profiles": [
@@ -70,11 +70,11 @@
             "default": true,
             "notes": "Several Wi-Fi networks; one in stock's configuration, a kept one in range put in its place",
             "verified": {
-                "date": "2026-10-18",
+                "date": "2026-10-19",
                 "boot": "8eb15a9",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "release 2.57.10: binaries byte for byte 2.57.9's (build 8eb15a9), whose guest acceptance stands; its USB payloads ran on the owner's second player (HeYangTek HYF2GQ4U), 2026-10-18"
+                "acceptance": "release 2.57.11: binaries byte for byte 2.57.10's (build 8eb15a9); installed by the installer over the USB console on the owner's second player (HeYangTek HYF2GQ4U), 2026-10-19"
             }
         },
         {

@@ -7,7 +7,7 @@ files on the [releases page](https://github.com/eudj1n/snowsky-disc-boot/release
 Entries stay short; why is in the developer documents (`docs/dev/`), how in
 the commits.
 
-## [Unreleased]
+## [2.57.11] — 2026-10-19
 
 - The first installation needs no Play at power-on: once the new system's
   first start has checked the written image, the installer asks it, over the
