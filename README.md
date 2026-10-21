@@ -62,7 +62,7 @@ return.
 | --- | --- |
 | Nothing | The boot layer with your packages (the menu asks when there is a choice) |
 | Volume Up | FiiO's own interface, no package started, for this start only |
-| Play | The installation of the packages staged on the card, then the boot layer |
+| Play | The installation of packages staged on the card by hand (the installer needs no key: it installs the packages you chose over the cable), then the boot layer |
 | Volume Down, with the cable to a computer | USB Boot, for the installer |
 
 After three starts in a row that did not get ready, the player starts FiiO's

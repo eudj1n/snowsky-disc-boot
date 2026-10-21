@@ -6,11 +6,11 @@
         {
             "name": "disc-menu",
             "role": "menu",
-            "version": "2.57.11",
+            "version": "2.57.12",
             "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.11/disc-menu-2.57.11.zip",
-                "sha256": "7c4d66cbf8c9b8e043443c87b92e5709b3ae11338bacf6d6c7a153e810f9ac4d",
+                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.12/disc-menu-2.57.12.zip",
+                "sha256": "8fde14e2b2d5d493e9e4b0d551121db295238f40089d557a017d58ebe0c1c424",
                 "size": 177631
             },
             "profiles": [
@@ -20,22 +20,22 @@
             "license": "MIT; Inter (SIL OFL 1.1) as rasterised masks",
             "default": true,
             "verified": {
-                "date": "2026-10-19",
+                "date": "2026-10-21",
                 "boot": "8eb15a9",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "release 2.57.11: binaries byte for byte 2.57.10's (build 8eb15a9); installed by the installer over the USB console on the owner's second player (HeYangTek HYF2GQ4U), 2026-10-19"
+                "acceptance": "release 2.57.12: binaries byte for byte 2.57.11's (build 8eb15a9), which the owner's player runs since 2026-10-19; the catalog's server 2.57.10 with Disc Player 1.1.0"
             }
         },
         {
             "name": "disc-health",
             "role": "service",
-            "version": "2.57.11",
+            "version": "2.57.12",
             "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.11/disc-health-2.57.11.zip",
-                "sha256": "2003c424b09ed8b8fa125fe9ae674938e94ac652aaabd45dddfcb8bd221b67a4",
-                "size": 136407
+                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.12/disc-health-2.57.12.zip",
+                "sha256": "4166dd089a68f7523e2482de4c013f04a8f100e87754fa38e5990ea6f4c34152",
+                "size": 136408
             },
             "profiles": [
                 "2.57"
@@ -45,22 +45,22 @@
             "default": true,
             "notes": "A read-only, offline journal of the player's health; its report shows in the server's diagnostics",
             "verified": {
-                "date": "2026-10-19",
+                "date": "2026-10-21",
                 "boot": "8eb15a9",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "release 2.57.11: binaries byte for byte 2.57.10's (build 8eb15a9); installed by the installer over the USB console on the owner's second player (HeYangTek HYF2GQ4U), 2026-10-19"
+                "acceptance": "release 2.57.12: binaries byte for byte 2.57.11's (build 8eb15a9), which the owner's player runs since 2026-10-19; the catalog's server 2.57.10 with Disc Player 1.1.0"
             }
         },
         {
             "name": "disc-network",
             "role": "service",
-            "version": "2.57.11",
+            "version": "2.57.12",
             "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.11/disc-network-2.57.11.zip",
-                "sha256": "a81f1915af9496aa563dd118426170ef6a0cac9075aa98c7a8d122125e0a9957",
-                "size": 138839
+                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.12/disc-network-2.57.12.zip",
+                "sha256": "2477ec0d96cfee5218de904f64411ab0ca322b057147d702c340c7955bf710f9",
+                "size": 138840
             },
             "profiles": [
                 "2.57"
@@ -70,22 +70,22 @@
             "default": true,
             "notes": "Several Wi-Fi networks; one in stock's configuration, a kept one in range put in its place",
             "verified": {
-                "date": "2026-10-19",
+                "date": "2026-10-21",
                 "boot": "8eb15a9",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "release 2.57.11: binaries byte for byte 2.57.10's (build 8eb15a9); installed by the installer over the USB console on the owner's second player (HeYangTek HYF2GQ4U), 2026-10-19"
+                "acceptance": "release 2.57.12: binaries byte for byte 2.57.11's (build 8eb15a9), which the owner's player runs since 2026-10-19; the catalog's server 2.57.10 with Disc Player 1.1.0"
             }
         },
         {
             "name": "disc-server",
             "role": "controller",
-            "version": "2.57.8",
+            "version": "2.57.10",
             "homepage": "https://github.com/eudj1n/snowsky-disc-server",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-server/releases/download/v2.57.8/disc-server-2.57.8.zip",
-                "sha256": "0f0f630156b96fdcccb9d5d03bdc1e07373ac2d93f835e9aca9cf81253c69610",
-                "size": 840226
+                "url": "https://github.com/eudj1n/snowsky-disc-server/releases/download/v2.57.10/disc-server-2.57.10.zip",
+                "sha256": "143cbdb534d49bd28862d5d75d517385b53b7cc697a934d25a71608b63e7a581",
+                "size": 840568
             },
             "profiles": [
                 "2.57"
@@ -93,13 +93,13 @@
             "bootApi": 2,
             "license": "MIT",
             "default": true,
-            "notes": "snowsky-disc-server's release variant; its catalog/apps.json offers Disc Player 1.0.0 by default",
+            "notes": "snowsky-disc-server's release variant; its catalog/apps.json offers Disc Player 1.1.0 by default",
             "verified": {
-                "date": "2026-10-11",
+                "date": "2026-10-21",
                 "boot": "8eb15a9",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "the controller of boot 2.57.7's image on the guest (role controller, bootApi 2): installed by Play, confirmed, integration.py --about, manager_guest.py; release 2.57.8"
+                "acceptance": "release 2.57.10: 2.57.9's gateway (build 29ad434), accepted on the server's guest with this image, the menu and the services (2026-10-20, Disc Player 1.1.0, 41 cases); owner's player since 2026-10-21"
             }
         },
         {

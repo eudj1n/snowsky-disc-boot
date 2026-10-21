@@ -7,6 +7,15 @@ files on the [releases page](https://github.com/eudj1n/snowsky-disc-boot/release
 Entries stay short; why is in the developer documents (`docs/dev/`), how in
 the commits.
 
+## [2.57.12] — 2026-10-21
+
+- The installer offers DISC server 2.57.10 with Disc Player 1.1.0: headphone
+  corrections from AutoEq written to your equalizer presets, lyrics with word
+  timings from lrc.red (each once you allow that source in the page), and an
+  album identify window that fits the screen. A player installed before
+  takes them from the page's manager or from the card; the boot layer, the
+  menu and the services are the same programs as in 2.57.11.
+
 ## [2.57.11] — 2026-10-19
 
 - The first installation needs no Play at power-on: once the new system's

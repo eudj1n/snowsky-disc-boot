@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "version": "2.57.12",
+  "firmware": "2.57",
+  "tag": "v2.57.12",
+  "buildId": "8eb15a998d85",
+  "files": {
+    "disc-menu-2.57.12.zip": {
+      "bytes": 177631,
+      "sha256": "8fde14e2b2d5d493e9e4b0d551121db295238f40089d557a017d58ebe0c1c424"
+    },
+    "disc-boot-2.57.12-mips.tar.gz": {
+      "bytes": 343791,
+      "sha256": "ae646ad0ddbed556f81527d67bf34e6d1f4d82808af2bf9ddf05ba0171027bf9"
+    },
+    "disc-usb-payloads-2.57.12.tar.gz": {
+      "bytes": 101320,
+      "sha256": "d6b1065dc80c371546ce10e8612656e33753df031b64863b2a0428d148e4e924"
+    },
+    "disc-health-2.57.12.zip": {
+      "bytes": 136408,
+      "sha256": "4166dd089a68f7523e2482de4c013f04a8f100e87754fa38e5990ea6f4c34152"
+    },
+    "disc-network-2.57.12.zip": {
+      "bytes": 138840,
+      "sha256": "2477ec0d96cfee5218de904f64411ab0ca322b057147d702c340c7955bf710f9"
+    },
+    "disc-installer-2.57.12.tar.gz": {
+      "bytes": 2550556,
+      "sha256": "476b3b7034f79d5ce4533fe0ef71a3150e7485a6db6755fee0d2549303d67043"
+    }
+  },
+  "accepted": "no new image or binaries: build 8eb15a998d85 and image 9e6448dd as release 2.57.7's, whose guest and player acceptance stands; the boot programs, the USB payloads, the menu, disc-health and disc-network byte for byte 2.57.11's (the packages' manifests name 2.57.12), which the owner's players run since 2026-10-19. What is new is the catalog: snowsky-disc-server's 2.57.10 (the gateway of 2.57.9, build 29ad43459cd5, accepted on the server's guest with this image beside the menu and the services on 2026-10-20 and running on the owner's player since 2026-10-21; its apps catalog offers Disc Player 1.1.0, accepted there with 41 cases). The installer's archive, built from the packages with the recorded digests, unpacked outside the repository with an empty home: install.py --packages --dry-run --offline staged disc-menu 2.57.12, disc-server 2.57.10, disc-health and disc-network 2.57.12 and Disc Player 1.1.0. The guest was not run again: nothing it runs changed",
+  "urls": {
+    "disc-menu-2.57.12.zip": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.12/disc-menu-2.57.12.zip",
+    "disc-boot-2.57.12-mips.tar.gz": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.12/disc-boot-2.57.12-mips.tar.gz",
+    "disc-usb-payloads-2.57.12.tar.gz": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.12/disc-usb-payloads-2.57.12.tar.gz",
+    "disc-health-2.57.12.zip": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.12/disc-health-2.57.12.zip",
+    "disc-network-2.57.12.zip": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.12/disc-network-2.57.12.zip",
+    "disc-installer-2.57.12.tar.gz": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.12/disc-installer-2.57.12.tar.gz"
+  },
+  "image": {
+    "name": "disc-boot-v257-review-only.bin",
+    "bytes": 100663296,
+    "sha256": "9e6448ddc429e3e156a862abf1e5cf5547f6f7294850b1233609a7edfc880c77",
+    "first_blocks_bytes": 262144,
+    "first_blocks_sha256": "68c9da0ed3a62c3dfccff5f650326dc06e8c6b68881e997598f18411e0c25632"
+  }
+}
