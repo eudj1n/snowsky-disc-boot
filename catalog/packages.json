@@ -6,11 +6,11 @@
         {
             "name": "disc-menu",
             "role": "menu",
-            "version": "2.57.12",
+            "version": "2.57.13",
             "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.12/disc-menu-2.57.12.zip",
-                "sha256": "8fde14e2b2d5d493e9e4b0d551121db295238f40089d557a017d58ebe0c1c424",
+                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.13/disc-menu-2.57.13.zip",
+                "sha256": "5d581fa4d94279e80ce6217ae3f8d4d8819d4171e7a464f6689fff2d7a73e51b",
                 "size": 177631
             },
             "profiles": [
@@ -20,22 +20,22 @@
             "license": "MIT; Inter (SIL OFL 1.1) as rasterised masks",
             "default": true,
             "verified": {
-                "date": "2026-10-21",
+                "date": "2026-10-22",
                 "boot": "8eb15a9",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "release 2.57.12: binaries byte for byte 2.57.11's (build 8eb15a9), which the owner's player runs since 2026-10-19; the catalog's server 2.57.10 with Disc Player 1.1.0"
+                "acceptance": "release 2.57.13: binaries byte for byte 2.57.12's (build 8eb15a9), on the owner's player since 2026-10-19; the catalog adds diskOS 1.2.1 and Disco! 2.6.1, seen on the guest only"
             }
         },
         {
             "name": "disc-health",
             "role": "service",
-            "version": "2.57.12",
+            "version": "2.57.13",
             "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.12/disc-health-2.57.12.zip",
-                "sha256": "4166dd089a68f7523e2482de4c013f04a8f100e87754fa38e5990ea6f4c34152",
-                "size": 136408
+                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.13/disc-health-2.57.13.zip",
+                "sha256": "b49b7f456a65f85aa43532606c90aa30b04190856dc64ea194f8a00f1ddf027b",
+                "size": 136407
             },
             "profiles": [
                 "2.57"
@@ -45,22 +45,22 @@
             "default": true,
             "notes": "A read-only, offline journal of the player's health; its report shows in the server's diagnostics",
             "verified": {
-                "date": "2026-10-21",
+                "date": "2026-10-22",
                 "boot": "8eb15a9",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "release 2.57.12: binaries byte for byte 2.57.11's (build 8eb15a9), which the owner's player runs since 2026-10-19; the catalog's server 2.57.10 with Disc Player 1.1.0"
+                "acceptance": "release 2.57.13: binaries byte for byte 2.57.12's (build 8eb15a9), on the owner's player since 2026-10-19; the catalog adds diskOS 1.2.1 and Disco! 2.6.1, seen on the guest only"
             }
         },
         {
             "name": "disc-network",
             "role": "service",
-            "version": "2.57.12",
+            "version": "2.57.13",
             "homepage": "https://github.com/eudj1n/snowsky-disc-boot",
             "source": {
-                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.12/disc-network-2.57.12.zip",
-                "sha256": "2477ec0d96cfee5218de904f64411ab0ca322b057147d702c340c7955bf710f9",
-                "size": 138840
+                "url": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.13/disc-network-2.57.13.zip",
+                "sha256": "aabf3ba1176afffcddf634fd649110d2661cdffdca6bad2b0c0d80ef3ab89644",
+                "size": 138839
             },
             "profiles": [
                 "2.57"
@@ -70,11 +70,11 @@
             "default": true,
             "notes": "Several Wi-Fi networks; one in stock's configuration, a kept one in range put in its place",
             "verified": {
-                "date": "2026-10-21",
+                "date": "2026-10-22",
                 "boot": "8eb15a9",
                 "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "release 2.57.12: binaries byte for byte 2.57.11's (build 8eb15a9), which the owner's player runs since 2026-10-19; the catalog's server 2.57.10 with Disc Player 1.1.0"
+                "acceptance": "release 2.57.13: binaries byte for byte 2.57.12's (build 8eb15a9), on the owner's player since 2026-10-19; the catalog adds diskOS 1.2.1 and Disco! 2.6.1, seen on the guest only"
             }
         },
         {

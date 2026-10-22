@@ -37,7 +37,9 @@ back](way-back.md) returns the player to stock.
 2. The installer asks for the folder of FiiO's update and builds the new
    system (about a minute). It offers the packages: the menu, the server,
    disc-health, disc-network and Disc Player are ticked; they come with the
-   installer.
+   installer. diskOS and diskOS Disco! are offered unticked: both were
+   checked on the emulator only, not on a player (the changelog says what
+   was checked).
 3. **The card.** Put the player's card into the computer, or connect the
    player with its cable and choose **Working mode → USB Storage** on it: the
    card shows as a drive either way. Name where it is mounted and type `CARD`. Then eject it,
@@ -64,7 +66,11 @@ back](way-back.md) returns the player to stock.
    install them the old way: switch the player off, then on holding **Play**
    (let Play go once the logo shows); the menu shows the installation.
    Later, the boot menu offers new packages on the card itself: its row "on
-   the card" opens Packages, where Play installs each one.
+   the card" opens Packages, where Play installs each one. Leave the player
+   running for about three minutes after a start with new packages: a
+   package counts as confirmed once it has run 180 s. Switched off earlier it
+   stays unconfirmed, and after three such starts in a row the player starts
+   FiiO's interface instead, until a start with Play.
 
 All together it takes about 15 minutes with the player. Each run is kept,
 with its report, in `~/Library/Application Support/SNOWSKY DISC/runs`
@@ -86,7 +92,10 @@ the card, put it back into the player (or leave USB storage), then switch
 the player off and on: the menu's row "on the card" opens Packages, where
 Play installs each one. A new version of a service or the server starts at
 once, a new menu at the next start; each keeps its previous version, and one
-that fails gives way to it.
+that fails gives way to it. Here too, leave the player running for about
+three minutes after the start: a package counts as confirmed once it has run
+180 s, and three starts in a row cut short bring FiiO's interface until a
+start with Play.
 
 ## What is installed
 

@@ -111,12 +111,16 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   carry over. Like the DISC, it starts with reading what it is, and would
   enter through reviewed profiles of its own, never version checks in code.
 
-- diskOS 1.2.1 and diskOS Disco! 2.6.1 on the owner's player (catalog entries
-  of 2026-10-22, accepted on the guest beside the server 2.57.10;
-  [packages/diskos.md](packages/diskos.md)): each installed from the card
-  beside the server, its UI confirmed, Bluetooth and Wi-Fi under Disco! (the
-  emulator has neither; the fork's author had not tried 2.6.1 on a player at
-  its release), then a boot release that carries the catalog. Open from
+- diskOS 1.2.1 and diskOS Disco! 2.6.1 on the owner's player (the catalog of
+  release 2.57.13, a pre-release until then; accepted on the guest beside the
+  server 2.57.10, [packages/diskos.md](packages/diskos.md)): each installed
+  from the card beside the server, its UI confirmed, the menu with both and
+  FiiO's interface, Bluetooth and Wi-Fi under Disco! (the emulator has
+  neither; the fork's author had not tried 2.6.1 on a player at its release),
+  then the release promoted and both entries' `verified` updated. On the
+  guest (2026-10-22, frames of its boot) diskOS 1.2.1 shows "Player didn't
+  respond" on its splash for about 2 s before its home screen: to be seen on
+  the player. Open from
   1.2.1's earlier guest runs (2026-10-14): its UI ended about a minute after
   a start with Play that installed from the card in 2 of 4 such starts, then
   ran after stock's loop restarted the pair; in the 2026-10-22 runs (one

@@ -7,6 +7,22 @@ files on the [releases page](https://github.com/eudj1n/snowsky-disc-boot/release
 Entries stay short; why is in the developer documents (`docs/dev/`), how in
 the commits.
 
+## [2.57.13] — 2026-10-22
+
+- The installer's catalog offers diskOS 1.2.1 (1.2.0 before) and, new, diskOS
+  Disco! 2.6.1, zmd22's fork of diskOS. Neither is ticked by default; both can
+  be installed at once, and the boot menu then offers FiiO's interface, diskOS
+  and Disco! at power-on. Both, and the two side by side, were checked on the
+  emulator only (each passed the two-package acceptance beside the server),
+  not on a player; Disco!'s author had not tried 2.6.1 on a DISC at its
+  release, and Bluetooth and Wi-Fi under it are unseen. diskOS and Disco!
+  share their settings; Disco! advises "Reset diskOS Settings" after switching
+  between them. Published as a pre-release until both have run on a player.
+  The boot layer, the menu and the services are the same programs as in
+  2.57.12.
+- The installation guide says to leave the player running for about three
+  minutes after a start with new packages, until they count as confirmed.
+
 ## [2.57.12] — 2026-10-21
 
 - The installer offers DISC server 2.57.10 with Disc Player 1.1.0: headphone

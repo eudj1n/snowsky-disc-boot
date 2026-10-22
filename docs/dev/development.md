@@ -444,6 +444,11 @@ boot layer's 2.57.8 offers the server's 2.57.7). A tag goes on only after the re
 on the player in a system that stayed up (owner, 2026-10-05), on the commit the release was
 recorded from: a later tree may build other bytes, and the release workflow refuses files that
 differ from the record.
+A release whose catalog offers a package that has not run on a player yet is published as a
+pre-release (owner, 2026-10-22: 2.57.13, whose catalog adds diskOS 1.2.1 and diskOS Disco! 2.6.1,
+seen on the guest only) and promoted, the pre-release mark removed, once the owner's player ran
+what it offers; GitHub's "latest release" stays the one before until then, and the changelog's
+entry says so.
 Its files are built from
 `build/mips` by `scripts/release.py`: the boot menu's package `disc-menu-<version>.zip`, the
 services' `disc-health-<version>.zip` (from 2.57.7) and `disc-network-<version>.zip` (from 2.57.8),
