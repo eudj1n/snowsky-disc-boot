@@ -90,8 +90,8 @@ def main():
     p.add_argument('--output', type=Path, default=ROOT/'docs/assets/menu')
     args = p.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    # One interface beside FiiO's own (diskOS, a project of its own), FiiO's chosen last time.
-    installed = ('stock', [('diskos', 'diskOS', '1.2.0')])
+    # Two interfaces beside FiiO's own (diskOS and its fork Disco!, projects of their own), FiiO's chosen last time.
+    installed = ('stock', [('diskos', 'diskOS', '1.2.1'), ('diskos-disco', 'diskOS Disco!', '2.6.1')])
     scene('choose', args.output, installed, wait=1.5, countdown=5000)
     scene('reading-the-card', args.output, installed, install=dict(state='waiting', done=0, total=0, current=None))
     scene('installing', args.output, installed, install=dict(state='installing', done=1, total=3, current='disc-menu'))
@@ -100,7 +100,8 @@ def main():
     # The menu's other screens (plan, stage 7): the services, the packages, a removal's question.
     offer = dict(services=[dict(name='disc-health', title='disc-health', version='2.57.7', autostart=True, removing=False),
                            dict(name='disc-network', title='disc-network', version='2.57.7', autostart=False, removing=False)],
-                 packages=[dict(role='ui', name='diskos', title='diskOS', version='1.2.0', removing=False),
+                 packages=[dict(role='ui', name='diskos', title='diskOS', version='1.2.1', removing=False),
+                           dict(role='ui', name='diskos-disco', title='diskOS Disco!', version='2.6.1', removing=False),
                            dict(role='service', name='disc-health', title='disc-health', version='2.57.7', removing=False),
                            dict(role='service', name='disc-network', title='disc-network', version='2.57.7', removing=False)],
                  staged=[])
@@ -109,17 +110,18 @@ def main():
     waiting = dict(offer, staged=[dict(folder='service/disc-network', role='service', name='disc-network', title='disc-network',
                                        version='2.57.8', refused=None)])
     scene('waiting', args.output, installed, offer=waiting, wait=1.0, countdown=5000)
-    scene('services', args.output, installed, offer=offer, keys=(VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN))
-    scene('packages', args.output, installed, offer=waiting, keys=(VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN))
-    scene('remove', args.output, installed, offer=offer, keys=(VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN, PLAY))
+    # Rows: FiiO (chosen last time), diskOS, Disco!, Services, Packages.
+    scene('services', args.output, installed, offer=offer, keys=(VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN))
+    scene('packages', args.output, installed, offer=waiting, keys=(VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN))
+    scene('remove', args.output, installed, offer=offer, keys=(VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN, PLAY))
     scene('everything-goes', args.output, installed, offer=offer,
-          keys=(VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY) + (VOLUME_DOWN,) * 4 + (PLAY, PLAY, PLAY))
+          keys=(VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY) + (VOLUME_DOWN,) * 5 + (PLAY, PLAY, PLAY))
     # disc-network's networks under Services (owner, 2026-10-11), and the question that forgets one.
     report = dict(wifi='connected', connected='Home', lastChange=None, networks=[
         dict(id='3f1c2a9b', name='Home', open=False, held=True, inRange=True),
         dict(id='9a40c3d7', name='Office', open=False, held=False, inRange=True),
         dict(id='51e7b20c', name='Cafe Lumiere', open=True, held=False, inRange=False)])
-    to_networks = (VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY)
+    to_networks = (VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY, VOLUME_DOWN, VOLUME_DOWN, VOLUME_DOWN, PLAY)
     scene('networks', args.output, installed, offer=offer, networks=report, keys=to_networks + (VOLUME_DOWN,))
     scene('forget-network', args.output, installed, offer=offer, networks=report, keys=to_networks + (VOLUME_DOWN, VOLUME_DOWN, PLAY))
     print(json.dumps(sorted(p.name for p in args.output.glob('*.png'))))

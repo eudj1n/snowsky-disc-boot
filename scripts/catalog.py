@@ -6,8 +6,8 @@ layer's packages (the server, the boot menu, a ui package such as diskOS), and a
 server package carries catalog/apps.json, the apps it offers for the card's Apps/.
 An entry names its archive by SHA-256 and size; the archive comes from its url
 once published, or from a local file with that digest. A recipe entry is built on
-the user's computer from someone else's published release (diskOS), so nothing of
-it is redistributed from here.
+the user's computer from someone else's published release (diskOS, and its fork
+Disco! from the same recipe), so nothing of it is redistributed from here.
 
     python3 scripts/catalog.py check [--catalog FILE]
     python3 scripts/catalog.py list
@@ -26,6 +26,7 @@ import tarfile
 import tempfile
 import urllib.parse
 import urllib.request
+import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import package  # noqa: E402
@@ -35,8 +36,9 @@ CATALOG = ROOT/'catalog/packages.json'
 KINDS = ('packages', 'apps')
 RECIPES = ('diskos-release',)
 VERIFIED = ('date', 'acceptance')
-# diskOS's UI as a ui package (contract, "Acceptance: two independent packages"): diskOS 1.2.0
-# runs its UI only after its own boot hook recorded the choice; under the boot layer boot chose.
+# diskOS's UI as a ui package (contract, "Acceptance: two independent packages"): diskOS 1.2.x and
+# Disco! 2.6.x run their UI only after their own boot hook recorded the choice; under the boot layer
+# boot chose. The entry is the same for both: the record and the launch are the fork's as upstream's.
 DISKOS_ENTRY = '''#!/bin/sh
 # diskOS's UI as the boot layer's ui package, assembled on this computer from diskOS's release.
 # diskOS's own image records its S96 hook's choice of UI; boot made that choice here.
@@ -212,20 +214,40 @@ def obtain(archive, places, folder, allow_download, progress=None):
     raise NotLocal(f'no local file with sha256 {archive["sha256"][:12]}… ({why}: give its file or folder)')
 
 
+def release_member(archive_path, member):
+    """One regular file of a release archive: a zip (Disco!'s complete release) or a tar.gz
+    (diskOS's installer archives), told apart by the content, not the local file's name."""
+    archive_path = Path(archive_path)
+    try:
+        if zipfile.is_zipfile(archive_path):
+            with zipfile.ZipFile(archive_path) as archive:
+                try:
+                    info = archive.getinfo(member)
+                except KeyError:
+                    fail(f'{member} is not in the release')
+                if info.is_dir():
+                    fail(f'{member} is not a regular file in the release')
+                return archive.read(info)
+        with tarfile.open(archive_path, 'r:gz') as tar:
+            try:
+                info = tar.getmember(member)
+            except KeyError:
+                fail(f'{member} is not in the release')
+            if not info.isfile():
+                fail(f'{member} is not a regular file in the release')
+            return tar.extractfile(info).read()
+    except (tarfile.TarError, zipfile.BadZipFile, OSError) as error:
+        fail(f'{archive_path.name} is not a readable release archive ({error})')
+
+
 def diskos_release(entry, archive_path, output):
-    """diskOS's ui package from its own release: its UI binary, checked by digest, and our entry."""
+    """diskOS's (or its fork's) ui package from its own release: the UI binary, checked by digest,
+    and our entry."""
     source = entry['source']
     output = Path(output)
     if output.exists():
         fail(f'{output} exists; choose a fresh folder')
-    with tarfile.open(archive_path, 'r:gz') as tar:
-        try:
-            member = tar.getmember(source['member'])
-        except KeyError:
-            fail(f'{source["member"]} is not in the release')
-        if not member.isfile():
-            fail(f'{source["member"]} is not a regular file in the release')
-        data = tar.extractfile(member).read()
+    data = release_member(archive_path, source['member'])
     if hashlib.sha256(data).hexdigest() != source['memberSha256']:
         fail(f'{source["member"]} does not match its catalog entry')
     (output/'diskos').mkdir(parents=True)

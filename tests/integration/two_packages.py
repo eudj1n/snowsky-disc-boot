@@ -169,7 +169,7 @@ def run(server, ui, app, output):
     # diskOS's guard first, then the boot layer's, in stock's player's PATH.
     assert runs['playerPath'].startswith('/usr/data/diskos/bin:/opt/disc-boot/guard:'), runs
     player = bg.guest_json('/run/disc-boot/ui/player.json')
-    assert player['launch'] == 'package' and player['name'] == 'diskos', player
+    assert player['launch'] == 'package' and player['name'] == ui_state['name'], player
     assert bg.guest('cat /tmp/.diskos_boot_select').strip() == 'diskos'
     card_mounted(boot['card'])
     bg.step('both installed and confirmed', boot=boot, service=service, ui=ui_state, player=player, runs=runs,
@@ -227,7 +227,7 @@ def run(server, ui, app, output):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--server', type=Path, required=True, help="The server's package (zip or folder)")
-    parser.add_argument('--ui', type=Path, required=True, help="diskOS's ui package folder (diskos_package.py)")
+    parser.add_argument('--ui', type=Path, required=True, help="diskOS's ui package folder (diskos_package.py, or catalog.py fetch: diskOS or Disco!)")
     parser.add_argument('--app', type=Path, required=True, help="The player page's release zip")
     parser.add_argument('--output', required=True)
     args = parser.parse_args()

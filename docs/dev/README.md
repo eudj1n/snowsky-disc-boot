@@ -23,6 +23,8 @@ repository's root and `docs/install.md` and `docs/way-back.md` are for users.
 ## Packages — `packages/`
 
 - [disc-health](packages/health.md): the health journal.
+- [diskOS and Disco!](packages/diskos.md): diskOS's UI and its fork's as `ui`
+  packages assembled from their own releases.
 - [disc-network](packages/network.md): several Wi-Fi networks, one in stock's
   configuration.
 

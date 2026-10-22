@@ -349,10 +349,12 @@ One form for both (`schema` 1, `kind` `packages` or `apps`, `entries`):
 - Or, for a package built on the user's computer from someone else's
   release, a recipe: `{"recipe": "diskos-release", "archives": [...],
   "member", "memberSha256"}`. diskOS's own release carries its UI as
-  `payload/mq_ui`; the installer takes it from either published archive,
-  checks its digest and adds the boot layer's entry (the boot choice diskOS
-  1.2.0 expects), so nothing of diskOS is redistributed from here. The
-  binary is byte for byte the one built from diskOS's sources at `0edcfba`.
+  `payload/mq_ui` in its installer archives (tar.gz), its fork Disco!'s as
+  `mq_ui` at the root of its complete zip; the installer takes it from any
+  listed archive (a tar.gz or a zip, told apart by its content), checks its
+  digest and adds the boot layer's entry (the boot choice diskOS 1.2.x and
+  Disco! 2.6.x expect), so nothing of either is redistributed from here
+  ([packages/diskos.md](../packages/diskos.md)).
 - A package entry adds `role`, `profiles`, `bootApi` and an optional
   `title`; an app entry adds `api`, the server API it needs. Either may
   name its `homepage` (the rule of `package.json`); a recipe passes it on

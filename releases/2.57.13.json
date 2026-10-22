@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "version": "2.57.13",
+  "firmware": "2.57",
+  "tag": "v2.57.13",
+  "buildId": "8eb15a998d85",
+  "files": {
+    "disc-menu-2.57.13.zip": {
+      "bytes": 177631,
+      "sha256": "5d581fa4d94279e80ce6217ae3f8d4d8819d4171e7a464f6689fff2d7a73e51b"
+    },
+    "disc-boot-2.57.13-mips.tar.gz": {
+      "bytes": 343792,
+      "sha256": "786f399023f3deb8bfb5554e14ba5f871d2c15d7fa79258359020ec3c38562e8"
+    },
+    "disc-usb-payloads-2.57.13.tar.gz": {
+      "bytes": 101313,
+      "sha256": "30ff281c21449ccd8acf5610ecb472aecd0b680f118539a0109602d649cb821e"
+    },
+    "disc-health-2.57.13.zip": {
+      "bytes": 136407,
+      "sha256": "b49b7f456a65f85aa43532606c90aa30b04190856dc64ea194f8a00f1ddf027b"
+    },
+    "disc-network-2.57.13.zip": {
+      "bytes": 138839,
+      "sha256": "aabf3ba1176afffcddf634fd649110d2661cdffdca6bad2b0c0d80ef3ab89644"
+    },
+    "disc-installer-2.57.13.tar.gz": {
+      "bytes": 2562951,
+      "sha256": "54cae2da1173ef6bba9d7a1ec89dc985cf10f0372acb1887f51b5bef65aa70aa"
+    }
+  },
+  "accepted": "no new image or binaries: build 8eb15a998d85 and image 9e6448dd as release 2.57.7's, whose guest and player acceptance stands; the boot programs, the USB payloads, the menu, disc-health and disc-network byte for byte 2.57.12's (the packages' manifests name 2.57.13), which the owner's players run since 2026-10-19. What is new is the catalog: diskOS 1.2.1 (from 1.2.0) and diskOS Disco! 2.6.1, each built by the recipe from its published release and accepted on the guest (image 8eb15a9, emulator f1d5e33) beside the server 2.57.10 and Disc Player 1.1.0 by two_packages.py, 6 of 6 each, on 2026-10-22; the same day both installed with the menu on one guest, which offered FiiO's interface, diskOS and Disco! at power-on, and each started by the menu ran and was confirmed (frames of both boots kept). Neither UI has run on a player: published as a pre-release until the owner's player ran them. The installer's archive, built from the packages with the recorded digests, unpacked outside the repository with an empty home: install.py --packages --dry-run --offline staged the defaults (disc-menu 2.57.13, disc-server 2.57.10, disc-health and disc-network 2.57.13, Disc Player 1.1.0) and, asked for every package with the two releases as local files, diskOS 1.2.1 and diskOS Disco! 2.6.1 beside them. The guest was not run again with the release files: nothing it runs changed",
+  "urls": {
+    "disc-menu-2.57.13.zip": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.13/disc-menu-2.57.13.zip",
+    "disc-boot-2.57.13-mips.tar.gz": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.13/disc-boot-2.57.13-mips.tar.gz",
+    "disc-usb-payloads-2.57.13.tar.gz": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.13/disc-usb-payloads-2.57.13.tar.gz",
+    "disc-health-2.57.13.zip": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.13/disc-health-2.57.13.zip",
+    "disc-network-2.57.13.zip": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.13/disc-network-2.57.13.zip",
+    "disc-installer-2.57.13.tar.gz": "https://github.com/eudj1n/snowsky-disc-boot/releases/download/v2.57.13/disc-installer-2.57.13.tar.gz"
+  },
+  "image": {
+    "name": "disc-boot-v257-review-only.bin",
+    "bytes": 100663296,
+    "sha256": "9e6448ddc429e3e156a862abf1e5cf5547f6f7294850b1233609a7edfc880c77",
+    "first_blocks_bytes": 262144,
+    "first_blocks_sha256": "68c9da0ed3a62c3dfccff5f650326dc06e8c6b68881e997598f18411e0c25632"
+  }
+}
