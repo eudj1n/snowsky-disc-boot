@@ -411,15 +411,18 @@ Where the guest differs from the player:
   was once killed early (2026-10-05), and a second run went clean.
 
 The two-package acceptance ([contract](boot/contract.md#acceptance-two-independent-packages-owner-2026-10-02))
-runs our server beside diskOS's UI. diskOS is built locally from a checkout with its own
+runs our server beside diskOS's UI, or its fork Disco!'s. For a catalog entry the package is
+the recipe's, from the project's own release ([packages/diskos.md](packages/diskos.md)); for a
+source revision diskOS is built locally from a checkout with its own
 toolchain image (GCC 11.2 with musl, hard-float FP64/NaN2008, static; diskOS's UI at `0edcfba`
 is 3,945,212 bytes)
 (`ui/Dockerfile` at the same revision; built natively, `--platform
-linux/arm64` on Apple silicon, it takes about ten minutes); the package stays
+linux/arm64` on Apple silicon, it takes about ten minutes). Either package stays
 in ignored `work/` and is never passed on:
 
 ```sh
-docker build --platform linux/arm64 -t diskos-ui-builder:<rev> <diskos-export>/ui
+python3 scripts/catalog.py fetch --name diskos --output work/<run>/diskos --from work/downloads   # a release
+docker build --platform linux/arm64 -t diskos-ui-builder:<rev> <diskos-export>/ui                 # or a revision
 python3 tests/integration/diskos_package.py --source <diskos checkout> --revision <rev> \
   --builder diskos-ui-builder:<rev> --output work/<run>/diskos
 python3 scripts/guest.py run -- python3 -B /boot/tests/integration/two_packages.py \

@@ -10,6 +10,7 @@ from pathlib import Path
 import sys
 import tarfile
 import tempfile
+import zipfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -40,16 +41,20 @@ class CatalogTests(unittest.TestCase):
     def test_this_repositorys_catalog_is_valid(self):
         data = catalog.load()
         entries = {e['name']: e for e in data['entries']}
-        self.assertEqual(sorted(entries), ['disc-health', 'disc-menu', 'disc-network', 'disc-server', 'diskos'])
+        self.assertEqual(sorted(entries), ['disc-health', 'disc-menu', 'disc-network', 'disc-server', 'diskos', 'diskos-disco'])
         self.assertEqual({n: e['role'] for n, e in entries.items()},
-                         {'disc-health': 'service', 'disc-menu': 'menu', 'disc-network': 'service', 'disc-server': 'controller', 'diskos': 'ui'})
+                         {'disc-health': 'service', 'disc-menu': 'menu', 'disc-network': 'service', 'disc-server': 'controller',
+                          'diskos': 'ui', 'diskos-disco': 'ui'})
         self.assertEqual({n: e['bootApi'] for n, e in entries.items() if n in ('disc-health', 'disc-network')}, {'disc-health': 2, 'disc-network': 2})
         # The server names the controller's role of boot API 2 from 2.57.8 (owner, 2026-10-11); before, API 1's service
         # role, which boot API 2 takes as the controller too.
         self.assertEqual((entries['disc-server']['bootApi'], package.taken(entries['disc-server'])), (2, 'controller'))
         self.assertEqual(sorted(n for n, e in entries.items() if e['default']), ['disc-health', 'disc-menu', 'disc-network', 'disc-server'])
-        # diskOS is built from its own published release on the user's computer, never from here.
-        self.assertEqual(entries['diskos']['source']['recipe'], 'diskos-release')
+        # diskOS and its fork Disco! are built from their own published releases on the user's computer,
+        # never from here; neither is offered selected (FiiO's own interface leads).
+        self.assertEqual({n: e['source']['recipe'] for n, e in entries.items() if 'recipe' in e['source']},
+                         {'diskos': 'diskos-release', 'diskos-disco': 'diskos-release'})
+        self.assertEqual({n: e['title'] for n, e in entries.items() if 'title' in e}, {'diskos': 'diskOS', 'diskos-disco': 'diskOS Disco!'})
         self.assertTrue(all(PROFILE in e['profiles'] for e in entries.values()))
         # Every package is public: each names its project's page.
         self.assertEqual({n: e['homepage'] for n, e in entries.items()}, {
@@ -57,7 +62,8 @@ class CatalogTests(unittest.TestCase):
             'disc-network': 'https://github.com/eudj1n/snowsky-disc-boot',
             'disc-menu': 'https://github.com/eudj1n/snowsky-disc-boot',
             'disc-server': 'https://github.com/eudj1n/snowsky-disc-server',
-            'diskos': 'https://github.com/b0hemia/diskos'})
+            'diskos': 'https://github.com/b0hemia/diskos',
+            'diskos-disco': 'https://github.com/zmd22/diskos-disco'})
 
     def test_this_repositorys_packages_are_releases(self):
         """Debug builds stay local; our own packages are release files, named by the release's
@@ -209,6 +215,27 @@ class CatalogTests(unittest.TestCase):
         entry['source']['memberSha256'] = '0' * 64
         with self.assertRaisesRegex(catalog.CatalogError, 'does not match its catalog entry'):
             catalog.fetch(entry, self.root/'diskos2', [release])
+
+    def test_disco_is_assembled_from_its_zip_release(self):
+        # Disco!'s release carries its UI as a zip's member at the root; the same recipe reads a zip by its name.
+        binary = b'\x7fELF a stand-in for Disco!\'s UI'
+        path = self.root/'diskos-disco-2.6.1-complete.zip'
+        with zipfile.ZipFile(path, 'w') as archive:
+            archive.writestr('mq_ui', binary)
+            archive.writestr('docs/', b'')
+        archive = dict(url='https://example.com/diskos-disco-2.6.1-complete.zip', sha256=digest(path.read_bytes()), size=path.stat().st_size)
+        entry = dict(name='diskos-disco', role='ui', version='2.6.1', title='diskOS Disco!', homepage='https://github.com/zmd22/diskos-disco',
+                     profiles=[PROFILE], source=dict(recipe='diskos-release', archives=[archive], member='mq_ui', memberSha256=digest(binary)))
+        folder = catalog.fetch(entry, self.root/'disco', [path])
+        manifest = json.loads((folder/'package.json').read_text())
+        self.assertEqual((manifest['name'], manifest['version'], manifest['entry'], manifest['player'], manifest['title']),
+                         ('diskos-disco', '2.6.1', 'mq_ui', 'diskos/mq_ui', 'diskOS Disco!'))
+        self.assertEqual((folder/'diskos/mq_ui').read_bytes(), binary)
+        package.check(folder, 'ui', PROFILE)
+        for member, message in (('docs/', 'not a regular file'), ('payload/mq_ui', 'is not in the release')):
+            entry['source']['member'] = member
+            with self.assertRaisesRegex(catalog.CatalogError, message):
+                catalog.fetch(entry, self.root/f'disco-{len(member)}', [path])
 
 
 if __name__ == '__main__':

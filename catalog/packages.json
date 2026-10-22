@@ -105,25 +105,25 @@
         {
             "name": "diskos",
             "role": "ui",
-            "version": "1.2.0",
+            "version": "1.2.1",
             "title": "diskOS",
             "homepage": "https://github.com/b0hemia/diskos",
             "source": {
                 "recipe": "diskos-release",
                 "archives": [
                     {
-                        "url": "https://github.com/b0hemia/diskos/releases/download/v1.2.0/diskos-installer-macos-arm64.tar.gz",
-                        "sha256": "ad310120fdf2bac7577bee1362b6f6d65bd1f7f6f63c04ecfa0417e8c879e6ab",
-                        "size": 57793208
+                        "url": "https://github.com/b0hemia/diskos/releases/download/v1.2.1/diskos-installer-macos-arm64.tar.gz",
+                        "sha256": "0db005aabef646e4947f016f003f9f162420a1534bf9823c38d659e9eb6db228",
+                        "size": 58053643
                     },
                     {
-                        "url": "https://github.com/b0hemia/diskos/releases/download/v1.2.0/diskos-installer-linux-x86_64.tar.gz",
-                        "sha256": "cb1c37f91d3b9d9cf906be3ecd4e8b1fe5d563b1beb870560abf9a29c9b98dc7",
-                        "size": 59094317
+                        "url": "https://github.com/b0hemia/diskos/releases/download/v1.2.1/diskos-installer-linux-x86_64.tar.gz",
+                        "sha256": "d4e0a37a01061235810a0ff817868faacbf692ccd67a4588c868d4b91267bca9",
+                        "size": 59352500
                     }
                 ],
                 "member": "diskos-installer/payload/mq_ui",
-                "memberSha256": "3bd951ce21228e33a5521edfe5228acf9df584a38ff0955c249b97e36756c6c8"
+                "memberSha256": "6982cebd0033d8a622ac4fe5dc3081a88945980452463724a009bd8daf231c5d"
             },
             "profiles": [
                 "2.57"
@@ -131,13 +131,46 @@
             "bootApi": 1,
             "license": "MIT; its UI under ui/ GPL-3.0, taken from the upstream release on the user's computer and never redistributed",
             "default": false,
-            "notes": "The package is assembled on the user's computer: diskOS's own UI binary from its release, and an entry of ours that records the boot choice diskOS 1.2.0 expects",
+            "notes": "The package is assembled on the user's computer: diskOS's own UI binary from its release, and an entry of ours that records the boot choice diskOS 1.2.1 expects",
             "verified": {
-                "date": "2026-10-03",
-                "boot": "be681e3",
-                "emulator": "690a55c",
+                "date": "2026-10-22",
+                "boot": "8eb15a9",
+                "emulator": "f1d5e33",
                 "firmware": "2.57",
-                "acceptance": "two_packages.py (the same binary, built locally from 0edcfba)"
+                "acceptance": "two_packages.py 6 of 6 on 2026-10-22 beside the server 2.57.10 and Disc Player 1.1.0: the recipe's package from the macOS archive, confirmed with no failure"
+            }
+        },
+        {
+            "name": "diskos-disco",
+            "role": "ui",
+            "version": "2.6.1",
+            "title": "diskOS Disco!",
+            "homepage": "https://github.com/zmd22/diskos-disco",
+            "source": {
+                "recipe": "diskos-release",
+                "archives": [
+                    {
+                        "url": "https://github.com/zmd22/diskos-disco/releases/download/v2.6.1/diskos-disco-2.6.1-complete.zip",
+                        "sha256": "9b988fcb6c8b64a4385eba2894199ecd236e7c6172498173896729323cb58e69",
+                        "size": 11818151
+                    }
+                ],
+                "member": "mq_ui",
+                "memberSha256": "8db1674c4ed95260637af12cefbda4c382f388e0ff978cb0b5287a6b45aca3ce"
+            },
+            "profiles": [
+                "2.57"
+            ],
+            "bootApi": 1,
+            "license": "MIT; its UI under ui/ GPL-3.0-or-later, taken from the fork's release on the user's computer and never redistributed",
+            "default": false,
+            "notes": "zmd22's fork of diskOS, assembled like diskOS: its UI binary from its release and the same entry of ours. Its artwork helper, SSH and apps are not part of the package (its UI decodes covers itself). Settings in /usr/data are shared with diskOS: switching builds may need its Reset diskOS Settings",
+            "verified": {
+                "date": "2026-10-22",
+                "boot": "8eb15a9",
+                "emulator": "f1d5e33",
+                "firmware": "2.57",
+                "acceptance": "two_packages.py 6 of 6 on 2026-10-22 beside the server 2.57.10 and Disc Player 1.1.0: the recipe's package from its complete zip, confirmed with no failure; not yet on a player"
             }
         }
     ]

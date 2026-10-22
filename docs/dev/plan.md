@@ -111,35 +111,21 @@ repository stay in snowsky-disc-web's `docs/plan.md` (its "Boot layer" and
   carry over. Like the DISC, it starts with reading what it is, and would
   enter through reviewed profiles of its own, never version checks in code.
 
-- diskOS 1.2.1 (released 2026-10-14; checked 2026-10-14, deferred by the
-  owner as not a priority). Findings: the writer, its SPL and their sources
-  are unchanged from the pinned `646212d` (diskOS's own installer moved to
-  `my_write6` with a base gate on the main and recovery kernels and the
-  recovery rootfs, which our images leave alone); the recipe builds the same
-  `ui` package from both archives (`payload/mq_ui` 4,285,004 bytes, static;
-  `S96diskos_select` and the boot choice unchanged; only `mq_ui` and diskOS's
-  own `S97` changed). On the guest beside the server 2.57.8 it is installed
-  and confirmed (two-package acceptance 5 of 6; plain starts 6 of 6), but
-  after a start with Play that installed from the card its UI ended about a
-  minute after its start in 2 of 4 such starts (no fatal signal; stock's loop
-  restarted the pair, then it ran and was confirmed), 1.2.0 0 of 2 (6 of 6);
-  the cause is not found (1.2.1 also brings Wi-Fi up itself, which the
-  emulator blocks). Open: whether disc-network should change nothing under
-  another UI (diskOS keeps several networks itself: adds without removing,
-  `enable_network all`, its own "Forget This Network"; disc-network would
-  remove them and, out of reach, replace the list with one, as with 1.2.0
-  already); the catalog's entry 1.2.0 → 1.2.1; a check on the owner's player.
-
-- diskOS Disco! as another interface before the large public release (owner,
-  2026-10-09): zmd22's fork of diskOS (https://zmd22.github.io/diskos-disco/,
-  https://github.com/zmd22/diskos-disco; 1.2.1 for V2.57; its UI under
-  GPL-3.0-or-later, installer and documents under MIT), whose release carries
-  the built `payload/mq_ui` as diskOS's does. As a `ui` package assembled on
-  the user's computer by a recipe like diskOS's (its `mq_ui` from the release
-  by its digest, the boot layer's entry beside it, nothing of it
-  redistributed from here), its boot choice and card protection checked
-  against what diskOS 1.2.0 expects, then the guest's two-package acceptance
-  beside the server and diskOS, and the owner's player.
+- diskOS 1.2.1 and diskOS Disco! 2.6.1 on the owner's player (catalog entries
+  of 2026-10-22, accepted on the guest beside the server 2.57.10;
+  [packages/diskos.md](packages/diskos.md)): each installed from the card
+  beside the server, its UI confirmed, Bluetooth and Wi-Fi under Disco! (the
+  emulator has neither; the fork's author had not tried 2.6.1 on a player at
+  its release), then a boot release that carries the catalog. Open from
+  1.2.1's earlier guest runs (2026-10-14): its UI ended about a minute after
+  a start with Play that installed from the card in 2 of 4 such starts, then
+  ran after stock's loop restarted the pair; in the 2026-10-22 runs (one
+  such start each) boot recorded no failure, and stock's own restart count
+  was not read. Open too: whether disc-network should change
+  nothing under a UI that manages networks itself (diskOS and Disco! keep
+  several networks through `wpa_cli`: adds without removing,
+  `enable_network all`, their own "Forget This Network"; disc-network would
+  remove them and, out of reach, replace the list with one).
 
 - An update of the image by the running system from the card (owner,
   2026-10-08): FiiO's own update takes about 2 minutes, ours over USB Boot
